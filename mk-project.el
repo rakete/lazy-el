@@ -583,7 +583,7 @@ With C-u prefix, start ack from the current directory."
 ;; Compile
 ;; ---------------------------------------------------------------------
 
-(defun project-compile-default (opts)
+(defun mk-proj-compile (opts)
   "Please don't use this manually, it is supposed to be called by
 `project-compile'."
   (interactive "sCompile options: ")
@@ -598,8 +598,8 @@ With C-u prefix, start ack from the current directory."
   (project-home)
   (if (stringp mk-proj-compile-cmd)
       (if opts
-          (funcall 'project-compile-default opts)
-        (call-interactively 'project-compile-default))
+          (funcall 'mk-proj-compile opts)
+        (call-interactively 'mk-proj-compile))
     (if (fboundp mk-proj-compile-cmd)
         (if (commandp mk-proj-compile-cmd)
             (call-interactively mk-proj-compile-cmd)
