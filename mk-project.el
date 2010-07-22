@@ -260,6 +260,13 @@ value is not used if a custom find command is set in
   (delq nil
         (mapcar (lambda (x) (and (funcall condp x) x)) lst)))
 
+(defun* mk-proj-any (condp lst)
+  (let (b)
+    (dolist (x lst b)
+      (when b
+        (return-from "mk-proj-any" t))
+      (setq b (funcall condp x)))))
+
 ;; ---------------------------------------------------------------------
 ;; Project Configuration
 ;; ---------------------------------------------------------------------
@@ -730,6 +737,34 @@ selection of the file. See also: `project-index',
   (multi-occur (mk-proj-filter (lambda (b) (if (buffer-file-name b) b nil)) 
                                (mk-proj-buffers))
                regex))
+
+(defun* project-next-buffer ()
+  "Switch to the next project buffer in cyclic order."
+  (interactive)
+  (mk-proj-assert-proj)
+  (unless (mk-proj-buffers)
+      (return-from "project-next-buffer" nil))
+  (let ((counter 0)
+        (proj-buffers (mapcar 'buffer-name (mk-proj-buffers))))
+    (next-buffer)
+    (while (not (or (mk-proj-any (lambda (x) (string-equal (buffer-name) x)) proj-buffers)
+                    (> counter 1000)))
+      (setq counter (+ counter 1))
+      (next-buffer))))
+
+(defun* project-previous-buffer ()
+  "Switch to the previous project buffer in cyclic order."
+  (interactive)
+  (mk-proj-assert-proj)
+  (unless (mk-proj-buffers)
+      (return-from "project-previous-buffer" nil))
+  (let ((counter 0)
+        (proj-buffers (mapcar 'buffer-name (mk-proj-buffers))))
+    (previous-buffer)
+    (while (not (or (mk-proj-any (lambda (x) (string-equal (buffer-name) x)) proj-buffers)
+                    (> counter 1000)))
+      (setq counter (+ counter 1))
+      (previous-buffer))))
 
 (provide 'mk-project)
 
