@@ -701,7 +701,7 @@ relative to the project's basedir."
                       (when (string-match regex file) (add-to-list 'files file))
                     (add-to-list 'files file)))
                 (= (forward-line) 0))))) ; loop test
-      files)))
+      (sort files #'string-lessp))))
 
 (defun* project-find-file (regex)
   "Find file in the current project matching the given regex.
