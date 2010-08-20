@@ -181,7 +181,8 @@ value is not used if a custom find command is set in
                               mk-proj-open-files-cache
                               mk-proj-src-find-cmd
                               mk-proj-grep-find-cmd
-                              mk-proj-index-find-cmd)
+                              mk-proj-index-find-cmd
+                              mk-proj-etags-cmd)
   "List of all our project settings")
 
 ;; ---------------------------------------------------------------------
@@ -302,7 +303,7 @@ value is not used if a custom find command is set in
     ;; optional vars
     (dolist (v '(src-patterns ignore-patterns ack-args vcs
                  tags-file compile-cmd src-find-cmd grep-find-cmd
-                 index-find-cmd startup-hook shutdown-hook))
+                 index-find-cmd startup-hook shutdown-hook etags-cmd))
       (maybe-set-var v))
     (maybe-set-var 'tags-file #'expand-file-name)
     (maybe-set-var 'file-list-cache #'expand-file-name)
@@ -496,8 +497,11 @@ value is not used if a custom find command is set in
              (default-find-cmd (concat "find '" (if relative-tags "." mk-proj-basedir)
                                        "' -type f "
                                        (mk-proj-find-cmd-src-args mk-proj-src-patterns)))
+             (etags-shell-cmd (if mk-proj-etags-cmd
+                                  mk-proj-etags-cmd
+                                "etags -o"))
              (etags-cmd (concat (or (mk-proj-find-cmd-val 'src) default-find-cmd)
-                                " | etags -o '" tags-file-name "' - "))
+                                " | " etags-shell-cmd " '" tags-file-name "' - "))
              (proc-name "etags-process"))
         (message "project-tags default-dir %s" default-directory)
         (message "project-tags cmd \"%s\"" etags-cmd)
