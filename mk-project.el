@@ -182,7 +182,8 @@ value is not used if a custom find command is set in
                               mk-proj-src-find-cmd
                               mk-proj-grep-find-cmd
                               mk-proj-index-find-cmd
-                              mk-proj-etags-cmd)
+                              mk-proj-etags-cmd
+                              mk-proj-patterns-are-regex)
   "List of all our project settings")
 
 ;; ---------------------------------------------------------------------
@@ -268,6 +269,13 @@ value is not used if a custom find command is set in
         (return-from "mk-proj-any" t))
       (setq b (funcall condp x)))))
 
+(defun mk-proj-flatten (xs)
+  (let ((ret nil))
+    (while xs
+      (setq ret (append ret (car xs)))
+      (setq xs (cdr xs)))
+    ret))
+
 ;; ---------------------------------------------------------------------
 ;; Project Configuration
 ;; ---------------------------------------------------------------------
@@ -303,7 +311,8 @@ value is not used if a custom find command is set in
     ;; optional vars
     (dolist (v '(src-patterns ignore-patterns ack-args vcs
                  tags-file compile-cmd src-find-cmd grep-find-cmd
-                 index-find-cmd startup-hook shutdown-hook etags-cmd))
+                 index-find-cmd startup-hook shutdown-hook etags-cmd
+                 patterns-are-regex))
       (maybe-set-var v))
     (maybe-set-var 'tags-file #'expand-file-name)
     (maybe-set-var 'file-list-cache #'expand-file-name)
@@ -513,9 +522,12 @@ value is not used if a custom find command is set in
 (defun mk-proj-find-cmd-src-args (src-patterns)
   "Generate the ( -name <pat1> -o -name <pat2> ...) pattern for find cmd"
   (if src-patterns
-      (let ((name-expr " \\("))
+      (let ((name-expr " \\(")
+            (regex-or-name-arg (if mk-proj-patterns-are-regex
+                                   "-regex"
+                                 "-name")))
         (dolist (pat src-patterns)
-          (setq name-expr (concat name-expr " -name \"" pat "\" -o ")))
+          (setq name-expr (concat name-expr " " regex-or-name-arg " \"" pat "\" -o ")))
         (concat (mk-proj-replace-tail name-expr "-o " "") "\\) "))
     ""))
 

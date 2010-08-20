@@ -46,10 +46,12 @@
 (defvar anything-c-source-mk-project-files
   '((name . "Files")
     (candidates . (lambda ()
-                    (mapcar (lambda (s)
-                              (concat (file-name-as-directory mk-proj-basedir)
-                                      (file-name-nondirectory s)))
-                            (mk-proj-fib-matches mk-proj-src-patterns))))
+                     (mapcar (lambda (s)
+                               (concat (file-name-as-directory mk-proj-basedir)
+                                       (file-name-nondirectory s)))
+                             (if mk-proj-patterns-are-regex
+                                 (flatten (mapcar 'mk-proj-fib-matches mk-proj-src-patterns))
+                               (mk-proj-fib-matches nil)))))
     (match anything-c-match-on-file-name
            anything-c-match-on-directory-name)
     (type . file))
