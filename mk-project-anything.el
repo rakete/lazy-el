@@ -47,8 +47,7 @@
   '((name . "Files")
     (candidates . (lambda ()
                      (mapcar (lambda (s)
-                               (concat (file-name-as-directory mk-proj-basedir)
-                                       (file-name-nondirectory s)))
+                               (replace-regexp-in-string "/\\./" "/" (concat (file-name-as-directory mk-proj-basedir) s)))
                              (if mk-proj-patterns-are-regex
                                  (flatten (mapcar 'mk-proj-fib-matches mk-proj-src-patterns))
                                (mk-proj-fib-matches nil)))))
