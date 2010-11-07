@@ -86,7 +86,8 @@
 
 (defvar mk-proj-anything-sources
   '(anything-c-source-mk-project-open-buffers
-    anything-c-source-mk-project-files)
+    anything-c-source-mk-project-files
+    anything-c-source-mk-project-projects)
   "The `anything-sources' that `project-find-anything' uses.
 
 See also: `anything-c-source-mk-project-open-buffers',
