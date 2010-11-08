@@ -349,6 +349,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
             (setq mk-proj-name proj-name)
             (dolist (v required-vars)
               (unless (config-val v)
+                (mk-proj-defaults)
                 (throw 'mk-proj-load-vars v))
               (maybe-set-var v)))) 
       (dolist (v mk-proj-optional-vars)
