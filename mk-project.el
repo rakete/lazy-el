@@ -167,24 +167,30 @@ the associated paths when greping or indexing the project. This
 value is not used if a custom find command is set in
 `mk-proj-grep-find-cmd' or `mk-proj-index-find-cmd'")
 
-(defconst mk-proj-proj-vars '(mk-proj-name
-                              mk-proj-basedir
-                              mk-proj-src-patterns
-                              mk-proj-ignore-patterns
-                              mk-proj-ack-args
-                              mk-proj-vcs
-                              mk-proj-tags-file
-                              mk-proj-compile-cmd
-                              mk-proj-startup-hook
-                              mk-proj-shutdown-hook
-                              mk-proj-file-list-cache
-                              mk-proj-open-files-cache
-                              mk-proj-src-find-cmd
-                              mk-proj-grep-find-cmd
-                              mk-proj-index-find-cmd
-                              mk-proj-etags-cmd
-                              mk-proj-patterns-are-regex)
+(defvar mk-proj-required-vars '(name
+                                basedir))
+
+(defvar mk-proj-optional-vars '(src-patterns
+                                ignore-patterns
+                                ack-args
+                                vcs
+                                tags-file
+                                compile-cmd
+                                startup-hook
+                                shutdown-hook
+                                file-list-cache
+                                open-files-cache
+                                src-find-cmd
+                                grep-find-cmd
+                                index-find-cmd
+                                etags-cmd
+                                patterns-are-regex)
   "List of all our project settings")
+
+(defvar mk-proj-var-functions '((basedir . expand-file-name)
+                                (tags-file . expand-file-name)
+                                (file-list-cache . expand-file-name)
+                                (open-files-cache . expand-file-name)))
 
 ;; ---------------------------------------------------------------------
 ;; Customization
@@ -289,34 +295,41 @@ value is not used if a custom find command is set in
   "Associate the settings in <config-alist> with project <proj-name>"
   (puthash proj-name config-alist mk-proj-list))
 
+(defun mk-proj-proj-vars ()
+  (mapcar (lambda (var)
+            (intern (concat "mk-proj-" (symbol-name var))))
+          (append mk-proj-required-vars mk-proj-optional-vars)))
+
 (defun mk-proj-defaults ()
   "Set all default values for project variables"
-  (dolist (var mk-proj-proj-vars)
-    (set var nil)))
+    (dolist (var (mk-proj-proj-vars))
+      (set var nil)))
 
-(defun mk-proj-load-vars (proj-name proj-alist)
+(defun mk-proj-load-vars (proj-name proj-alist &optional init)
   "Set project variables from proj-alist"
-  (labels ((config-val (key)
-            (if (assoc key proj-alist)
-                (car (cdr (assoc key proj-alist)))
-              nil))
-           (maybe-set-var (var &optional fn)
-             (let ((proj-var (intern (concat "mk-proj-" (symbol-name var))))
-                   (val (config-val var)))
-               (when val (setf (symbol-value proj-var) (if fn (funcall fn val) val))))))
-    (mk-proj-defaults)
-    ;; required vars
-    (setq mk-proj-name proj-name)
-    (setq mk-proj-basedir (expand-file-name (config-val 'basedir)))
-    ;; optional vars
-    (dolist (v '(src-patterns ignore-patterns ack-args vcs
-                 tags-file compile-cmd src-find-cmd grep-find-cmd
-                 index-find-cmd startup-hook shutdown-hook etags-cmd
-                 patterns-are-regex))
-      (maybe-set-var v))
-    (maybe-set-var 'tags-file #'expand-file-name)
-    (maybe-set-var 'file-list-cache #'expand-file-name)
-    (maybe-set-var 'open-files-cache #'expand-file-name)))
+  (catch 'mk-proj-load-vars
+    (labels ((config-val (key)
+                         (if (assoc key proj-alist)
+                             (car (cdr (assoc key proj-alist)))
+                           nil))
+             (maybe-set-var (var)
+                            (let ((proj-var (intern (concat "mk-proj-" (symbol-name var))))
+                                  (val (config-val var))
+                                  (fn (cdr (assoc var mk-proj-var-functions))))
+                              (when val
+                                (setf (symbol-value proj-var) (if fn (funcall fn val) val))))))
+      (mk-proj-defaults)
+      (if init
+          (let ((required-vars (mk-proj-filter (lambda (s)
+                                                 (not (string-equal (symbol-name s) "name")))
+                                               mk-proj-required-vars)))
+            (setq mk-proj-name proj-name)
+            (dolist (v required-vars)
+              (unless (config-val v)
+                (throw 'mk-proj-load-vars v))
+              (maybe-set-var v)))) 
+      (dolist (v mk-proj-optional-vars)
+        (maybe-set-var v)))))
 
 (defun mk-proj-load (name)
   (interactive)
@@ -326,7 +339,10 @@ value is not used if a custom find command is set in
         (project-unload))
       (let ((proj-config (mk-proj-find-config name)))
         (if proj-config
-            (mk-proj-load-vars name proj-config)
+            (let ((v (mk-proj-load-vars name proj-config t)))
+              (when v
+                (message "Required config value '%s' missing in %s!" (symbol-name v) name)
+                (throw 'mk-proj-load t)))
           (message "Project %s does not exist!" name)
           (throw 'mk-proj-load t)))
       (when (not (file-directory-p mk-proj-basedir))
@@ -419,7 +435,7 @@ value is not used if a custom find command is set in
   (interactive)
   (if mk-proj-basedir
       (let ((msg))
-        (dolist (v mk-proj-proj-vars)
+        (dolist (v (mk-proj-proj-vars))
           (setq msg (concat msg (format "%-24s = %s\n" v (symbol-value v)))))
         (message msg))
     (message "No project loaded.")))
