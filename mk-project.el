@@ -168,7 +168,10 @@ value is not used if a custom find command is set in
 `mk-proj-grep-find-cmd' or `mk-proj-index-find-cmd'")
 
 (defvar mk-proj-required-vars '(name
-                                basedir))
+                                basedir)
+  "Project config vars that are required in every project.
+
+See also `mk-proj-optional-vars' `mk-proj-var-functions' `mk-proj-load-vars'")
 
 (defvar mk-proj-optional-vars '(src-patterns
                                 ignore-patterns
@@ -185,12 +188,19 @@ value is not used if a custom find command is set in
                                 index-find-cmd
                                 etags-cmd
                                 patterns-are-regex)
-  "List of all our project settings")
+  "Project config vars that are optional.
+
+See also `mk-proj-required-vars' `mk-proj-var-functions' `mk-proj-load-vars'")
 
 (defvar mk-proj-var-functions '((basedir . expand-file-name)
                                 (tags-file . expand-file-name)
                                 (file-list-cache . expand-file-name)
-                                (open-files-cache . expand-file-name)))
+                                (open-files-cache . expand-file-name))
+  "Config vars from `mk-proj-required-vars' and `mk-proj-optional-vars' (except 'name')
+can be associated with a function in this association list, which will be
+applied to the value of the var before loading the project.
+
+See also `mk-proj-load-vars'.")
 
 ;; ---------------------------------------------------------------------
 ;; Customization
@@ -296,6 +306,8 @@ value is not used if a custom find command is set in
   (puthash proj-name config-alist mk-proj-list))
 
 (defun mk-proj-proj-vars ()
+  "This returns a list of all proj-vars as symbols.
+Replaces the old mk-proj-proj-vars constant."
   (mapcar (lambda (var)
             (intern (concat "mk-proj-" (symbol-name var))))
           (append mk-proj-required-vars mk-proj-optional-vars)))
@@ -306,7 +318,18 @@ value is not used if a custom find command is set in
       (set var nil)))
 
 (defun mk-proj-load-vars (proj-name proj-alist &optional init)
-  "Set project variables from proj-alist"
+  "Set project variables from proj-alist. A project variable is what
+a config variable becomes after loading a project. Essentially
+a global lisp symbol with the same name as the config variable
+prefixed by 'mk-proj-'. For example, the basedir config var becomes
+mk-proj-basedir in global scope.
+
+If init is non-nil this function checks the proj-alist for required
+config vars and throws the first missing symbol (if any) and exits.
+Keep in mind that without the init argument, the required vars are
+ignored completly.
+
+See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'"
   (catch 'mk-proj-load-vars
     (labels ((config-val (key)
                          (if (assoc key proj-alist)
