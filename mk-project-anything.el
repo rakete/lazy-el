@@ -68,34 +68,37 @@ The behaviour of this command is modified with
 ;; Anything Friends
 ;; ---------------------------------------------------------------------
 
-(defun project-friendly-matches (&optional regex)
+(defun mk-proj-get-project-files (name &optional regex)
+  (let ((files '()))
+    (when (mk-proj-find-config name)
+      (let* ((friend-config (mk-proj-find-config name))
+             (friend-basedir (expand-file-name (car (cdr (assoc 'basedir friend-config)))))
+             (friend-file-list-cache (expand-file-name (car (cdr (assoc 'file-list-cache friend-config)))))
+             (friend-cache-buffer-name (concat "*" friend-file-list-cache "*")))
+        (generate-new-buffer friend-cache-buffer-name)
+        (with-current-buffer (find-file-noselect-1 friend-cache-buffer-name friend-file-list-cache nil nil nil nil)
+          (goto-char (point-min))
+          (while 
+              (progn
+                (let ((raw-file (buffer-substring (line-beginning-position) (line-end-position))))
+                  (when (> (length raw-file) 0)
+                    (let ((file (if (file-name-absolute-p raw-file) 
+                                    raw-file
+                                  (replace-regexp-in-string "/\\./" "/" (concat (file-name-as-directory friend-basedir) raw-file)))))
+                      (if regex
+                          (when (string-match regex file) (add-to-list 'files file))
+                        (add-to-list 'files file)))
+                    (= (forward-line) 0)))))))) ; loop test
+    (sort files #'string-lessp)))
+
+(defun mk-proj-friend-matches (&optional regex)
   (let ((files '()))
     (dolist (f mk-proj-friends files)
       (if (file-exists-p (expand-file-name f))
           (if regex
               (when (string-match regex file) (add-to-list 'files f))
             (add-to-list 'files f))
-        (when (mk-proj-find-config f)
-          (let* ((friend-config (mk-proj-find-config f))
-                 (friend-basedir (expand-file-name (car (cdr (assoc 'basedir friend-config)))))
-                 (friend-file-list-cache (expand-file-name (car (cdr (assoc 'file-list-cache friend-config)))))
-                 (friend-cache-buffer-name (concat "*" friend-file-list-cache "*")))
-            (generate-new-buffer friend-cache-buffer-name)
-            (with-current-buffer (find-file-noselect-1 friend-cache-buffer-name friend-file-list-cache nil nil nil nil)
-              (goto-char (point-min))
-              (while 
-                  (progn
-                    (let ((raw-file (buffer-substring (line-beginning-position) (line-end-position))))
-                      (when (> (length raw-file) 0)
-                        (let ((file (if (file-name-absolute-p raw-file) 
-                                        raw-file
-                                      (replace-regexp-in-string "/\\./" "/" (concat (file-name-as-directory friend-basedir) raw-file)))))
-                          (if regex
-                              (when (string-match regex file) (add-to-list 'files file))
-                            (add-to-list 'files file)))
-                        (= (forward-line) 0)))))))))) ; loop test
-    (sort files #'string-lessp)))
-
+        (setq files (append files (mk-proj-get-project-files f regex)))))))
 
 (defun mk-proj-friendly-buffer-p (buf)
   (let ((file-name (mk-proj-buffer-name buf)))
@@ -156,7 +159,7 @@ The behaviour of this command is modified with
 
 (defvar anything-c-source-mk-friendly-files
   '((name . "Friendly files")
-    (candidates . (lambda () (project-friendly-matches)))
+    (candidates . (lambda () (mk-proj-friend-matches)))
     (match anything-c-match-on-file-name
            anything-c-match-on-directory-name)
     (type . file))
