@@ -75,20 +75,21 @@ The behaviour of this command is modified with
              (friend-basedir (expand-file-name (car (cdr (assoc 'basedir friend-config)))))
              (friend-file-list-cache (expand-file-name (car (cdr (assoc 'file-list-cache friend-config)))))
              (friend-cache-buffer-name (concat "*" friend-file-list-cache "*")))
-        (generate-new-buffer friend-cache-buffer-name)
-        (with-current-buffer (find-file-noselect-1 friend-cache-buffer-name friend-file-list-cache nil nil nil nil)
-          (goto-char (point-min))
-          (while 
-              (progn
-                (let ((raw-file (buffer-substring (line-beginning-position) (line-end-position))))
-                  (when (> (length raw-file) 0)
-                    (let ((file (if (file-name-absolute-p raw-file) 
-                                    raw-file
-                                  (replace-regexp-in-string "/\\./" "/" (concat (file-name-as-directory friend-basedir) raw-file)))))
-                      (if regex
-                          (when (string-match regex file) (add-to-list 'files file))
-                        (add-to-list 'files file)))
-                    (= (forward-line) 0)))))))) ; loop test
+        (with-current-buffer (generate-new-buffer friend-cache-buffer-name)
+          (with-current-buffer (find-file-noselect-1 friend-cache-buffer-name friend-file-list-cache nil nil nil nil)
+            (goto-char (point-min))
+            (while 
+                (progn
+                  (let ((raw-file (buffer-substring (line-beginning-position) (line-end-position))))
+                    (when (> (length raw-file) 0)
+                      (let ((file (if (file-name-absolute-p raw-file) 
+                                      raw-file
+                                    (replace-regexp-in-string "/\\./" "/" (concat (file-name-as-directory friend-basedir) raw-file)))))
+                        (if regex
+                            (when (string-match regex file) (add-to-list 'files file))
+                          (add-to-list 'files file)))
+                      (= (forward-line) 0))))))
+          (kill-buffer))))
     (sort files #'string-lessp)))
 
 (defun mk-proj-friend-matches (&optional regex)
