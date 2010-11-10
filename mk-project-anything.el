@@ -122,6 +122,56 @@ The behaviour of this command is modified with
       (when (mk-proj-friendly-buffer-p b) (push b buffers)))
     buffers))
 
+(defun mk-proj-save-open-friends-info ()
+  (when mk-proj-open-friends-cache
+    (with-temp-buffer
+      (dolist (f (mapcar (lambda (b) (mk-proj-buffer-name b)) (mk-proj-friendly-buffers)))
+        (when f
+          (unless (string-equal mk-proj-tags-file f)
+            (insert f "\n"))))
+      (if (file-writable-p mk-proj-open-friends-cache)
+          (progn
+            (write-region (point-min)
+                          (point-max)
+                          mk-proj-open-friends-cache)
+            (message "Wrote open friends to %s" mk-proj-open-friends-cache))
+        (message "Cannot write to %s" mk-proj-open-friends-cache)))))
+
+(defun mk-proj-visit-saved-open-friends ()
+  (when mk-proj-open-friends-cache
+    (when (file-readable-p mk-proj-open-friends-cache)
+      (message "Reading open friends from %s" mk-proj-open-friends-cache)
+      (with-temp-buffer
+        (insert-file-contents mk-proj-open-friends-cache)
+        (goto-char (point-min))
+        (while (not (eobp))
+          (let ((start (point)))
+            (while (not (eolp)) (forward-char)) ; goto end of line
+            (let ((line (buffer-substring start (point))))
+              (message "Attempting to open %s" line)
+              (find-file-noselect line t)))
+          (forward-line))))))
+
+(defun mk-proj-kill-emacs-hook-friends ()
+  (when (and mk-proj-name mk-proj-open-friends-cache)
+    (mk-proj-save-open-friends-info)))
+
+(defun project-close-friends ()
+  (interactive)
+  (mk-proj-assert-proj)
+  (let ((closed nil)
+        (dirty nil)
+        (basedir-len (length mk-proj-basedir)))
+    (dolist (b (mk-proj-friendly-buffers))
+      (cond
+       ((buffer-modified-p b)
+        (push (buffer-name) dirty))
+       (t
+        (kill-buffer b)
+        (push (buffer-name) closed))))
+    (message "Closed %d friendly buffers, %d modified friendly buffers where left open"
+             (length closed) (length dirty))))
+
 ;; ---------------------------------------------------------------------
 ;; Anything Sources
 ;; ---------------------------------------------------------------------
@@ -193,6 +243,11 @@ See also: `anything-c-source-mk-project-open-buffers',
 
 (eval-after-load "mk-project-anything"
   '(progn
-     (add-to-list 'mk-proj-optional-vars 'friends)))
+     (add-to-list 'mk-proj-optional-vars 'friends)
+     (add-to-list 'mk-proj-optional-vars 'open-friends-cache)
+
+     (add-hook 'kill-emacs-hook 'mk-proj-kill-emacs-hook-friends)
+     (add-hook 'mk-proj-project-load-hook 'mk-proj-visit-saved-open-friends)
+     (add-hook 'mk-proj-project-unload-hook 'mk-proj-save-open-friends-info)))
 
 (provide 'mk-project-anything)
