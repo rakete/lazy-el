@@ -190,10 +190,19 @@ If called with prefix arg it will behave just like `project-multi-occur'"
 
 (defvar anything-c-source-mk-project-projects
   '((name . "mk-project Projects")
-    (candidates . (lambda () (mk-proj-names)))
+    (candidates . (lambda ()
+                    (let ((allkeys '()))
+                      (maphash (lambda (k v)
+                                 (setq allkeys (cons k allkeys)))
+                               mk-proj-list)
+                      (mk-proj-filter (lambda (k)
+                                        (if (file-exists-p (mk-proj-config-val k 'basedir)) k nil))
+                                      allkeys))))
     (action . (lambda (entry)
                 (mk-proj-load entry))))
   "All configured mk-project projects.")
+
+(file-exists-p (mk-proj-config-val "darkplaces" 'basedir))
 
 (defvar anything-c-source-mk-project-files
   '((name . "Files")
