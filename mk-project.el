@@ -301,6 +301,11 @@ See also `mk-proj-load-vars'.")
 (defun mk-proj-find-config (proj-name)
   (gethash proj-name mk-proj-list))
 
+(defun mk-proj-config-val (proj-name key)
+  (if (assoc key (mk-proj-find-config proj-name))
+      (car (cdr (assoc key (mk-proj-find-config proj-name))))
+    nil))
+
 (defun project-def (proj-name config-alist)
   "Associate the settings in <config-alist> with project <proj-name>"
   (puthash proj-name config-alist mk-proj-list))
