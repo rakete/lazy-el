@@ -47,8 +47,6 @@
                 (mk-proj-load entry))))
   "All configured mk-project projects.")
 
-(file-exists-p (mk-proj-config-val "darkplaces" 'basedir))
-
 (defvar anything-c-source-mk-project-files
   '((name . "Files")
     (candidates . (lambda ()
