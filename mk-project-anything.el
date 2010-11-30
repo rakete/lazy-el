@@ -184,6 +184,34 @@ If called with prefix arg it will behave just like `project-multi-occur'"
                                  (append (mk-proj-buffers) (mk-proj-friendly-buffers))))
                regex))
 
+(defun mk-proj-friend-basedirs ()
+  "Return all friends basedirs. This may also return single filenames instead of a directory."
+  (let* ((basedirs '()))
+    (dolist (f mk-proj-friends basedirs)
+      (if (file-exists-p (expand-file-name f))
+          (add-to-list 'basedirs f)
+        (add-to-list 'basedirs (mk-proj-config-val f 'basedir))))))
+
+(defun project-ack-with-friends ()
+  "Run ack with project's basedir and all friend basedirs as arguments, using the `ack-args' configuration.
+With C-u prefix, act like `project-ack'."
+  (interactive)
+  (mk-proj-assert-proj)
+  (if current-prefix-arg
+      (project-ack)
+    (let* ((wap (word-at-point))
+           (regex (if wap (read-string (concat "Ack project for (default \"" wap "\"): ") nil nil wap)
+                    (read-string "Ack project for: ")))
+           (whole-cmd (concat (mk-proj-ack-cmd regex) " " mk-proj-basedir (let ((s ""))
+                                                                            (dolist (d (mk-proj-friend-basedirs) s)
+                                                                              (setq s (concat s " " d))))))
+           (confirmed-cmd (read-string "Ack command: " whole-cmd nil whole-cmd))
+           (default-directory (file-name-as-directory
+                               (if (mk-proj-has-univ-arg)
+                                   default-directory
+                                 mk-proj-basedir))))
+      (compilation-start confirmed-cmd 'ack-mode))))
+
 ;; ---------------------------------------------------------------------
 ;; Anything Sources
 ;; ---------------------------------------------------------------------
