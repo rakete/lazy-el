@@ -173,6 +173,17 @@ The behaviour of this command is modified with
     (message "Closed %d friendly buffers, %d modified friendly buffers where left open"
              (length closed) (length dirty))))
 
+(defun project-multi-occur-with-friends (regex)
+  "Search all open project files (including friends) for 'regex' using `multi-occur'.
+
+If called with prefix arg it will behave just like `project-multi-occur'"
+  (interactive "sRegex: ")
+  (multi-occur (mk-proj-filter (lambda (b) (if (buffer-file-name b) b nil)) 
+                               (if current-prefix-arg
+                                   (mk-proj-buffers)
+                                 (append (mk-proj-buffers) (mk-proj-friendly-buffers))))
+               regex))
+
 ;; ---------------------------------------------------------------------
 ;; Anything Sources
 ;; ---------------------------------------------------------------------
