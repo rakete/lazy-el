@@ -93,13 +93,22 @@ The behaviour of this command is modified with
     (sort files #'string-lessp)))
 
 (defun mk-proj-friend-matches (&optional regex)
-  (let ((files '()))
-    (dolist (f mk-proj-friends files)
-      (if (file-exists-p (expand-file-name f))
+  (let ((resulting-matches '()))
+    (dolist (friend mk-proj-friends resulting-matches)
+      ;; friends can be either project names or single files,
+      ;; so first check if the friend is a single file here
+      (if (file-exists-p (expand-file-name friend))
           (if regex
-              (when (string-match regex file) (add-to-list 'files f))
-            (add-to-list 'files f))
-        (setq files (append files (mk-proj-get-project-files f regex)))))))
+              (when (string-match regex friend) (add-to-list 'resulting-matches friend))
+            (add-to-list 'resulting-matches friend))
+        ;; if friend is not a single file, it must be a project name
+        (let ((friend-matches (mk-proj-get-project-files friend regex)))
+          (if mk-proj-patterns-are-regex
+              (dolist (file friend-matches resulting-matches)
+                (dolist (pattern mk-proj-ignore-patterns resulting-matches)
+                  (if (string-match pattern file) 'resulting-matches
+                    (add-to-list 'resulting-matches file))))
+            (setq resulting-matches (append resulting-matches friend-matches))))))))
 
 (defun mk-proj-friendly-buffer-p (buf)
   (let ((file-name (mk-proj-buffer-name buf)))
