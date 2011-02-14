@@ -103,12 +103,12 @@ The behaviour of this command is modified with
             (add-to-list 'resulting-matches friend))
         ;; if friend is not a single file, it must be a project name
         (let ((friend-matches (mk-proj-get-project-files friend regex)))
-          (if mk-proj-patterns-are-regex
+          (if (and mk-proj-patterns-are-regex mk-proj-ignore-patterns)
               (dolist (file friend-matches resulting-matches)
                 (dolist (pattern mk-proj-ignore-patterns resulting-matches)
-                  (if (string-match pattern file) 'resulting-matches
-                    (add-to-list 'resulting-matches file))))
-            (setq resulting-matches (append resulting-matches friend-matches))))))))
+                  (if (not (string-match pattern file))
+                        (add-to-list resulting-matches file)))))
+            (setq resulting-matches (append resulting-matches friend-matches)))))))
 
 (defun mk-proj-friendly-buffer-p (buf)
   (let ((file-name (mk-proj-buffer-name buf)))
