@@ -202,6 +202,10 @@ applied to the value of the var before loading the project.
 
 See also `mk-proj-load-vars'.")
 
+(defvar mk-proj-project-load-hook '())
+
+(defvar mk-proj-project-unload-hook '())
+
 ;; ---------------------------------------------------------------------
 ;; Customization
 ;; ---------------------------------------------------------------------
@@ -301,6 +305,11 @@ See also `mk-proj-load-vars'.")
 (defun mk-proj-find-config (proj-name)
   (gethash proj-name mk-proj-list))
 
+(defun mk-proj-config-val (proj-name key)
+  (if (assoc key (mk-proj-find-config proj-name))
+      (car (cdr (assoc key (mk-proj-find-config proj-name))))
+    nil))
+
 (defun project-def (proj-name config-alist)
   "Associate the settings in <config-alist> with project <proj-name>"
   (puthash proj-name config-alist mk-proj-list))
@@ -383,6 +392,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
       (add-hook 'kill-emacs-hook 'mk-proj-kill-emacs-hook)
       (when mk-proj-startup-hook
         (run-hooks 'mk-proj-startup-hook))
+      (run-hooks 'mk-proj-project-load-hook)
       (message "Loading project %s done" name))))
   
 
@@ -410,7 +420,8 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
     (when (and (mk-proj-buffers)
                (y-or-n-p (concat "Close all " mk-proj-name " project files? "))
       (project-close-files)))
-    (when mk-proj-shutdown-hook (run-hooks 'mk-proj-shutdown-hook)))
+    (when mk-proj-shutdown-hook (run-hooks 'mk-proj-shutdown-hook))
+    (run-hooks 'mk-proj-project-unload-hook))
   (mk-proj-defaults)
   (message "Project settings have been cleared"))
 
