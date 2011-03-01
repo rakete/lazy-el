@@ -54,29 +54,34 @@
                        (return-from "do-org-projects" (org-entry-properties)))))
 
 (defun mk-org-define-projects ()
-  (let (all-configs '())
-    (progn
-      (dolist (file mk-org-project-files all-configs)
-        (do-org-projects file
-                         (let* ((entry-properties (org-entry-properties))
-                                (ks '())
-                                (props (dolist (p entry-properties ks) (push (car p) ks)))
-                                (project-config '()))
-                           (progn
-                             (dolist (propname props project-config)
-                               (let ((cs (assoc propname mk-org-project-properties)))
-                                 (if cs
-                                     (let* ((config-propname (car cs))
-                                            (config-item (cdr cs))
-                                            (item-value (cdr (assoc config-propname entry-properties))))
-                                       (push `(,config-item . ,item-value) project-config)))))
-                             (push `(,project-name . ,project-config) all-configs)))))
-      (dolist (project-config all-configs)
-        (let* ((project-name (car project-config))
-               (project-alist (cdr project-config)))
-          (project-def project-name project-alist))))))
+  (progn
+    (dolist (file mk-org-project-files)
+      (do-org-projects file
+                       (let* ((entry-properties (org-entry-properties))
+                              (ks '())
+                              (props (dolist (p entry-properties ks) (push (car p) ks)))
+                              (project-config '()))
+                         (progn
+                           (dolist (propname props project-config)
+                             (let ((sym (assoc propname (mk-org-gen-project-properties))))
+                               (if sym
+                                   (let* ((config-propname (car sym))
+                                          (config-item (cdr sym))
+                                          (item-value (cdr (assoc config-propname entry-properties))))
+                                     (add-to-list 'project-config `(,config-item ,item-value))))))
+                           (puthash project-name project-config mk-proj-list)))))))
 
 (defun project-undef (name)
   (remhash name mk-proj-list))
 
+(setq bar (intern "nil"))
+
+`(,bar)
+
 (project-undef "BeispielProjekt")
+
+(mk-org-gen-project-properties)
+
+(defvar mk-org-project-files '("/home/lazor/org/projects.org"))
+
+(mk-org-define-projects)
