@@ -29,6 +29,10 @@
 (require 'anything)
 (require 'anything-config)
 
+(defvar mk-proj-friends nil)
+
+(defvar mk-proj-open-friends-cache nil)
+
 ;; ---------------------------------------------------------------------
 ;; Anything Utilities
 ;; ---------------------------------------------------------------------
@@ -107,8 +111,10 @@ The behaviour of this command is modified with
               (dolist (file friend-matches resulting-matches)
                 (dolist (pattern mk-proj-ignore-patterns resulting-matches)
                   (if (not (string-match pattern file))
-                        (add-to-list resulting-matches file)))))
+                        (add-to-list 'resulting-matches file)))))
             (setq resulting-matches (append resulting-matches friend-matches)))))))
+
+(mk-proj-friend-matches)
 
 (defun mk-proj-friendly-buffer-p (buf)
   (let ((file-name (mk-proj-buffer-name buf)))
