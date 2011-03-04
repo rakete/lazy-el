@@ -217,9 +217,10 @@ With C-u prefix, act like `project-ack'."
     (let* ((wap (word-at-point))
            (regex (if wap (read-string (concat "Ack project for (default \"" wap "\"): ") nil nil wap)
                     (read-string "Ack project for: ")))
-           (whole-cmd (concat (mk-proj-ack-cmd regex) " " mk-proj-basedir (let ((s ""))
-                                                                            (dolist (d (mk-proj-friend-basedirs) s)
-                                                                              (setq s (concat s " " d))))))
+           (whole-cmd (concat (mk-proj-ack-cmd regex) " " mk-proj-basedir "; "
+                              (let ((s ""))
+                                (dolist (d (mk-proj-friend-basedirs) s)
+                                  (setq s (concat s (mk-proj-ack-cmd regex) " " d "; "))))))
            (confirmed-cmd (read-string "Ack command: " whole-cmd nil whole-cmd))
            (default-directory (file-name-as-directory
                                (if (mk-proj-has-univ-arg)
