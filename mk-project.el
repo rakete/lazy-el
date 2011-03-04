@@ -296,6 +296,15 @@ See also `mk-proj-load-vars'.")
       (setq xs (cdr xs)))
     ret))
 
+(defmacro mk-proj-assoc-pop (key alist)
+  `(let ((result (assoc ,key ,alist)))
+     (setq ,alist (delete result ,alist))
+     result))
+
+(defun mk-proj-alist-union (alist1 alist2)
+  (append (mapcar (lambda (c)
+                    (or (mk-proj-assoc-pop (car c) alist2) c)) alist1) alist2))
+
 ;; ---------------------------------------------------------------------
 ;; Project Configuration
 ;; ---------------------------------------------------------------------
@@ -310,9 +319,14 @@ See also `mk-proj-load-vars'.")
       (car (cdr (assoc key (mk-proj-find-config proj-name))))
     nil))
 
-(defun project-def (proj-name config-alist)
+(defun project-def (proj-name config-alist &optional inherit)
   "Associate the settings in <config-alist> with project <proj-name>"
-  (puthash proj-name config-alist mk-proj-list))
+  (if inherit
+      (let ((parent-alist (if (char-or-string-p inherit)
+                              (gethash inherit mk-proj-list)
+                            (gethash proj-name mk-proj-list))))
+        (puthash proj-name (mk-proj-alist-union parent-alist config-alist) mk-proj-list))
+    (puthash proj-name config-alist mk-proj-list)))
 
 (defun mk-proj-proj-vars ()
   "This returns a list of all proj-vars as symbols.
