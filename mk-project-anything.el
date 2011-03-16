@@ -101,6 +101,7 @@ The behaviour of this command is modified with
     (dolist (friend mk-proj-friends resulting-matches)
       ;; friends can be either project names or single files,
       ;; so first check if the friend is a single file here
+      (if (not (stringp friend)) (error "Error in mk-proj-friend-matches, did you quote the friends list?"))
       (if (file-exists-p (expand-file-name friend))
           (if regex
               (when (string-match regex friend) (add-to-list 'resulting-matches friend))
@@ -114,13 +115,12 @@ The behaviour of this command is modified with
                         (add-to-list 'resulting-matches file)))))
             (setq resulting-matches (append resulting-matches friend-matches)))))))
 
-(mk-proj-friend-matches)
-
 (defun mk-proj-friendly-buffer-p (buf)
   (let ((file-name (mk-proj-buffer-name buf)))
     (if (and file-name
              (block "friend-loop"
                (dolist (f mk-proj-friends)
+                 (if (not (stringp f)) (error "Error in mk-proj-friendly-buffer-p, did you quote the friends list?"))
                  (if (file-exists-p (expand-file-name f))
                      (when (string-equal f file-name)
                        (return-from "friend-loop" t))
