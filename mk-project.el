@@ -448,11 +448,11 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
         (basedir-len (length mk-proj-basedir)))
     (dolist (b (mk-proj-buffers))
       (cond
-       ((buffer-modified-p b)
-        (push (buffer-name) dirty))
+       ((or (buffer-modified-p b) (string-equal (buffer-name b) "*scratch*"))
+        (push (buffer-name b) dirty))
        (t
-        (kill-buffer b)
-        (push (buffer-name) closed))))
+        (push (buffer-name b) closed)
+        (kill-buffer b))))
     (message "Closed %d buffers, %d modified buffers where left open"
              (length closed) (length dirty))))
 
