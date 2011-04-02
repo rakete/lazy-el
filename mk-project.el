@@ -402,11 +402,11 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
       (cd mk-proj-basedir)
       (mk-proj-tags-load)
       (mk-proj-fib-init)
-      (mk-proj-visit-saved-open-files)
       (add-hook 'kill-emacs-hook 'mk-proj-kill-emacs-hook)
       (when mk-proj-startup-hook
         (run-hooks 'mk-proj-startup-hook))
       (run-hooks 'mk-proj-project-load-hook)
+      (mk-proj-visit-saved-open-files)
       (message "Loading project %s done" name))))
   
 
