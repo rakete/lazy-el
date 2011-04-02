@@ -754,7 +754,8 @@ With C-u prefix, start ack from the current directory."
     (let* ((default-directory (file-name-as-directory mk-proj-basedir))
            (start-dir (if mk-proj-file-index-relative-paths "." mk-proj-basedir))
            (find-cmd (concat "find '" start-dir "' -type f "
-                            (mk-proj-find-cmd-ignore-args mk-proj-ignore-patterns)))
+                             (mk-proj-find-cmd-src-args mk-proj-src-patterns)
+                             (mk-proj-find-cmd-ignore-args mk-proj-ignore-patterns)))
            (proc-name "index-process"))
       (when (mk-proj-get-vcs-path)
         (setq find-cmd (concat find-cmd " -not -path " (mk-proj-get-vcs-path))))
