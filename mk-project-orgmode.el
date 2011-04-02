@@ -1,21 +1,24 @@
-
 (require 'mk-project)
 
-(defconst mk-org-project-properties '(("MKP-NAME" . name)
-                                      ("MKP-BASEDIR" . basedir)
-                                      ("MKP-SRC-PATTERNS" . patterns)
-                                      ("MKP-IGNORE-PATTERNS" . ignore-patterns)
-                                      ("MKP-ACK-ARGS" . ack-args)
-                                      ("MKP-VCS" . vcs)
-                                      ("MKP-TAGS-FILE" . tags-file)
-                                      ("MKP-COMPILE-CMD" . compile-cmd)
-                                      ("MKP-FILE-LIST-CACHE" . file-list-cache)
-                                      ("MKP-OPEN-FILES-CACHE" . open-files-cache)
-                                      ("MKP-SRC-FIND-CMD" . src-find-cmd)
-                                      ("MKP-GREP-FIND-CMD" . grep-find-cmd)
-                                      ("MKP-INDEX-FIND-CMD" . index-find-cmd)
-                                      ("MKP-ETAGS-CMD" . etags-cmd)
-                                      ("MKP-PATTERNS-ARE-REGEX" . patterns-are-regex)))
+;; (defconst mk-org-project-properties '(("MKP-NAME" . name)
+;;                                       ("MKP-BASEDIR" . basedir)
+;;                                       ("MKP-SRC-PATTERNS" . patterns)
+;;                                       ("MKP-IGNORE-PATTERNS" . ignore-patterns)
+;;                                       ("MKP-ACK-ARGS" . ack-args)
+;;                                       ("MKP-VCS" . vcs)
+;;                                       ("MKP-TAGS-FILE" . tags-file)
+;;                                       ("MKP-COMPILE-CMD" . compile-cmd)
+;;                                       ("MKP-FILE-LIST-CACHE" . file-list-cache)
+;;                                       ("MKP-OPEN-FILES-CACHE" . open-files-cache)
+;;                                       ("MKP-SRC-FIND-CMD" . src-find-cmd)
+;;                                       ("MKP-GREP-FIND-CMD" . grep-find-cmd)
+;;                                       ("MKP-INDEX-FIND-CMD" . index-find-cmd)
+;;                                       ("MKP-ETAGS-CMD" . etags-cmd)
+;;                                       ("MKP-PATTERNS-ARE-REGEX" . patterns-are-regex)))
+
+(defconst mk-org-task-properties '(("MKP-TODO-CREATED-BY-MK" . todo-created-by-mk)
+                                   ("MKP-TODO-OPEN-FILES" . todo-open-files)
+                                   ("MKP-TODO-VIEW-THIS-FILE" . todo-view-this-file)))
 
 (defun mk-org-gen-project-properties ()
   (let* ((proj-vars (append mk-proj-required-vars mk-proj-optional-vars))
@@ -23,8 +26,8 @@
     (dolist (var proj-vars props)
       (add-to-list 'props `(,(concat "MKP-" (upcase (symbol-name var))) . ,var)))))
 
-(defmacro do-org-projects (_file &rest body)
-  (` (block "do-org-projects"
+(defmacro mk-org-do-all-projects (_file &rest body)
+  (` (block "mk-org-do-all-projects"
        (let* ((org-startup-folded nil)
               (org-startup-align-all-tables nil)
               (buffer (if (file-exists-p (, _file))
@@ -48,15 +51,20 @@
                              (outline-previous-heading)
                              (,@ body)))))))))))))))
 
-(defun get-project-properties (file name)
-  (do-org-projects file
+(defmacro mk-org-do-single-project (name _file &rest body)
+  (,@ body))
+
+(defun mk-org-get-project-properties (file name)
+  (mk-org-do-all-projects file
                    (if (string-equal project-name name)
-                       (return-from "do-org-projects" (org-entry-properties)))))
+                       (return-from "mk-org-do-all-projects" (org-entry-properties)))))
+
+(defun mk-org-get-project-todos (file name))
 
 (defun mk-org-define-projects ()
   (progn
     (dolist (file mk-org-project-files)
-      (do-org-projects file
+      (mk-org-do-all-projects file
                        (let* ((entry-properties (org-entry-properties))
                               (ks '())
                               (props (dolist (p entry-properties ks) (push (car p) ks)))
@@ -69,19 +77,18 @@
                                           (config-item (cdr sym))
                                           (item-value (cdr (assoc config-propname entry-properties))))
                                      (add-to-list 'project-config `(,config-item ,item-value))))))
-                           (puthash project-name project-config mk-proj-list)))))))
+                           (project-def project-name project-config t)))))))
+
+(defun mk-org-clock-in-org-hook ())
+(defun mk-org-clock-out-org-hook ())
 
 (defun project-undef (name)
   (remhash name mk-proj-list))
 
-(setq bar (intern "nil"))
+(defun project-create-todo ())
 
-`(,bar)
-
-(project-undef "BeispielProjekt")
-
-(mk-org-gen-project-properties)
+(defun project-todos ())
 
 (defvar mk-org-project-files '("/home/lazor/org/projects.org"))
 
-(mk-org-define-projects)
+
