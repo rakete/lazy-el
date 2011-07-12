@@ -427,15 +427,18 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
   "Unload the current project's settings after running the shutdown hook."
   (interactive)
   (when mk-proj-name
-    (message "Unloading project %s" mk-proj-name)
-    (mk-proj-tags-clear)
-    (mk-proj-maybe-kill-buffer mk-proj-fib-name)
-    (mk-proj-save-open-file-info)
-    (when (and (mk-proj-buffers)
-               (y-or-n-p (concat "Close all " mk-proj-name " project files? "))
-      (project-close-files)))
-    (when mk-proj-shutdown-hook (run-hooks 'mk-proj-shutdown-hook))
-    (run-hooks 'mk-proj-project-unload-hook))
+    (condition-case nil
+        (progn
+          (message "Unloading project %s" mk-proj-name)
+          (mk-proj-tags-clear)
+          (mk-proj-maybe-kill-buffer mk-proj-fib-name)
+          (mk-proj-save-open-file-info)
+          (when (and (mk-proj-buffers)
+                     (y-or-n-p (concat "Close all " mk-proj-name " project files? "))
+                     (project-close-files)))
+          (when mk-proj-shutdown-hook (run-hooks 'mk-proj-shutdown-hook))
+          (run-hooks 'mk-proj-project-unload-hook))
+      (error nil)))
   (mk-proj-defaults)
   (message "Project settings have been cleared"))
 
