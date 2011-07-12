@@ -314,13 +314,24 @@ See also `mk-proj-load-vars'.")
 (defun mk-proj-find-config (proj-name)
   (gethash proj-name mk-proj-list))
 
-(defun mk-proj-config-val (proj-name key)
+(defun mk-proj-config-val (key &optional proj-name)
+  "Finds the value associated with <key> in project <proj-name>."
+  (unless proj-name
+    (setq proj-name mk-proj-name))
   (if (assoc key (mk-proj-find-config proj-name))
-      (car (cdr (assoc key (mk-proj-find-config proj-name))))
+      (let ((val (cdr (assoc key (mk-proj-find-config proj-name)))))
+        ;; check for list, (x . y) vs (x y)
+        (if (listp val)
+            (car val)
+          val))
     nil))
 
 (defun project-def (proj-name config-alist &optional inherit)
-  "Associate the settings in <config-alist> with project <proj-name>"
+  "Associate the settings in <config-alist> with project <proj-name>.
+Specify an optional project to inherit all settings from with the
+<inherit> argument. If <inherit> is t, then reuse project settings
+of already existing project with the same name as the one which is
+to be defined."
   (if inherit
       (let ((parent-alist (if (char-or-string-p inherit)
                               (gethash inherit mk-proj-list)
