@@ -126,8 +126,12 @@ The behaviour of this command is modified with
                        (return-from "friend-loop" t))
                    (when (mk-proj-find-config f)
                      (let* ((friend-config (mk-proj-find-config f))
-                            (friend-basedir (expand-file-name (car (cdr (assoc 'basedir friend-config))))))
+                            (basedir (expand-file-name (car (cdr (assoc 'basedir friend-config)))))
+                            (friend-basedir (if (string-equal (substring basedir -1) "/")
+                                                basedir
+                                              (concat basedir "/"))))
                        (when (string-match (concat "^" (regexp-quote friend-basedir)) file-name)
+                         (print friend-basedir)
                          (return-from "friend-loop" t))))))))
         t
       nil)))
