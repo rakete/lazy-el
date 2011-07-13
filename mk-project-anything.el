@@ -205,7 +205,7 @@ If called with prefix arg it will behave just like `project-multi-occur'"
     (dolist (f mk-proj-friends basedirs)
       (if (file-exists-p (expand-file-name f))
           (add-to-list 'basedirs f)
-        (add-to-list 'basedirs (mk-proj-config-val f 'basedir))))))
+        (add-to-list 'basedirs (mk-proj-config-val 'basedir f))))))
 
 (defun project-ack-with-friends ()
   "Run ack with project's basedir and all friend basedirs as arguments, using the `ack-args' configuration.
@@ -240,7 +240,7 @@ With C-u prefix, act like `project-ack'."
                                  (setq allkeys (cons k allkeys)))
                                mk-proj-list)
                       (mk-proj-filter (lambda (k)
-                                        (if (file-exists-p (mk-proj-config-val k 'basedir)) k nil))
+                                        (if (file-exists-p (mk-proj-config-val 'basedir k)) k nil))
                                       allkeys))))
     (action . (lambda (entry)
                 (mk-proj-load entry))))
