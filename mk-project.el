@@ -441,9 +441,9 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
   (when (and mk-proj-name mk-proj-open-files-cache)
     (mk-proj-save-open-file-info)))
 
-(defun project-unload ()
+(defun project-unload (&optional arg)
   "Unload the current project's settings after running the shutdown hook."
-  (interactive)
+  (interactive "P")
   (when mk-proj-name
     (condition-case nil
         (progn
@@ -451,9 +451,12 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
           (mk-proj-tags-clear)
           (mk-proj-maybe-kill-buffer mk-proj-fib-name)
           (mk-proj-save-open-file-info)
-          (when (and (mk-proj-buffers)
-                     (y-or-n-p (concat "Close all " mk-proj-name " project files? "))
-                     (project-close-files)))
+          (mk-proj-save-open-friends-info)
+          (and (or (mk-proj-buffers) (mk-proj-friendly-buffers))
+               (not arg)
+               (y-or-n-p (concat "Close all " mk-proj-name " project files? "))
+               (project-close-files)
+               (project-close-friends))
           (when mk-proj-shutdown-hook (run-hooks 'mk-proj-shutdown-hook))
           (run-hooks 'mk-proj-project-unload-hook))
       (error nil)))
