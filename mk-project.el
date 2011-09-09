@@ -289,6 +289,13 @@ See also `mk-proj-load-vars'.")
         (return-from "mk-proj-any" t))
       (setq b (funcall condp x)))))
 
+(defun* mk-proj-all (condp lst)
+  (let ((b t))
+    (dolist (x lst b)
+      (unless b
+        (return-from "mk-proj-all" nil))
+       (setq b (funcall condp x)))))
+
 (defun mk-proj-flatten (xs)
   (let ((ret nil))
     (while xs
