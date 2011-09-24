@@ -176,7 +176,8 @@ value is not used if a custom find command is set in
 
 See also `mk-proj-optional-vars' `mk-proj-var-functions' `mk-proj-load-vars'")
 
-(defvar mk-proj-optional-vars '(src-patterns
+(defvar mk-proj-optional-vars '(parent ;; parent needs to come first!
+                                src-patterns
                                 ignore-patterns
                                 ack-args
                                 vcs
@@ -342,32 +343,95 @@ See also `mk-proj-load-vars'.")
 (defvar mk-proj-list (make-hash-table :test 'equal))
 
 (defun mk-proj-find-config (proj-name)
+  "Get a projects config-alist from the global projects hashmap."
   (gethash proj-name mk-proj-list))
 
-(defun mk-proj-config-val (key &optional proj-name)
-  "Finds the value associated with <key> in project <proj-name>."
-  (unless proj-name
-    (setq proj-name mk-proj-name))
-  (if (assoc key (mk-proj-find-config proj-name))
-      (let ((val (cdr (assoc key (mk-proj-find-config proj-name)))))
-        ;; check for list, (x . y) vs (x y)
-        (if (listp val)
-            (car val)
-          val))
-    nil))
+
+(defun mk-proj-get-config-val (key &optional proj inherit)
+  "Finds the value associated with KEY. A project PROJ
+can optionally be specified. Either in form of a config-alist or
+a name.
+If the third argument INHERIT is non-nil, all parents will queried
+for the KEY and the first value that is found is returned."
+  (unless proj
+    (setq proj mk-proj-name))
+  (let ((proj-alist (cond ((listp proj)
+                           proj)
+                          (t
+                           (mk-proj-find-config proj)))))
+    (if (assoc key proj-alist)
+        (let ((val (cdr (assoc key proj-alist))))
+          ;; check for list, (x . y) vs (x y)
+          ;; I got annoyed by making this mistake too often
+          (if (listp val)
+              (car val)
+            val))
+      (let ((parent (car (cdr (assoc 'parent proj-alist)))))
+        (when (and inherit parent)
+          (mk-proj-config-val key parent t))))))
+
+(defalias 'mk-proj-config-val 'mk-proj-get-config-val
+  "Alias for `mk-proj-get-config-val' to ensure backward compatibility.")
+
+(defun mk-proj-set-config-val (key &optional proj)
+  "A so far not implemented way to modify the project configuration
+programmatically. Most likely this will only be practical for project
+configurations that are stored in org files or something similar."
+  )
 
 (defun project-def (proj-name config-alist &optional inherit)
-  "Associate the settings in <config-alist> with project <proj-name>.
-Specify an optional project to inherit all settings from with the
-<inherit> argument. If <inherit> is t, then reuse project settings
+  "Associate the settings in CONFIG-ALIST with project PROJ-NAME.
+Specify an optional project to inherit all settings from the
+INHERIT argument. If INHERIT is t, then reuse project settings
 of already existing project with the same name as the one which is
-to be defined."
-  (if inherit
-      (let ((parent-alist (if (char-or-string-p inherit)
-                              (gethash inherit mk-proj-list)
-                            (gethash proj-name mk-proj-list))))
-        (puthash proj-name (mk-proj-alist-union parent-alist config-alist) mk-proj-list))
-    (puthash proj-name config-alist mk-proj-list)))
+to be defined.
+
+Values obtained through inheritance are not determined when the
+project is defined, they are determined when `mk-proj-get-config-val'
+is used to get a config value of a project.
+
+All values within CONFIG-ALIST will be evaluated when they look
+like a lisp expression or symbol. So make sure to quote lists!
+
+See also `project-undef'."
+
+  ;; I changed the behaviour of this function to evaluate the config values (when they look like something
+  ;; that could be evaluated)
+  ;; thats rather nasty because now lists must be quoted or else project definition will fail
+  ;; on the other hand it enables my org-mode integration to have its property values evaluated
+  (let* ((evaluated-config-alist (let ((evaluated-config-alist '()))
+                                   (dolist (cv config-alist evaluated-config-alist)
+                                     (let* ((key (car cv))
+                                            ;; super behaves like a keyword that can be used within a configuration
+                                            ;; to refer to the parents value (if inherit has been specified)
+                                            ;; I haven't tested this, it is a experimental feature
+                                            (super (when inherit (mk-proj-config-val key inherit t)))
+                                            (lisp (car (cdr cv)))
+                                            (value (cond ((or (and (listp lisp) (symbolp (car lisp))) (symbolp lisp))
+                                                          (eval lisp))
+                                                         (t lisp))))
+                                       (setq evaluated-config-alist (append `((,key ,value)) evaluated-config-alist))))))
+         (combined-alist (cond ((eq inherit nil)
+                                ;; no inherit -> use only the config given (after evaluation)
+                                evaluated-config-alist)
+                               ((or (eq inherit t) (eq inherit proj-name))
+                                ;; inherit == proj-name -> use union of existing config and evaluated-config-alist
+                                (mk-proj-alist-union (gethash proj-name mk-proj-list) evaluated-config-alist))
+                               ((and inherit (gethash proj-name mk-proj-list))
+                                ;; the proj-name exists already -> same as previous case, but append parent
+                                (append (mk-proj-alist-union (gethash proj-name mk-proj-list) evaluated-config-alist)
+                                        (unless (eq inherit t) `((parent ,inherit)))))
+                               (t
+                                ;; non of the other cases matched -> use the config-alist and append parent
+                                ;; why only append parent and no union in the last two cases? because the actual
+                                ;; inherited values are not determined at time of definition but at runtime
+                                ;; by mk-proj-get-config-val
+                                (append evaluated-config-alist `((parent ,inherit)))))))
+    (puthash proj-name combined-alist mk-proj-list)))
+
+(defun project-undef (name)
+  "Opposite of `project-define'."
+  (remhash name mk-proj-list))
 
 (defun mk-proj-proj-vars ()
   "This returns a list of all proj-vars as symbols.
