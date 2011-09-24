@@ -768,6 +768,7 @@ See also `project-undef'."
   ;; that could be evaluated)
   ;; thats rather nasty because now lists must be quoted or else project definition will fail
   ;; on the other hand it enables my org-mode integration to have its property values evaluated
+  ;; EDIT: I think I made it backwards compatible through a condition-case, lets see if anyone complains...
   (let* ((evaluated-config-alist (let ((evaluated-config-alist '()))
                                    (dolist (cv config-alist evaluated-config-alist)
                                      (let* ((key (car cv))
@@ -776,9 +777,7 @@ See also `project-undef'."
                                             ;; I haven't tested this, it is a experimental feature
                                             (super (when inherit (mk-proj-config-val key inherit t)))
                                             (lisp (car (cdr cv)))
-                                            (value (cond ((or (and (listp lisp) (symbolp (car lisp))) (symbolp lisp))
-                                                          (eval lisp))
-                                                         (t lisp))))
+                                            (value (condition-case nil (eval lisp) (error lisp))))
                                        (setq evaluated-config-alist (append `((,key ,value)) evaluated-config-alist))))))
          (combined-alist (cond ((eq inherit nil)
                                 ;; no inherit -> use only the config given (after evaluation)
