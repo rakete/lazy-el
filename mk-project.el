@@ -304,10 +304,14 @@ See also `mk-proj-load-vars'.")
       nil)))
 
 (defun mk-proj-filter (condp lst)
+  "Filter LST with CONDP. All elements for which CONDP returns t will be kept,
+all others filtered."
   (delq nil
         (mapcar (lambda (x) (and (funcall condp x) x)) lst)))
 
 (defun* mk-proj-any (condp lst)
+  "Apply CONDP to all elements of LST, return t as soon as CONDP
+yields t."
   (let (b)
     (dolist (x lst b)
       (when b
@@ -315,6 +319,8 @@ See also `mk-proj-load-vars'.")
       (setq b (funcall condp x)))))
 
 (defun* mk-proj-all (condp lst)
+  "Apply CONDP to all elements of LST, return nil as soon as
+CONDP yields nil."
   (let ((b t))
     (dolist (x lst b)
       (unless b
@@ -966,15 +972,38 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
       (when (mk-proj-buffer-p b) (push b buffers)))
     buffers))
 
-(defun project-status ()
+(defun project-status (&optional name)
   "View project's variables."
   (interactive)
-  (if mk-proj-basedir
-      (let ((msg))
-        (dolist (v (mk-proj-proj-vars))
-          (setq msg (concat msg (format "%-24s = %s\n" v (symbol-value v)))))
-        (message msg))
-    (message "No project loaded.")))
+  (unless name
+    (mk-proj-assert-proj)
+    (setq name mk-proj-name))
+  ;; (unless (mk-proj-config-val 'basedir name)
+  ;;   (setq name (if (mk-proj-use-ido)
+  ;;                  (ido-completing-read "Project Name (ido): " (mk-proj-names))
+  ;;                (completing-read "Project Name: " (mk-proj-names)))))
+  ;; (if (mk-proj-config-val 'basedir name)
+  (let ((msg))
+    (dolist (v (append mk-proj-required-vars mk-proj-optional-vars))
+      (setq msg (concat msg (format "%-24s = %s\n" (symbol-name v) (mk-proj-config-val v name t)))))
+    (message msg))
+    ;; (message "No such project."))
+    )
+
+(defun mk-proj-proj-names ()
+  "All the projects names."
+  (interactive)
+  (let ((names '()))
+    (maphash (lambda (k p)
+               (progn
+                 (setq names (append names `(,k)))))
+               mk-proj-list)
+    names))
+
+(defun project-names ()
+  (interactive)
+  (loop for s in (mk-proj-proj-names)
+        do (message "%s" s)))
 
 ;; ---------------------------------------------------------------------
 ;; Save/Restore open files
