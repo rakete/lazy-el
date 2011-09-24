@@ -40,6 +40,8 @@
 (defvar mk-proj-version "1.4.0"
   "As tagged at http://github.com/mattkeller/mk-project/tree/master")
 
+(defvar mk-proj-cache-root "~/.mk-project")
+
 ;; ---------------------------------------------------------------------
 ;; Project Variables
 ;;
@@ -188,20 +190,40 @@ See also `mk-proj-optional-vars' `mk-proj-var-functions' `mk-proj-load-vars'")
                                 grep-find-cmd
                                 index-find-cmd
                                 etags-cmd
-                                patterns-are-regex)
+                                patterns-are-regex
+                                friends
+                                open-friends-cache)
   "Project config vars that are optional.
 
 See also `mk-proj-required-vars' `mk-proj-var-functions' `mk-proj-load-vars'")
 
-(defvar mk-proj-var-functions '((basedir . expand-file-name)
-                                (tags-file . expand-file-name)
-                                (file-list-cache . expand-file-name)
-                                (open-files-cache . expand-file-name))
+(defvar mk-proj-var-functions '((basedir . (lambda (var val)
+                                             (expand-file-name val)))
+                                (tags-file . (lambda (var val)
+                                               (if val
+                                                   (expand-file-name val)
+                                                 (mk-proj-get-cache-path var))))
+                                (file-list-cache . (lambda (var val)
+                                                     (if val
+                                                         (expand-file-name val)
+                                                       (mk-proj-get-cache-path var))))
+                                (open-files-cache . (lambda (var val)
+                                                      (if val
+                                                          (expand-file-name val)
+                                                        (mk-proj-get-cache-path var))))
+                                (open-friends-cache . (lambda (var val)
+                                                        (if val
+                                                            (expand-file-name val)
+                                                          (mk-proj-get-cache-path var)))))
   "Config vars from `mk-proj-required-vars' and `mk-proj-optional-vars' (except 'name')
 can be associated with a function in this association list, which will be
 applied to the value of the var before loading the project.
 
 See also `mk-proj-load-vars'.")
+
+(defvar mk-proj-project-var-load-hook '())
+(defvar mk-proj-project-var-unload-hook '())
+
 
 (defvar mk-proj-project-load-hook '())
 
@@ -359,53 +381,71 @@ Replaces the old mk-proj-proj-vars constant."
     (dolist (var (mk-proj-proj-vars))
       (set var nil)))
 
-(defun mk-proj-load-vars (proj-name proj-alist &optional init)
+(defun mk-proj-load-vars (proj-name proj-alist)
   "Set project variables from proj-alist. A project variable is what
 a config variable becomes after loading a project. Essentially
 a global lisp symbol with the same name as the config variable
 prefixed by 'mk-proj-'. For example, the basedir config var becomes
 mk-proj-basedir in global scope.
 
-If init is non-nil this function checks the proj-alist for required
-config vars and throws the first missing symbol (if any) and exits.
-Keep in mind that without the init argument, the required vars are
-ignored completly.
-
 See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'"
   (catch 'mk-proj-load-vars
-    (labels ((config-val (key)
-                         (if (assoc key proj-alist)
-                             (car (cdr (assoc key proj-alist)))
-                           nil))
-             (maybe-set-var (var)
+    (labels ((maybe-set-var (var)
                             (let ((proj-var (intern (concat "mk-proj-" (symbol-name var))))
-                                  (val (config-val var))
+                                  (val (mk-proj-config-val var proj-name t))
                                   (fn (cdr (assoc var mk-proj-var-functions))))
-                              (when val
-                                (setf (symbol-value proj-var) (if fn (funcall fn val) val))))))
+                              (setf (symbol-value proj-var) (if fn (funcall fn var val) val)))))
       (mk-proj-defaults)
-      (if init
-          (let ((required-vars (mk-proj-filter (lambda (s)
-                                                 (not (string-equal (symbol-name s) "name")))
-                                               mk-proj-required-vars)))
-            (setq mk-proj-name proj-name)
-            (dolist (v required-vars)
-              (unless (config-val v)
-                (mk-proj-defaults)
-                (throw 'mk-proj-load-vars v))
-              (maybe-set-var v)))) 
+      (let ((required-vars (mk-proj-filter (lambda (s)
+                                             (not (string-equal (symbol-name s) "name")))
+                                           mk-proj-required-vars)))
+        (setq mk-proj-name proj-name)
+        (dolist (v required-vars)
+          (unless (mk-proj-config-val v proj-name t)
+            (mk-proj-defaults)
+            (throw 'mk-proj-load-vars v))
+          (maybe-set-var v)))
       (dolist (v mk-proj-optional-vars)
         (maybe-set-var v)))))
+
+(defun mk-proj-get-cache-path (symbol)
+  (mk-proj-assert-proj)
+  (let ((directory (concat mk-proj-cache-root
+                           (cond (mk-proj-parent
+                                  (let ((a (concat "/" (mk-proj-join "/" (mk-proj-ancestry)) mk-proj-name)))
+                                    (if (mk-proj-config-val 'basedir mk-proj-name) a (concat a "/"))))
+                                 (t
+                                  (concat "/" mk-proj-name "/")))))
+        (file (concat (symbol-name symbol))))
+    (make-directory directory t)
+    (let ((r (concat directory file)))
+      (message r))))
+
+(defun mk-proj-join (delimiter strings)
+  (reduce (lambda (a b)
+            (concatenate 'string a delimiter b))
+          strings))
+
+(defun mk-proj-ancestry (&optional name)
+  (let* ((current (or name
+                      (progn
+                        (mk-proj-assert-proj)
+                        mk-proj-name)))
+         (ancestry `(,name)))
+    (while (mk-proj-config-val 'parent current)
+      (setq ancestry (cons (mk-proj-config-val 'parent current) ancestry)
+            current (mk-proj-config-val 'parent current)))
+    ancestry))
 
 (defun mk-proj-load (name)
   (interactive)
   (catch 'mk-proj-load
     (let ((oldname mk-proj-name))
       (unless (string= oldname name)
-        (project-unload))
+        (project-unload t))
       (let ((proj-config (mk-proj-find-config name)))
         (if proj-config
-            (let ((v (mk-proj-load-vars name proj-config t)))
+            (let ((v (mk-proj-load-vars name proj-config)))
               (when v
                 (message "Required config value '%s' missing in %s!" (symbol-name v) name)
                 (throw 'mk-proj-load t)))
