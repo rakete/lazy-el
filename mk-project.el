@@ -530,8 +530,9 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
         (run-hooks 'mk-proj-startup-hook))
       (run-hooks 'mk-proj-project-load-hook)
       (mk-proj-visit-saved-open-files)
+      (mk-proj-visit-saved-open-friends)
       (message "Loading project %s done" name))))
-  
+
 
 (defun project-load ()
   "Load a project's settings."
@@ -898,19 +899,19 @@ With C-u prefix, start ack from the current directory."
       (set-process-sentinel (get-process proc-name) 'mk-proj-fib-cb))))
 
 (defun mk-proj-fib-matches (regex)
-  "Return list of files in *file-index* matching regex. 
+  "Return list of files in *file-index* matching regex.
 
 If regex is nil, return all files. Returned file paths are
 relative to the project's basedir."
   (let ((files '()))
     (with-current-buffer mk-proj-fib-name
       (goto-char (point-min))
-      (while 
+      (while
           (progn
             (let ((raw-file (buffer-substring (line-beginning-position) (line-end-position))))
               (when (> (length raw-file) 0)
                 ;; file names in buffer can be absolute or relative to basedir
-                (let ((file (if (file-name-absolute-p raw-file) 
+                (let ((file (if (file-name-absolute-p raw-file)
                                 (file-relative-name raw-file mk-proj-basedir)
                               raw-file)))
                   (if regex
@@ -965,7 +966,7 @@ selection of the file. See also: `project-index',
 (defun project-multi-occur (regex)
   "Search all open project files for 'regex' using `multi-occur'"
   (interactive "sRegex: ")
-  (multi-occur (mk-proj-filter (lambda (b) (if (buffer-file-name b) b nil)) 
+  (multi-occur (mk-proj-filter (lambda (b) (if (buffer-file-name b) b nil))
                                (mk-proj-buffers))
                regex))
 
@@ -975,12 +976,9 @@ selection of the file. See also: `project-index',
   (mk-proj-assert-proj)
   (unless (mk-proj-buffers)
       (return-from "project-next-buffer" nil))
-  (let ((counter 0)
-        (proj-buffers (mapcar 'buffer-name (mk-proj-buffers))))
+  (let ((proj-buffers (mapcar 'buffer-name (mk-proj-buffers))))
     (next-buffer)
-    (while (not (or (mk-proj-any (lambda (x) (string-equal (buffer-name) x)) proj-buffers)
-                    (> counter 1000)))
-      (setq counter (+ counter 1))
+    (while (not (mk-proj-any (lambda (x) (string-equal (buffer-name) x)) proj-buffers))
       (next-buffer))))
 
 (defun* project-previous-buffer ()
@@ -989,14 +987,208 @@ selection of the file. See also: `project-index',
   (mk-proj-assert-proj)
   (unless (mk-proj-buffers)
       (return-from "project-previous-buffer" nil))
-  (let ((counter 0)
-        (proj-buffers (mapcar 'buffer-name (mk-proj-buffers))))
+  (let ((proj-buffers (mapcar 'buffer-name (mk-proj-buffers))))
     (previous-buffer)
-    (while (not (or (mk-proj-any (lambda (x) (string-equal (buffer-name) x)) proj-buffers)
-                    (> counter 1000)))
-      (setq counter (+ counter 1))
+    (while (not (mk-proj-any (lambda (x) (string-equal (buffer-name) x)) proj-buffers))
       (previous-buffer))))
 
+;; ---------------------------------------------------------------------
+;; Friends
+;; ---------------------------------------------------------------------
+
+(defvar mk-proj-friends nil)
+
+(defvar mk-proj-open-friends-cache nil)
+
+(defun mk-proj-get-friends (&optional name)
+  (unless name
+    (mk-proj-assert-proj)
+    (setq name mk-proj-name))
+  ;; go through all configs
+  ;; collect all projects which have the requested name in their friend list
+  ;; remove duplicates and return
+  (let ((r '()))
+    (maphash (lambda (k c)
+               (unless (string-equal k name)
+                 (when (mk-proj-any (lambda (f)
+                                      (string-equal f name))
+                                    (mk-proj-config-val 'friends c))
+                   (setq r (append r `(,k)))))) mk-proj-list)
+    (remove-duplicates (append r (mk-proj-config-val 'friends name t)) :test #'string-equal)))
+
+(defun mk-proj-get-project-files (name &optional regex)
+  (let ((files '()))
+    (when (mk-proj-find-config name)
+      (let* ((friend-config (mk-proj-find-config name))
+             (friend-basedir (expand-file-name (car (cdr (assoc 'basedir friend-config)))))
+             (friend-file-list-cache (expand-file-name (car (cdr (assoc 'file-list-cache friend-config)))))
+             (friend-cache-buffer-name (concat "*" friend-file-list-cache "*")))
+        (with-current-buffer (generate-new-buffer friend-cache-buffer-name)
+          (with-current-buffer (find-file-noselect-1 friend-cache-buffer-name friend-file-list-cache nil nil nil nil)
+            (goto-char (point-min))
+            (while
+                (progn
+                  (let ((raw-file (buffer-substring (line-beginning-position) (line-end-position))))
+                    (when (> (length raw-file) 0)
+                      (let ((file (if (file-name-absolute-p raw-file)
+                                      raw-file
+                                    (replace-regexp-in-string "/\\./" "/" (concat (file-name-as-directory friend-basedir) raw-file)))))
+                        (if regex
+                            (when (string-match regex file) (add-to-list 'files file))
+                          (add-to-list 'files file)))
+                      (= (forward-line) 0))))))
+          (kill-buffer))))
+    (sort files #'string-lessp)))
+
+(defun mk-proj-friend-matches (&optional regex)
+  (let ((resulting-matches '()))
+    (dolist (friend (mk-proj-get-friends) resulting-matches)
+      ;; friends can be either project names or single files,
+      ;; so first check if the friend is a single file here
+      (if (not (stringp friend)) (error "Error in mk-proj-friend-matches, did you quote the friends list?"))
+      (if (file-exists-p (expand-file-name friend))
+          (if regex
+              (when (string-match regex friend) (add-to-list 'resulting-matches friend))
+            (add-to-list 'resulting-matches friend))
+        ;; if friend is not a single file, it must be a project name
+        (let ((friend-matches (mk-proj-get-project-files friend regex)))
+          (if (and mk-proj-patterns-are-regex mk-proj-ignore-patterns)
+              (dolist (file friend-matches resulting-matches)
+                (dolist (pattern mk-proj-ignore-patterns resulting-matches)
+                  (if (not (string-match pattern file))
+                      (add-to-list 'resulting-matches file)))))
+          (setq resulting-matches (append resulting-matches friend-matches)))))))
+
+(defun mk-proj-friendly-buffer-p (buf)
+  (let ((file-name (mk-proj-buffer-name buf)))
+    (if (and file-name
+             (block "friend-loop"
+               (dolist (f (mk-proj-get-friends))
+                 (if (not (stringp f)) (error "Error in mk-proj-friendly-buffer-p, did you quote the friends list?"))
+                 (if (file-exists-p (expand-file-name f))
+                     (when (string-equal f file-name)
+                       (return-from "friend-loop" t))
+                   (when (mk-proj-find-config f)
+                     (let* ((friend-config (mk-proj-find-config f))
+                            (basedir (expand-file-name (car (cdr (assoc 'basedir friend-config)))))
+                            (friend-basedir (if (string-equal (substring basedir -1) "/")
+                                                basedir
+                                              (concat basedir "/"))))
+                       (when (string-match (concat "^" (regexp-quote friend-basedir)) file-name)
+                         (print friend-basedir)
+                         (return-from "friend-loop" t))))))))
+        t
+      nil)))
+
+(defun mk-proj-friendly-buffers ()
+  (let ((buffers nil))
+    (dolist (b (buffer-list))
+      (when (mk-proj-friendly-buffer-p b) (push b buffers)))
+    buffers))
+
+(defun mk-proj-save-open-friends-info ()
+  (when mk-proj-open-friends-cache
+    (with-temp-buffer
+      (dolist (f (mapcar (lambda (b) (mk-proj-buffer-name b)) (mk-proj-friendly-buffers)))
+        (when f
+          (unless (string-equal mk-proj-tags-file f)
+            (insert f "\n"))))
+      (if (file-writable-p mk-proj-open-friends-cache)
+          (progn
+            (write-region (point-min)
+                          (point-max)
+                          mk-proj-open-friends-cache)
+            (message "Wrote open friends to %s" mk-proj-open-friends-cache))
+        (message "Cannot write to %s" mk-proj-open-friends-cache)))))
+
+(defun mk-proj-visit-saved-open-friends ()
+  (when mk-proj-open-friends-cache
+    (when (file-readable-p mk-proj-open-friends-cache)
+      (message "Reading open friends from %s" mk-proj-open-friends-cache)
+      (with-temp-buffer
+        (insert-file-contents mk-proj-open-friends-cache)
+        (goto-char (point-min))
+        (while (not (eobp))
+          (let ((start (point)))
+            (while (not (eolp)) (forward-char)) ; goto end of line
+            (let ((line (buffer-substring start (point))))
+              (message "Attempting to open %s" line)
+              (find-file-noselect line t)))
+          (forward-line))))))
+
+;; (defun mk-proj-kill-emacs-hook-friends ()
+;;   (when (and mk-proj-name mk-proj-open-friends-cache)
+;;     (mk-proj-save-open-friends-info)))
+
+(defun project-close-friends ()
+  (interactive)
+  (mk-proj-assert-proj)
+  (let ((closed nil)
+        (dirty nil)
+        (basedir-len (length mk-proj-basedir)))
+    (dolist (b (mk-proj-friendly-buffers))
+      (cond
+       ((buffer-modified-p b)
+        (push (buffer-name) dirty))
+       (t
+        (kill-buffer b)
+        (push (buffer-name) closed))))
+    (message "Closed %d friendly buffers, %d modified friendly buffers where left open"
+             (length closed) (length dirty))))
+
+(defun project-multi-occur-with-friends (regex)
+  "Search all open project files (including friends) for 'regex' using `multi-occur'.
+
+If called with prefix arg it will behave just like `project-multi-occur'"
+  (interactive "sRegex: ")
+  (multi-occur (mk-proj-filter (lambda (b) (if (buffer-file-name b) b nil))
+                               (if current-prefix-arg
+                                   (mk-proj-buffers)
+                                 (append (mk-proj-buffers) (mk-proj-friendly-buffers))))
+               regex))
+
+(defun mk-proj-friend-basedirs ()
+  "Return all friends basedirs. This may also return single filenames instead of a directory."
+  (let* ((basedirs '()))
+    (dolist (f (mk-proj-get-friends) basedirs)
+      (if (file-exists-p (expand-file-name f))
+          (add-to-list 'basedirs f)
+        (add-to-list 'basedirs (mk-proj-config-val 'basedir f))))))
+
+(defun project-ack-with-friends ()
+  "Run ack with project's basedir and all friend basedirs as arguments, using the `ack-args' configuration.
+With C-u prefix, act like `project-ack'."
+  (interactive)
+  (mk-proj-assert-proj)
+  (if current-prefix-arg
+      (project-ack)
+    (let* ((wap (word-at-point))
+           (regex (if wap (read-string (concat "Ack project for (default \"" wap "\"): ") nil nil wap)
+                    (read-string "Ack project for: ")))
+           (whole-cmd (concat (mk-proj-ack-cmd regex) " " mk-proj-basedir "; "
+                              (let ((s ""))
+                                (dolist (d (mk-proj-friend-basedirs) s)
+                                  (setq s (concat s (mk-proj-ack-cmd regex) " " d "; "))))))
+           (confirmed-cmd (read-string "Ack command: " whole-cmd nil whole-cmd))
+           (default-directory (file-name-as-directory
+                               (if (mk-proj-has-univ-arg)
+                                   default-directory
+                                 mk-proj-basedir))))
+      (compilation-start confirmed-cmd 'ack-mode))))
+
 (provide 'mk-project)
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ;;; mk-project.el ends here
