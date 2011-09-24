@@ -536,7 +536,7 @@ than the current one."
                                            (not (string-equal mk-org-active-todo-keyword (org-get-todo-state)))))
                               (goto-char (org-find-exact-headline-in-buffer headline (current-buffer) t))
                               (org-show-context)
-e                              (beginning-of-line)
+                              (beginning-of-line)
                               ;;(org-cycle)
                               ;;(org-cycle)
                               )
