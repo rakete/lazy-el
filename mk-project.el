@@ -193,7 +193,8 @@ See also `mk-proj-optional-vars' `mk-proj-var-functions' `mk-proj-load-vars'")
                                 etags-cmd
                                 patterns-are-regex
                                 friends
-                                open-friends-cache)
+                                open-friends-cache
+                                sourcemarker)
   "Project config vars that are optional.
 
 See also `mk-proj-required-vars' `mk-proj-var-functions' `mk-proj-load-vars'")
@@ -321,20 +322,375 @@ See also `mk-proj-load-vars'.")
        (setq b (funcall condp x)))))
 
 (defun mk-proj-flatten (xs)
-  (let ((ret nil))
-    (while xs
-      (setq ret (append ret (car xs)))
-      (setq xs (cdr xs)))
-    ret))
+  "Takes a list XS of lists and returns a list with only the elements of
+all lists within the list XS.
+
+\(mk-proj-flatten '(1 (2 (3 4)))) = '(1 2 3 4)"
+  (if (listp xs)
+      (let ((ret nil))
+        (while xs
+          (setq ret (append ret (mk-proj-flatten (car xs))))
+          (setq xs (cdr xs)))
+        ret)
+    (list xs)))
+
 
 (defmacro mk-proj-assoc-pop (key alist)
+  "Like `assoc', but remove the (KEY . value) pair from the ALIST."
   `(let ((result (assoc ,key ,alist)))
      (setq ,alist (delete result ,alist))
      result))
 
 (defun mk-proj-alist-union (alist1 alist2)
+  "Make a union alist out of ALIST1 and ALIST2. The second alist
+is the one that overwrites values in the first alist if they both
+contain a similar key."
   (append (mapcar (lambda (c)
                     (or (mk-proj-assoc-pop (car c) alist2) c)) alist1) alist2))
+
+(defun mk-proj-chomp (str)
+  "Chomp leading and tailing whitespace from STR."
+  (let ((s (if (symbolp str) (symbol-name str) str)))
+    (replace-regexp-in-string "\\(^[[:space:]\n]*\\|[[:space:]\n]*$\\)" "" s)))
+
+(defun mk-proj-sourcemarker-create (&optional n)
+  "Sourcemarkers are a persitent alternative to emacs markers specifically aimed
+at marking lines in source code.
+
+Creating a sourcemarker will collect lines around the current point which will
+then be used by `mk-proj-sourcemarker-restore' to restore point regardless of
+whether the piece of code has been moved around in the file. It should be even
+possible to restore a point if the lines that represent that point in the
+sourcemarker have partly changed in the file."
+  (interactive)
+  (unless n
+    (setq n 2))
+  (save-excursion
+    (save-restriction
+      (org-save-outline-visibility
+          (show-all)
+        ;; return nil if the buffer is not big enough for a mark
+        (cond ((save-excursion
+                 (end-of-buffer)
+                 (< (line-number-at-pos) (+ (* n 2) 1)))
+               `(,(progn
+                    (beginning-of-buffer)
+                    (point-at-bol))
+                 ,(buffer-file-name (current-buffer))
+                 nil))
+              (t
+               (progn
+                 ;; move point to nearest non-empty line
+                 ;; handle end-of-buffer/beginning-of-buffer
+                 ;; by reversing the search direction
+                 (let ((rev nil))
+                   (while (save-excursion
+                            (beginning-of-line)
+                            (looking-at "^\\s-*$"))
+                     (when (save-excursion
+                             (end-of-line)
+                             (eobp))
+                       (setq rev t))
+                     (if rev
+                         (previous-line-nomark)
+                       (next-line-nomark))
+                     ))
+                 (beginning-of-line)
+                 ;; two functions walking up/down from current point collecting lines
+                 ;; trimming whitespaces, skipping empty lines, collecting #eobp#/#bobp#
+                 ;; when at end/beginning of buffer
+                 (flet ((collect-up (m) (save-excursion
+                                          (reverse
+                                           ;; arg m is number of lines to collect
+                                           (loop for i from 1 to m
+                                                 collect (progn
+                                                           ;; if already at beginning of buffer collect #bobp#
+                                                           (if (save-excursion
+                                                                 (beginning-of-line)
+                                                                 (bobp))
+                                                               "#bobp#"
+                                                             (progn
+                                                               ;; walk up one line
+                                                               (previous-line-nomark)
+                                                               ;; skip empty lines or none when current line is not empty
+                                                               (while (and (save-excursion
+                                                                             (beginning-of-line)
+                                                                             (looking-at "^\\s-*$"))
+                                                                           (not (save-excursion
+                                                                                  (beginning-of-line)
+                                                                                  (bobp))))
+                                                                 (previous-line-nomark))
+                                                               ;; check again if skipping empty lines
+                                                               ;; brought us to the beginning of the buffer
+                                                               ;; also, check if the actual line is empty
+                                                               ;; because skipping terminates on bobp as well
+                                                               ;; and if it did, we still want to collect the line
+                                                               ;; instead of #bobp#
+                                                               ;; also, this is the part where the line is collected
+                                                               ;; the condition will only be true on empty lines
+                                                               ;; (which should have been skipped by now)
+                                                               ;; or if we are at bobp
+                                                               (if (and (save-excursion
+                                                                          (beginning-of-line)
+                                                                          (bobp))
+                                                                        (save-excursion
+                                                                          (beginning-of-line)
+                                                                          (looking-at "^\\s-*$")))
+                                                                   "#bobp#"
+                                                                 (mk-proj-chomp (buffer-substring-no-properties (point-at-bol) (point-at-eol)))))))))))
+                        (collect-down (m) (save-excursion
+                                            (loop for i from 1 to m
+                                                  collect (progn
+                                                            (if (save-excursion
+                                                                  (end-of-line)
+                                                                  (eobp))
+                                                                "#eobp#"
+                                                              (progn
+                                                                (next-line-nomark)
+                                                                (while (and (save-excursion
+                                                                              (beginning-of-line)
+                                                                              (looking-at "^\\s-*$"))
+                                                                            (not (save-excursion
+                                                                                   (end-of-line)
+                                                                                   (eobp))))
+                                                                  (next-line-nomark))
+                                                                (if (and (save-excursion
+                                                                           (end-of-line)
+                                                                           (eobp))
+                                                                         (save-excursion
+                                                                           (beginning-of-line)
+                                                                           (looking-at "^\\s-*$")))
+                                                                    "#eobp#"
+                                                                  (mk-proj-chomp (buffer-substring-no-properties (point-at-bol) (point-at-eol)))))))))))
+                   (let ((above (collect-up n))
+                         (below (collect-down n))
+                         (line (mk-proj-chomp (buffer-substring-no-properties (point-at-bol) (point-at-eol)))))
+                     `(,(point-at-bol)
+                       ,(buffer-file-name (current-buffer))
+                       (,above ,line ,below))
+                     )))))))))
+
+(defun mk-proj-sourcemarker-restore (m)
+  "Restoring point refered to by a sourcemarker M.
+
+This will look at all pieces of code that are a possible match for the sourcemarker
+and assign a score to them. The point-at-bol of the best match is then returned in
+form of a marker.
+
+See also `mk-proj-sourcemarker-create'."
+  (interactive)
+  (let* ((m-point (save-excursion
+                    (goto-char (nth 0 m))
+                    (point-at-bol)))
+         (m-file (nth 1 m))
+         (m-stamp (nth 2 m))
+         (stamp-prev-lines (nth 0 m-stamp))
+         (stamp-line (nth 1 m-stamp))
+         (stamp-next-lines (nth 2 m-stamp))
+         (n (+ (length stamp-next-lines) (length stamp-prev-lines) 1))
+         (m (/ (- n 1) 2))
+         (c (+ m 1))
+         (re-all (let ((s (concat "\\(" (regexp-quote stamp-line) "$\\)")))
+                   (loop for i from 0 to (- m 1)
+                         do (progn
+                              (let ((left (regexp-quote (nth (- (- m 1) i) stamp-prev-lines)))
+                                    (right (regexp-quote (nth i stamp-next-lines))))
+                                (setq s (concat (unless (or (string-equal left "#eobp#")
+                                                            (string-equal left "#bobp#"))
+                                                  (concat "\\(" left "$\\)\\|"))
+                                                s
+                                                (unless (or (string-equal right "#eobp#")
+                                                            (string-equal right "#bobp#"))
+                                                  (concat "\\|\\(" right "$\\)"))))))
+                         finally return s)))
+         (re-individual (mapcar (lambda (s) (if (or (string-equal s "#eobp#")
+                                                    (string-equal s "#bobp#"))
+                                                s
+                                              (concat s "$")))
+                                (append (mapcar #'regexp-quote stamp-prev-lines)
+                                        (list (regexp-quote stamp-line))
+                                        (mapcar #'regexp-quote stamp-next-lines))))
+         (tokens (append stamp-prev-lines (list (regexp-quote stamp-line)) stamp-next-lines))
+         (matches '())
+         (line-matches '())
+         (k 0)
+         (score 0)
+         (result nil)
+         (buf (find-file-noselect m-file)))
+    (with-current-buffer buf
+      (save-excursion
+        (beginning-of-buffer)
+        ;; search lines that match any of the saved stamp lines
+        ;; do that until you run out of matches
+        (while (re-search-forward re-all nil t)
+          (save-excursion
+            (beginning-of-line)
+            ;; when we found a match we will test this and the following lines (as many as there are in the stamp)
+            (loop for j from 0 to (- n 1)
+                  do (setq matches (append matches `(,(progn (if (string-match re-all (buffer-substring (point-at-bol) (point-at-eol)))
+                                                                 ;; we try to match every individual regexp to the current line and collect triples
+                                                                 ;; of ("the k'th regex that matched p" "point-at-bol" "the individual regex that matched")
+                                                                 ;; into a list of line-matches
+                                                                 ;; it is possible that a stamp contains duplicate lines, thats why we check every line
+                                                                 ;; for all regexps
+                                                                 (loop for s in re-individual
+                                                                       do (setq k (+ k 1))
+                                                                       if (or (and (string-equal s "#eobp#") (save-excursion (end-of-line) (eobp)))
+                                                                              (and (string-equal s "#bobp#") (save-excursion (beginning-of-line) (bobp)))
+                                                                              (string-match s (buffer-substring (point-at-bol) (point-at-eol))))
+                                                                       do (progn
+                                                                            (setq line-matches (append line-matches `((,k ,(point-at-bol) ,s))))
+                                                                            )
+                                                                       else
+                                                                       do (setq line-matches (append line-matches `((nil ,(point-at-bol) nil)))))
+                                                               ;; the else case if the line does not match any regexp (will this ever be reached?)
+                                                               (setq line-matches (append line-matches `((nil ,(point-at-bol) nil)))))
+                                                             ;; after collect all matches for a line we try to find one that fits the progression of matches we
+                                                             ;; accumulated over the previous lines so far
+                                                             ;; that means we check matches for the k'th regexp that matched, then we try to return a match
+                                                             ;; for the k+1 regexp or a (k+x)<n regexp
+                                                             ;; if that fails we return a (nil point-at-bol nil) triple
+                                                             (or (let ((last-k (or (nth 0 (car (last (mk-proj-filter (lambda (y) (not (eq (nth 0 y) nil))) matches)))) 0)))
+                                                                   (loop for x from n downto (+ last-k 1)
+                                                                         until (assoc x line-matches)
+                                                                         finally return (assoc x line-matches)))
+                                                                 `(nil ,(point-at-bol) nil))))))
+                  ;; reseting the counter and all line-matches before going to the next line,
+                  ;; we handle skipping lines that are empty as well as a potential eobp
+                  do (progn
+                       (setq line-matches '()
+                             k 0)
+                       ;; walk forward one line
+                       (unless (or (save-excursion
+                                     (end-of-line)
+                                     (eobp))
+                                   ;; when we expected a bobp in the stamp we can't walk forward
+                                   ;; because we are still on the first line that is waiting to be
+                                   ;; matched by actual regexps
+                                   (string-equal (nth j tokens) "#bobp#"))
+                         (next-line-nomark))
+                       ;; skip empty lines until we are on a line with something in it or at the eobp
+                       (while (and (save-excursion
+                                     (beginning-of-line)
+                                     (looking-at "^\\s-*$"))
+                                   (not (save-excursion
+                                          (end-of-line)
+                                          (eobp)))
+                                   (not (string-equal (nth j tokens) "#bobp#")))
+                         (next-line-nomark))))
+            ;; at this point matches should be a list of tokens like:
+            ;; ("the k'th regex that matched p" "point-at-bol" "the individual regex that matched")
+            (message (format "matches: %s" (prin1-to-string matches)))
+            ;; now we define individual tests that will be applied to every element of the matches list
+            ;; succesivly, each test takes five arguments:
+            ;; PREV: the list before the element to which the test is currently applied
+            ;; K,P,L: the three parts of the current element
+            ;; NEXT: the rest of the list of matches after the current element
+            ;; tests can return a score, all scores returned will be summed up and used to measure
+            ;; the relevance of the current match
+            (let* ((tests '((match-on-marker-point (prev k p l next)
+                                                   (when (and (eq (length prev) (length next)) (eq p m-point))
+                                                     5))
+                            (central-line-matches (prev k p l next)
+                                                  (when (and (eq (length prev) (length next)) (eq k c))
+                                                    5))
+                            (found-the-original-line (prev k p l next)
+                                                     (when (and l (string-match l stamp-line))
+                                                       2))
+                            (full-house (prev k p l next)
+                                        (when (and (eq (length prev) (1- n)) (eq (length next) 0))
+                                          (let* ((xs (append prev `((,k ,p ,l))))
+                                                 (sum (apply #'+ (mapcar (lambda (x) (or (car x) 0)) xs))))
+                                            (when (eq sum (apply #'+ (loop for x from 1 to n collect x)))
+                                              10))))
+                            (pairs (prev k p l next)
+                                   (when (and next k (nth 0 (car next)) (eq (- (nth 0 (car next)) k) 1))
+                                     1))))
+                   (prev '())
+                   (current (car matches))
+                   (next (cdr matches)))
+              ;; go through the list of matches, apply every test, sum up scores
+              (eval `(flet ,tests
+                       (loop for x = (list prev current next) then (progn (setq prev (append prev `(,current))
+                                                                                current (car next)
+                                                                                next (cdr next))
+                                                                          (list prev current next))
+                             do (dolist (test tests)
+                                  (let ((score-add (funcall (car test) prev (nth 0 current) (nth 1 current) (nth 2 current) next)))
+                                    (when (and score-add (not (eq score-add 0)))
+                                      (message (format "%s : %d + %d = %d" (symbol-name (car test)) score score-add (+ score score-add)))
+                                      (setq score (+ score score-add)))))
+                             until (eq next nil))))))
+          (message (format "score: %d" score))
+          ;; together with the score, we need the line number where we found this match, so we look at all the tokens
+          ;; and find the one thats nearest to the c (c like in center) line, the line the cursor was originally on
+          ;; when the sourcemarker was created
+          ;; that tokens line number is then set to be our result, if the score is better then the last score
+          (let* ((best-k nil)
+                 (k nil)
+                 (best-point (loop for m in matches
+                                   do (setq k (nth 0 m))
+                                   if (or (eq k c) (and k best-k (< (abs (- c k)) (abs (- c best-k)))) (eq best-k nil))
+                                   do (setq best-k k)
+                                   finally return (when (assoc best-k matches)
+                                                    (assoc best-k matches)))))
+            (when (or (and result (> score (car result))) (eq result nil))
+              (setq result `(,score ,best-point))))
+          ;; reset for next iteration
+          (setq matches '()
+                score 0))
+        ;; end of iteration, now we just return our result as a marker
+        (print result)
+        (when result
+          (let* ((p (nth 1 (car (last result))))
+                 (m (make-marker)))
+            ;;`(,p ,buf)
+            (set-marker m p buf)))
+          ))))
+
+;; (defun test-sourcemarker-create ()
+;;   (interactive)
+;;   (let (sm)
+;;     (save-excursion
+;;       (goto-char 12454)
+;;       (setq sm (mk-proj-sourcemarker-create)))
+;;     (insert (prin1-to-string sm))))
+
+
+;; (defun test-sourcemarker-restore ()
+;;   (interactive)
+;;   (setq test-sm '(12448 "/home/lazor/.emacs.d/mk-project/mk-project.el" (("(when b" "(return-from \"mk-proj-any\" t))") "(setq b (funcall condp x)))))" ("(defun* mk-proj-all (condp lst)" "(let ((b t))"))))
+;;   (let ((m (mk-proj-sourcemarker-restore test-sm)))
+;;     (when (markerp m)
+;;       (switch-to-buffer (marker-buffer m))
+;;       (goto-char (marker-position m)))))
+
+(defun mk-proj-sourcemarker-p (sm)
+  "Test if SM is a sourcemarker. Technically a sourcemarker is just a list with a very
+specific layout, so this is not 100% accurate. I consider it good enough until something
+breaks."
+  (when sm
+    (condition-case nil
+        (and (numberp (nth 0 sm))
+             (file-exists-p (nth 1 sm))
+             (listp (nth 2 sm))
+             (listp (nth 0 (nth 2 sm)))
+             (stringp (nth 1 (nth 2 sm)))
+             (listp (nth 2 (nth 2 sm))))
+      (error nil))))
+
+(defun mk-proj-visit-sourcemarker ()
+  "Restore project sourcemarker and go there."
+  (interactive)
+  (when mk-proj-sourcemarker
+    (let* ((m (mk-proj-sourcemarker-restore mk-proj-sourcemarker)))
+      (when (markerp m)
+        (switch-to-buffer (marker-buffer m))
+        (goto-char (marker-position m))))))
+
+(defun mk-proj-set-sourcemarker-point (&optional p)
+  "Update a projects sourcemarker. Not implemented yet."
+  (interactive))
 
 ;; ---------------------------------------------------------------------
 ;; Project Configuration
@@ -531,6 +887,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
       (run-hooks 'mk-proj-project-load-hook)
       (mk-proj-visit-saved-open-files)
       (mk-proj-visit-saved-open-friends)
+      (mk-proj-visit-sourcemarker)
       (message "Loading project %s done" name))))
 
 
