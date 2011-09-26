@@ -58,6 +58,13 @@ the active subtree, instead of the parent subtree.")
      (add-to-list 'mk-proj-optional-vars 'org-level)
      ))
 
+
+
+
+
+
+
+
 (defun mk-org-files-containing-projects ()
   "Searches all defined projects and returns list of all .org files
 in which projects have been defined as well as the files specified by
@@ -96,6 +103,28 @@ than the current one."
         (error (format "mk-org: Project %s has no associated org file!" mk-proj-name)))
     (unless (mk-proj-config-val 'org-file name)
       (error (format "mk-org: Project %s has no associated org file!" mk-proj-name)))))
+
+(defun mk-org-forward-same-level ()
+  (interactive)
+  (let ((p (save-excursion
+             (beginning-of-line)
+             (point))))
+    (condition-case nil (outline-forward-same-level 1) (error nil))
+    (when (= (point) p)
+      (let ((l (save-excursion
+                 (beginning-of-line)
+                 (org-outline-level))))
+        (outline-next-heading)
+        (while (and (> (org-outline-level) l)
+                    (not (eobp)))
+          (outline-next-heading))))))
+
+
+
+
+
+
+
 
 
 
@@ -271,216 +300,203 @@ than the current one."
 
 
 
+(defmacro with-or-without-marker (marker &rest body)
+  `(let ((marker ,marker))
+     (if (markerp marker)
+         (with-current-buffer (marker-buffer marker)
+           (save-excursion
+             (goto-char (marker-position marker))
+             ,@body))
+       ,@body)))
 
-
-(defun mk-org-entry-name ()
+(defun mk-org-entry-name (&optional marker)
   (interactive)
-  (if (and (boundp 'entry-name)
-           (eq (point) entry-point))
-      entry-name
-    (and (org-entry-get (point) (mk-org-symbol-table 'name) t)
-         (or (read (or (org-entry-get (point) (mk-org-symbol-table 'name)) "nil"))
-             (concat (read (org-entry-get (point) (mk-org-symbol-table 'name) t)) ":" (mk-org-entry-headline))))))
+  (with-or-without-marker marker
+   (if (and (boundp 'entry-name)
+            (eq (point) entry-point))
+       entry-name
+     (and (org-entry-get (point) (mk-org-symbol-table 'name) t)
+          (or (read (or (org-entry-get (point) (mk-org-symbol-table 'name)) "nil"))
+              (concat (read (org-entry-get (point) (mk-org-symbol-table 'name) t)) ":" (mk-org-entry-headline)))))))
 
-(defun mk-org-entry-marker ()
+(defun mk-org-entry-marker (&optional marker)
   (interactive)
-  (save-excursion
-    (beginning-of-line)
-    (when (looking-at org-complex-heading-regexp)
-      (copy-marker (point)))))
-
-(defun mk-org-entry-level ()
-  (interactive)
-  (if (and (boundp 'entry-level)
-           (numberp entry-level)
-           (eq (point) entry-point))
-      entry-level
+  (if (markerp marker)
+      marker
     (save-excursion
-      (if (not (looking-at org-complex-heading-regexp)) 0
-        (beginning-of-line)
-        (org-outline-level)))))
+      (beginning-of-line)
+      (when (looking-at org-complex-heading-regexp)
+        (copy-marker (point))))))
 
-(defun mk-org-entry-parent-level (&optional arg)
-  (interactive "P")
-  (if (and (boundp 'parent-level)
-           (numberp parent-level)
-           (eq (point) entry-point))
-      parent-level
-    (save-excursion
-      (let ((p (mk-org-entry-parent-point arg)))
-        (if (eq p nil) (org-outline-level)
-          (goto-char p)
-          (beginning-of-line)
-          (org-outline-level))))))
-
-(defun mk-org-entry-parent-name (&optional arg)
-  (interactive "P")
-  (if (and (boundp 'parent-name)
-           (eq (point) entry-point))
-      parent-name
-    (save-excursion
-      (let ((p (mk-org-entry-parent-point arg)))
-        (if (eq p nil) nil
-          (goto-char p)
-          (read (org-entry-get (point) (mk-org-symbol-table 'name))))))))
-
-(defun mk-org-entry-parent-point (&optional arg)
-  (interactive "P")
-  (if (and (boundp 'parent-point)
-           (eq (point) entry-point))
-      parent-point
-    (save-excursion
-      (org-back-to-heading t)
-      (let ((p nil)
-            (n (org-entry-get (point) (mk-org-symbol-table 'name) t))
-            (cont nil)
-            (stop nil)
-            (project-line (mk-org-entry-is-project-p)))
-        (if project-line
-            (setq cont (org-up-heading-safe)
-                  n (org-entry-get (point) (mk-org-symbol-table 'name) t))
-          (setq cont t))
-        (when (and n cont)
-          (while (and (cond (stop
-                             nil)
-                            ((bobp)
-                             (setq stop t))
-                            (arg
-                             (org-entry-get (point) (mk-org-symbol-table 'name) t))
-                            (t
-                             (string-equal (or (org-entry-get (point) (mk-org-symbol-table 'name) t) "nil") n))))
-            (setq p (point))
-            (unless stop
-              (org-up-heading-safe)
-              (setq project-line (mk-org-entry-is-project-p)))))
-        p))))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-(defun mk-org-forward-same-level ()
+(defun mk-org-entry-level (&optional marker)
   (interactive)
-  (let ((p (save-excursion
-             (beginning-of-line)
-             (point))))
-    (condition-case nil (outline-forward-same-level 1) (error nil))
-    (when (= (point) p)
-      (let ((l (save-excursion
-                 (beginning-of-line)
-                 (org-outline-level))))
-        (outline-next-heading)
-        (while (and (> (org-outline-level) l)
-                    (not (eobp)))
-          (outline-next-heading))))))
+  (with-or-without-marker marker
+   (if (and (boundp 'entry-level)
+            (numberp entry-level)
+            (eq (point) entry-point))
+       entry-level
+     (save-excursion
+       (if (not (looking-at org-complex-heading-regexp)) 0
+         (beginning-of-line)
+         (org-outline-level))))))
 
-(defun mk-org-entry-nearest-active ()
+(defun mk-org-entry-parent-level (&optional marker)
   (interactive)
-  (if mk-org-active-todo-keyword
-      (save-excursion
-        (org-back-to-heading t)
-        (if (mk-org-entry-is-project-p)
-            nil
-          (while (and (not (string-equal (org-get-todo-state) mk-org-active-todo-keyword))
-                      (not (mk-org-entry-is-project-p)))
+  (with-or-without-marker marker
+   (if (and (boundp 'parent-level)
+            (numberp parent-level)
+            (eq (point) entry-point))
+       parent-level
+     (save-excursion
+       (let ((p (mk-org-entry-parent-point)))
+         (if (eq p nil) (org-outline-level)
+           (goto-char p)
+           (beginning-of-line)
+           (org-outline-level)))))))
 
-            (org-up-heading-all 1)))
-        (point))
-    (mk-org-entry-parent-point)))
-
-(defun mk-org-entry-headline ()
+(defun mk-org-entry-parent-name (&optional marker)
   (interactive)
-  (save-excursion
-    (org-back-to-heading t)
-    (beginning-of-line)
-    (and (looking-at org-complex-heading-regexp)
-         (let* ((headline-raw (org-match-string-no-properties 4)))
-           (cond ((string-match org-bracket-link-regexp headline-raw)
-                  (match-string 2 headline-raw))
-                 ((string-match "^\\(.*\\)\s+\\[\\([0-9][0-9]%\\)\\]$" headline-raw)
-                  (match-string 1 headline-raw))
-                 (t
-                  headline-raw))))))
+  (with-or-without-marker marker
+   (if (and (boundp 'parent-name)
+            (eq (point) entry-point))
+       parent-name
+     (save-excursion
+       (let ((p (mk-org-entry-parent-point)))
+         (if (eq p nil) nil
+           (goto-char p)
+           (read (org-entry-get (point) (mk-org-symbol-table 'name)))))))))
 
-(defun mk-org-entry-is-link-p ()
+(defun mk-org-entry-parent-point (&optional marker)
   (interactive)
-  (save-excursion
-    (beginning-of-line)
-    (and (looking-at org-complex-heading-regexp)e
-         (let* ((headline-raw (org-match-string-no-properties 4)))
-           (string-match org-bracket-link-regexp headline-raw)))))
+  (with-or-without-marker marker
+   (if (and (boundp 'parent-point)
+            (eq (point) entry-point))
+       parent-point
+     (save-excursion
+       (org-back-to-heading t)
+       (let ((p nil)
+             (n (org-entry-get (point) (mk-org-symbol-table 'name) t))
+             (cont nil)
+             (stop nil)
+             (project-line (mk-org-entry-is-project-p)))
+         (if project-line
+             (setq cont (org-up-heading-safe)
+                   n (org-entry-get (point) (mk-org-symbol-table 'name) t))
+           (setq cont t))
+         (when (and n cont)
+           (while (and (cond (stop
+                              nil)
+                             ((bobp)
+                              (setq stop t))
+                             ;; (arg
+                             ;;  (org-entry-get (point) (mk-org-symbol-table 'name) t))
+                             (t
+                              (string-equal (or (org-entry-get (point) (mk-org-symbol-table 'name) t) "nil") n))))
+             (setq p (point))
+             (unless stop
+               (org-up-heading-safe)
+               (setq project-line (mk-org-entry-is-project-p)))))
+         p)))))
 
-
-(defun mk-org-entry-progress ()
+(defun mk-org-entry-nearest-active (&optional marker)
   (interactive)
-  (save-excursion
-    (beginning-of-line)
-    (and (looking-at org-complex-heading-regexp)
-         (let* ((headline-raw (org-match-string-no-properties 4)))
-           (cond ((string-match "^\\(.*\\)\s+\\[\\([0-9][0-9]%\\)\\]$" headline-raw)
-                  (match-string 2 headline-raw))
-                 (t
-                  ""))))))
+  (with-or-without-marker marker
+   (if mk-org-active-todo-keyword
+       (save-excursion
+         (org-back-to-heading t)
+         (if (mk-org-entry-is-project-p)
+             nil
+           (while (and (not (string-equal (org-get-todo-state) mk-org-active-todo-keyword))
+                       (not (mk-org-entry-is-project-p)))
 
-(defun mk-org-entry-is-project-p ()
+             (org-up-heading-all 1)))
+         (point))
+     (mk-org-entry-parent-point))))
+
+(defun mk-org-entry-headline (&optional marker)
   (interactive)
-  (when (org-entry-get (point) (mk-org-symbol-table 'name)) t))
+  (with-or-without-marker marker
+   (save-excursion
+     (org-back-to-heading t)
+     (beginning-of-line)
+     (and (looking-at org-complex-heading-regexp)
+          (let* ((headline-raw (org-match-string-no-properties 4)))
+            (cond ((string-match org-bracket-link-regexp headline-raw)
+                   (match-string 2 headline-raw))
+                  ((string-match "^\\(.*\\)\s+\\[\\([0-9][0-9]%\\)\\]$" headline-raw)
+                   (match-string 1 headline-raw))
+                  (t
+                   headline-raw)))))))
 
-(defun mk-org-entry-define-project ()
+(defun mk-org-entry-is-link-p (&optional marker)
+  (interactive)
+  (with-or-without-marker marker
+   (save-excursion
+     (beginning-of-line)
+     (and (looking-at org-complex-heading-regexp)e
+          (let* ((headline-raw (org-match-string-no-properties 4)))
+            (string-match org-bracket-link-regexp headline-raw))))))
+
+
+(defun mk-org-entry-progress (&optional marker)
+  (interactive)
+  (with-or-without-marker marker
+   (save-excursion
+     (beginning-of-line)
+     (and (looking-at org-complex-heading-regexp)
+          (let* ((headline-raw (org-match-string-no-properties 4)))
+            (cond ((string-match "^\\(.*\\)\s+\\[\\([0-9][0-9]%\\)\\]$" headline-raw)
+                   (match-string 2 headline-raw))
+                  (t
+                   "")))))))
+
+(defun mk-org-entry-is-project-p (&optional marker)
+  (interactive)
+  (with-or-without-marker marker
+   (when (org-entry-get (point) (mk-org-symbol-table 'name)) t)))
+
+(defun mk-org-entry-define-project (&optional marker)
   "Define a project from the org entry at (point)."
   (interactive)
-  (save-excursion
-    (org-back-to-heading t)
-    (beginning-of-line)
-    (unless (and (org-mode-p)
-                 (looking-at org-complex-heading-regexp))
-      (error "mk-org: buffer is not in org-mode or point is not a org heading"))
-    (let* ((entry-properties (org-entry-properties))
-           (ks '())
-           (props (dolist (p entry-properties ks) (push (car p) ks)))
-           (entry-config '()))
-      (dolist (propname props entry-config)
-        (let ((sym (rassoc propname (mk-org-symbol-table))))
-          (if sym
-              (let* ((config-propname (cdr sym))
-                     (config-item (car sym))
-                     (item-value (read (cdr (assoc config-propname entry-properties)))))
-                (add-to-list 'entry-config `(,config-item ,item-value))))))
-      (setq entry-config (append entry-config `((org-file ,(or (buffer-file-name (current-buffer))
-                                                               (buffer-file-name (buffer-base-buffer (current-buffer)))))
-                                                (org-marker ,(mk-org-entry-marker))
-                                                (org-level ,(- (mk-org-entry-level) (mk-org-entry-parent-level))))))
-      (message "%s -> %s : %s" (mk-org-entry-name) (or (mk-org-entry-parent-name) t) (assoc 'org-file entry-config))
-      (project-def (mk-org-entry-name) entry-config (or (mk-org-entry-parent-name) t))
-      ;; (when (and mk-proj-name (string-equal (mk-org-entry-name) mk-proj-name))
-      ;;   (message (format "org-project: loading %s" (mk-org-entry-name)))
-      ;;   (mk-proj-load (mk-org-entry-name)))
-      )))
+  (with-or-without-marker marker
+   (save-excursion
+     (org-back-to-heading t)
+     (beginning-of-line)
+     (unless (and (org-mode-p)
+                  (looking-at org-complex-heading-regexp))
+       (error "mk-org: buffer is not in org-mode or point is not a org heading"))
+     (let* ((entry-properties (org-entry-properties))
+            (ks '())
+            (props (dolist (p entry-properties ks) (push (car p) ks)))
+            (entry-config '()))
+       (dolist (propname props entry-config)
+         (let ((sym (rassoc propname (mk-org-symbol-table))))
+           (if sym
+               (let* ((config-propname (cdr sym))
+                      (config-item (car sym))
+                      (item-value (read (cdr (assoc config-propname entry-properties)))))
+                 (add-to-list 'entry-config `(,config-item ,item-value))))))
+       (setq entry-config (append entry-config `((org-file ,(or (buffer-file-name (current-buffer))
+                                                                (buffer-file-name (buffer-base-buffer (current-buffer)))))
+                                                 (org-marker ,(mk-org-entry-marker))
+                                                 (org-level ,(- (mk-org-entry-level) (mk-org-entry-parent-level))))))
+       (message "%s -> %s : %s" (mk-org-entry-name) (or (mk-org-entry-parent-name) t) (assoc 'org-file entry-config))
+       (project-def (mk-org-entry-name) entry-config (or (mk-org-entry-parent-name) t))
+       ;; (when (and mk-proj-name (string-equal (mk-org-entry-name) mk-proj-name))
+       ;;   (message (format "org-project: loading %s" (mk-org-entry-name)))
+       ;;   (mk-proj-load (mk-org-entry-name)))
+       ))))
 
-(defun mk-org-entry-undefine-project ()
+(defun mk-org-entry-undefine-project (&optional marker)
   (interactive)
-  (save-excursion
-    (org-back-to-heading t)
-    (beginning-of-line)
-    (unless (and (org-mode-p)
-                 (looking-at org-complex-heading-regexp))
-      (error "mk-org: buffer is not in org-mode or point is not a org heading"))
-    (project-undef (mk-org-entry-name))))
-
-
-
-
+  (with-or-without-marker marker
+   (save-excursion
+     (org-back-to-heading t)
+     (beginning-of-line)
+     (unless (and (org-mode-p)
+                  (looking-at org-complex-heading-regexp))
+       (error "mk-org: buffer is not in org-mode or point is not a org heading"))
+     (project-undef (mk-org-entry-name)))))
 
 
 
@@ -500,6 +516,8 @@ than the current one."
                   mk-proj-name))))
     (concat "mk-org: " (or (mk-proj-config-val 'parent name) name))))
 
+
+
 (defun mk-org-create-project-buffer (&optional name)
   (unless name
     (mk-proj-assert-proj)
@@ -507,6 +525,7 @@ than the current one."
   (mk-org-assert-org name)
   (let* ((marker (mk-proj-config-val 'org-marker name))
          (buffername (mk-org-project-buffer-name name))
+         (headline (mk-org-entry-headline marker))
          (org-show-hierarchy-above t)
          (org-show-following-heading nil)
          (org-show-siblings nil))
