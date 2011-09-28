@@ -696,10 +696,12 @@ breaks."
   "Restore project sourcemarker and go there."
   (interactive)
   (when mk-proj-sourcemarker
-    (let* ((m (mk-proj-sourcemarker-restore mk-proj-sourcemarker)))
+    (let* ((m (mk-proj-sourcemarker-restore mk-proj-sourcemarker))
+           (buf (marker-buffer m)))
       (when (markerp m)
-        (switch-to-buffer (marker-buffer m))
-        (goto-char (marker-position m))))))
+        (with-current-buffer buf
+          (goto-char (marker-position m)))
+        (display-buffer buf)))))
 
 (defun mk-proj-set-sourcemarker-point (&optional p)
   "Update a projects sourcemarker. Not implemented yet."
