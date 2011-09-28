@@ -56,6 +56,19 @@ the active subtree, instead of the parent subtree.")
      (add-to-list 'mk-proj-optional-vars 'org-file)
      (add-to-list 'mk-proj-optional-vars 'org-marker)
      (add-to-list 'mk-proj-optional-vars 'org-level)
+
+     (add-hook 'org-clock-in-hook (lambda ()
+                                    (when (mk-org-entry-is-todo-p)
+                                      (mk-proj-load (mk-org-entry-name)))))
+
+     (add-hook 'org-clock-out-hook (lambda ()
+                                     (when (string-equal (mk-org-entry-name) mk-proj-name)
+                                       (if (mk-org-entry-parent-point)
+                                           (progn
+                                             (goto-char (mk-org-entry-parent-point))
+                                             (org-clock-in))
+                                         (project-unload t)))))
+
      ))
 
 
@@ -453,7 +466,18 @@ than the current one."
 (defun mk-org-entry-is-project-p (&optional marker)
   (interactive)
   (with-or-without-marker marker
-   (when (org-entry-get (point) (mk-org-symbol-table 'name)) t)))
+   (when (save-excursion
+           (beginning-of-line)
+           (org-entry-get (point) (mk-org-symbol-table 'name)))
+     t)))
+
+(defun mk-org-entry-is-todo-p (&optional marker)
+  (interactive)
+  (with-or-without-marker marker
+                          (when (save-excursion
+                                  (beginning-of-line)
+                                  (org-entry-get (point) (mk-org-symbol-table 'name) t))
+                            t)))
 
 (defun mk-org-entry-define-project (&optional marker)
   "Define a project from the org entry at (point)."
