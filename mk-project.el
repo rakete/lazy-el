@@ -40,7 +40,7 @@
 (defvar mk-proj-version "1.5.1"
   "As tagged at http://github.com/mattkeller/mk-project/tree/master")
 
-(defvar mk-proj-cache-root "~/.mk-project")
+(defvar mk-global-cache-root "~/.mk-project")
 
 ;; ---------------------------------------------------------------------
 ;; Project Variables
@@ -842,18 +842,28 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
       (dolist (v mk-proj-optional-vars)
         (maybe-set-var v)))))
 
-(defun mk-proj-get-cache-path (symbol)
-  (mk-proj-assert-proj)
-  (let ((directory (concat mk-proj-cache-root
-                           (cond (mk-proj-parent
-                                  (let ((a (concat "/" (mk-proj-join "/" (mk-proj-ancestry)) mk-proj-name)))
-                                    (if (mk-proj-config-val 'basedir mk-proj-name) a (concat a "/"))))
+(defun mk-proj-get-cache-path (symbol &optional name)
+  (unless name
+    (mk-proj-assert-proj)
+    (setq name mk-proj-name))
+  (let ((directory (concat mk-global-cache-root
+                           (cond ((mk-proj-get-config-val 'parent name)
+                                  (let ((a (concat "/" (mk-proj-join "/" (mk-proj-ancestry name)))))
+                                    (if (mk-proj-get-config-val 'basedir name) a (concat a "/"))))
                                  (t
-                                  (concat "/" mk-proj-name "/")))))
+                                  (concat "/" name "/")))))
         (file (concat (symbol-name symbol))))
     (make-directory directory t)
     (let ((r (concat directory file)))
-      (message r))))
+      (print r)
+      (cond ((file-exists-p r)
+             r)
+            ((mk-proj-get-config-val 'parent name)
+             (progn
+               (copy-file (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent name))
+                          r)
+               r))
+            (t r)))))
 
 (defun mk-proj-join (delimiter strings)
   (reduce (lambda (a b)
@@ -865,7 +875,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
                       (progn
                         (mk-proj-assert-proj)
                         mk-proj-name)))
-         (ancestry `(,name)))
+         (ancestry `(,current)))
     (while (mk-proj-config-val 'parent current)
       (setq ancestry (cons (mk-proj-config-val 'parent current) ancestry)
             current (mk-proj-config-val 'parent current)))
