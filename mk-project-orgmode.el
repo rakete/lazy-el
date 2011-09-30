@@ -588,7 +588,7 @@ than the current one."
 
 (defun mk-org-reveal (&optional arg)
   (interactive "P")
-  (mk-org-assert-org)
+  ;;(mk-org-assert-org)
   (mk-org-map-entries
    :file (current-buffer)
    :match (point)
@@ -692,8 +692,9 @@ than the current one."
                  (save-excursion
                    (goto-char (mk-org-yank-below arg))
                    (print (concat "added: " (mk-org-entry-headline)))
-                   (org-show-context)
                    (mk-org-entry-define-project)
+                   (goto-char parent)
+                   (mk-org-reveal)
                    ))))
   (kill-buffer))
 
