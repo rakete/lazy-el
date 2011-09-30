@@ -746,11 +746,24 @@ for the KEY and the first value that is found is returned."
 (defalias 'mk-proj-config-val 'mk-proj-get-config-val
   "Alias for `mk-proj-get-config-val' to ensure backward compatibility.")
 
-(defun mk-proj-set-config-val (key &optional proj)
-  "A so far not implemented way to modify the project configuration
-programmatically. Most likely this will only be practical for project
-configurations that are stored in org files or something similar."
-  )
+(defun mk-proj-set-config-val (key value &optional name)
+  "Set the value associated with KEY to VALUE in config of project NAME.
+
+Works only for projects defined in org-mode. See also `mk-proj-config-get-val'"
+  (unless name
+    (mk-proj-assert-proj)
+    (setq name mk-proj-name))
+  (let ((marker (mk-proj-get-config-val 'org-marker name)))
+    (unless marker
+      (error "mk-project: can only modify config values of projects defined in org-mode"))
+    (with-current-buffer (marker-buffer marker)
+      (save-excursion
+        (goto-char (marker-position marker))
+        (if (cdr (assoc key (mk-org-symbol-table)))
+            (progn
+              (org-set-property (cdr (assoc key (mk-org-symbol-table))) (prin1-to-string value))
+              (setf (symbol-value (intern (concat "mk-proj-" (symbol-name key)))) value))
+          (error "mk-proj-set-config-val: could not find property string for key"))))))
 
 (defun project-def (proj-name config-alist &optional inherit)
   "Associate the settings in CONFIG-ALIST with project PROJ-NAME.
@@ -1555,7 +1568,7 @@ project is not loaded."
 (defun mk-proj-save-open-friends-info ()
   (when mk-proj-open-friends-cache
     (with-temp-buffer
-      (dolist (f (mapcar (lambda (b) (mk-proj-buffer-name b)) (mk-proj-friendly-buffers)))
+      (dolist (f (remove-duplicates (mapcar (lambda (b) (mk-proj-buffer-name b)) (mk-proj-friendly-buffers)) :test #'string-equal))
         (when f
           (unless (string-equal mk-proj-tags-file f)
             (insert f "\n"))))
@@ -1642,12 +1655,23 @@ With C-u prefix, act like `project-ack'."
                                  mk-proj-basedir))))
       (compilation-start confirmed-cmd 'ack-mode))))
 
+(defun mk-proj-find-projects-owning-file (file))
+
+(defun project-add-friend (&optional name)
+  (interactive "P")
+  (print name)
+  (setq name (cond ((and (listp name) (numberp (car name)))
+                    (mk-proj-get-config-val 'parent))
+                   ((stringp name)
+                    name)
+                   (t nil)))
+  (unless name
+    (mk-proj-assert-proj)
+    (setq name mk-proj-name))
+  (mk-proj-assert-proj)
+  (mk-proj-set-config-val 'friends (append mk-proj-friends `(,(buffer-file-name (current-buffer)))) name))
+
 (provide 'mk-project)
-
-
-
-
-
 
 
 
