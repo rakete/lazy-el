@@ -376,112 +376,114 @@ whether the piece of code has been moved around in the file. It should be even
 possible to restore a point if the lines that represent that point in the
 sourcemarker have partly changed in the file."
   (interactive)
-  (unless n
-    (setq n 2))
-  (save-excursion
-    (save-restriction
-      (org-save-outline-visibility
-          (show-all)
-        ;; return nil if the buffer is not big enough for a mark
-        (cond ((save-excursion
-                 (end-of-buffer)
-                 (< (line-number-at-pos) (+ (* n 2) 1)))
-               `(,(progn
-                    (beginning-of-buffer)
-                    (point-at-bol))
-                 ,(buffer-file-name (current-buffer))
-                 nil))
-              (t
-               (progn
-                 ;; move point to nearest non-empty line
-                 ;; handle end-of-buffer/beginning-of-buffer
-                 ;; by reversing the search direction
-                 (let ((rev nil))
-                   (while (save-excursion
-                            (beginning-of-line)
-                            (looking-at "^\\s-*$"))
-                     (when (save-excursion
-                             (end-of-line)
-                             (eobp))
-                       (setq rev t))
-                     (if rev
-                         (previous-line-nomark)
-                       (next-line-nomark))
-                     ))
-                 (beginning-of-line)
-                 ;; two functions walking up/down from current point collecting lines
-                 ;; trimming whitespaces, skipping empty lines, collecting #eobp#/#bobp#
-                 ;; when at end/beginning of buffer
-                 (flet ((collect-up (m) (save-excursion
-                                          (reverse
-                                           ;; arg m is number of lines to collect
-                                           (loop for i from 1 to m
-                                                 collect (progn
-                                                           ;; if already at beginning of buffer collect #bobp#
-                                                           (if (save-excursion
-                                                                 (beginning-of-line)
-                                                                 (bobp))
-                                                               "#bobp#"
-                                                             (progn
-                                                               ;; walk up one line
-                                                               (previous-line-nomark)
-                                                               ;; skip empty lines or none when current line is not empty
-                                                               (while (and (save-excursion
+  (let (r)
+    (unless n
+      (setq n 2))
+    (save-excursion
+      (save-restriction
+        (org-save-outline-visibility
+            (show-all)
+          ;; return nil if the buffer is not big enough for a mark
+          (cond ((save-excursion
+                   (end-of-buffer)
+                   (< (line-number-at-pos) (+ (* n 2) 1)))
+                 `(,(progn
+                      (beginning-of-buffer)
+                      (point-at-bol))
+                   ,(buffer-file-name (current-buffer))
+                   nil))
+                (t
+                 (progn
+                   ;; move point to nearest non-empty line
+                   ;; handle end-of-buffer/beginning-of-buffer
+                   ;; by reversing the search direction
+                   (let ((rev nil))
+                     (while (save-excursion
+                              (beginning-of-line)
+                              (looking-at "^\\s-*$"))
+                       (when (save-excursion
+                               (end-of-line)
+                               (eobp))
+                         (setq rev t))
+                       (if rev
+                           (previous-line-nomark)
+                         (next-line-nomark))
+                       ))
+                   (beginning-of-line)
+                   ;; two functions walking up/down from current point collecting lines
+                   ;; trimming whitespaces, skipping empty lines, collecting #eobp#/#bobp#
+                   ;; when at end/beginning of buffer
+                   (flet ((collect-up (m) (save-excursion
+                                            (reverse
+                                             ;; arg m is number of lines to collect
+                                             (loop for i from 1 to m
+                                                   collect (progn
+                                                             ;; if already at beginning of buffer collect #bobp#
+                                                             (if (save-excursion
+                                                                   (beginning-of-line)
+                                                                   (bobp))
+                                                                 "#bobp#"
+                                                               (progn
+                                                                 ;; walk up one line
+                                                                 (previous-line-nomark)
+                                                                 ;; skip empty lines or none when current line is not empty
+                                                                 (while (and (save-excursion
+                                                                               (beginning-of-line)
+                                                                               (looking-at "^\\s-*$"))
+                                                                             (not (save-excursion
+                                                                                    (beginning-of-line)
+                                                                                    (bobp))))
+                                                                   (previous-line-nomark))
+                                                                 ;; check again if skipping empty lines
+                                                                 ;; brought us to the beginning of the buffer
+                                                                 ;; also, check if the actual line is empty
+                                                                 ;; because skipping terminates on bobp as well
+                                                                 ;; and if it did, we still want to collect the line
+                                                                 ;; instead of #bobp#
+                                                                 ;; also, this is the part where the line is collected
+                                                                 ;; the condition will only be true on empty lines
+                                                                 ;; (which should have been skipped by now)
+                                                                 ;; or if we are at bobp
+                                                                 (if (and (save-excursion
+                                                                            (beginning-of-line)
+                                                                            (bobp))
+                                                                          (save-excursion
+                                                                            (beginning-of-line)
+                                                                            (looking-at "^\\s-*$")))
+                                                                     "#bobp#"
+                                                                   (buffer-substring-no-properties (point-at-bol) (point-at-eol))))))))))
+                          (collect-down (m) (save-excursion
+                                              (loop for i from 1 to m
+                                                    collect (progn
+                                                              (if (save-excursion
+                                                                    (end-of-line)
+                                                                    (eobp))
+                                                                  "#eobp#"
+                                                                (progn
+                                                                  (next-line-nomark)
+                                                                  (while (and (save-excursion
+                                                                                (beginning-of-line)
+                                                                                (looking-at "^\\s-*$"))
+                                                                              (not (save-excursion
+                                                                                     (end-of-line)
+                                                                                     (eobp))))
+                                                                    (next-line-nomark))
+                                                                  (if (and (save-excursion
+                                                                             (end-of-line)
+                                                                             (eobp))
+                                                                           (save-excursion
                                                                              (beginning-of-line)
-                                                                             (looking-at "^\\s-*$"))
-                                                                           (not (save-excursion
-                                                                                  (beginning-of-line)
-                                                                                  (bobp))))
-                                                                 (previous-line-nomark))
-                                                               ;; check again if skipping empty lines
-                                                               ;; brought us to the beginning of the buffer
-                                                               ;; also, check if the actual line is empty
-                                                               ;; because skipping terminates on bobp as well
-                                                               ;; and if it did, we still want to collect the line
-                                                               ;; instead of #bobp#
-                                                               ;; also, this is the part where the line is collected
-                                                               ;; the condition will only be true on empty lines
-                                                               ;; (which should have been skipped by now)
-                                                               ;; or if we are at bobp
-                                                               (if (and (save-excursion
-                                                                          (beginning-of-line)
-                                                                          (bobp))
-                                                                        (save-excursion
-                                                                          (beginning-of-line)
-                                                                          (looking-at "^\\s-*$")))
-                                                                   "#bobp#"
-                                                                 (mk-proj-chomp (buffer-substring-no-properties (point-at-bol) (point-at-eol)))))))))))
-                        (collect-down (m) (save-excursion
-                                            (loop for i from 1 to m
-                                                  collect (progn
-                                                            (if (save-excursion
-                                                                  (end-of-line)
-                                                                  (eobp))
-                                                                "#eobp#"
-                                                              (progn
-                                                                (next-line-nomark)
-                                                                (while (and (save-excursion
-                                                                              (beginning-of-line)
-                                                                              (looking-at "^\\s-*$"))
-                                                                            (not (save-excursion
-                                                                                   (end-of-line)
-                                                                                   (eobp))))
-                                                                  (next-line-nomark))
-                                                                (if (and (save-excursion
-                                                                           (end-of-line)
-                                                                           (eobp))
-                                                                         (save-excursion
-                                                                           (beginning-of-line)
-                                                                           (looking-at "^\\s-*$")))
-                                                                    "#eobp#"
-                                                                  (mk-proj-chomp (buffer-substring-no-properties (point-at-bol) (point-at-eol)))))))))))
-                   (let ((above (collect-up n))
-                         (below (collect-down n))
-                         (line (mk-proj-chomp (buffer-substring-no-properties (point-at-bol) (point-at-eol)))))
-                     `(,(point-at-bol)
-                       ,(buffer-file-name (current-buffer))
-                       (,above ,line ,below))
-                     )))))))))
+                                                                             (looking-at "^\\s-*$")))
+                                                                      "#eobp#"
+                                                                    (buffer-substring-no-properties (point-at-bol) (point-at-eol))))))))))
+                     (let ((above (collect-up n))
+                           (below (collect-down n))
+                           (line (buffer-substring-no-properties (point-at-bol) (point-at-eol))))
+                       (setq r `(,(point-at-bol)
+                                 ,(buffer-file-name (current-buffer))
+                                 (,above ,line ,below)))
+                       ))))))))
+    r))
 
 (defun mk-proj-sourcemarker-restore (m)
   "Restoring point refered to by a sourcemarker M.
@@ -503,18 +505,18 @@ See also `mk-proj-sourcemarker-create'."
          (n (+ (length stamp-next-lines) (length stamp-prev-lines) 1))
          (m (/ (- n 1) 2))
          (c (+ m 1))
-         (re-all (let ((s (concat "\\(" (regexp-quote stamp-line) "$\\)")))
+         (re-all (let ((s (concat "\\(^" (regexp-quote stamp-line) "$\\)")))
                    (loop for i from 0 to (- m 1)
                          do (progn
                               (let ((left (regexp-quote (nth (- (- m 1) i) stamp-prev-lines)))
                                     (right (regexp-quote (nth i stamp-next-lines))))
                                 (setq s (concat (unless (or (string-equal left "#eobp#")
                                                             (string-equal left "#bobp#"))
-                                                  (concat "\\(" left "$\\)\\|"))
+                                                  (concat "\\(^" left "$\\)\\|"))
                                                 s
                                                 (unless (or (string-equal right "#eobp#")
                                                             (string-equal right "#bobp#"))
-                                                  (concat "\\|\\(" right "$\\)"))))))
+                                                  (concat "\\|\\(^" right "$\\)"))))))
                          finally return s)))
          (re-individual (mapcar (lambda (s) (if (or (string-equal s "#eobp#")
                                                     (string-equal s "#bobp#"))
@@ -607,9 +609,9 @@ See also `mk-proj-sourcemarker-create'."
                             (central-line-matches (prev k p l next)
                                                   (when (and (eq (length prev) (length next)) (eq k c))
                                                     5))
-                            (found-the-original-line (prev k p l next)
-                                                     (when (and l (string-match l stamp-line))
-                                                       2))
+                            ;; (found-the-original-line (prev k p l next)
+                            ;;                          (when (and l (string-match l stamp-line))
+                            ;;                            2))
                             (full-house (prev k p l next)
                                         (when (and (eq (length prev) (1- n)) (eq (length next) 0))
                                           (let* ((xs (append prev `((,k ,p ,l))))
@@ -659,7 +661,7 @@ See also `mk-proj-sourcemarker-create'."
                  (m (make-marker)))
             ;;`(,p ,buf)
             (set-marker m p buf)))
-          ))))
+        ))))
 
 ;; (defun test-sourcemarker-create ()
 ;;   (interactive)
