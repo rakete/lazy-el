@@ -61,14 +61,13 @@ the active subtree, instead of the parent subtree.")
                                     (when (mk-org-entry-is-todo-p)
                                       (mk-proj-load (mk-org-entry-name)))))
 
-     (add-hook 'org-clock-out-hook (lambda ()
-                                     (when (string-equal (mk-org-entry-name) mk-proj-name)
-                                       (if (mk-org-entry-parent-point)
-                                           (progn
-                                             (goto-char (mk-org-entry-parent-point))
-                                             (org-clock-in))
-                                         (project-unload t)))))
-
+     ;; (add-hook 'org-clock-out-hook (lambda ()
+     ;;                                 (when (string-equal (mk-org-entry-name) mk-proj-name)
+     ;;                                   (if (mk-org-entry-parent-point)
+     ;;                                       (progn
+     ;;                                         (goto-char (mk-org-entry-parent-point))
+     ;;                                         (org-clock-in))
+     ;;                                     (project-unload t)))))
      ))
 
 
