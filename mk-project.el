@@ -775,7 +775,7 @@ Works only for projects defined in org-mode. See also `mk-proj-config-get-val'"
               (setf (symbol-value (intern (concat "mk-proj-" (symbol-name key)))) value))
           (error "mk-proj-set-config-val: could not find property string for key"))))))
 
-(defun project-def (proj-name config-alist &optional inherit)
+(defun project-def (&optional proj-name config-alist inherit)
   "Associate the settings in CONFIG-ALIST with project PROJ-NAME.
 Specify an optional project to inherit all settings from the
 INHERIT argument. If INHERIT is t, then reuse project settings
@@ -790,13 +790,25 @@ All values within CONFIG-ALIST will be evaluated when they look
 like a lisp expression or symbol. So make sure to quote lists!
 
 See also `project-undef'."
-
+  (interactive)
+  (unless (and proj-name config-alist)
+    (setq proj-name (read-string "Name: " nil nil nil t)
+          proj-basedir (ido-completing-read "Basedir: " (ido-file-name-all-completions "~") nil nil nil nil nil)))
   ;; I changed the behaviour of this function to evaluate the config values (when they look like something
   ;; that could be evaluated)
   ;; thats rather nasty because now lists must be quoted or else project definition will fail
   ;; on the other hand it enables my org-mode integration to have its property values evaluated
   ;; EDIT: I think I made it backwards compatible through a condition-case, lets see if anyone complains...
-  (let* ((evaluated-config-alist (let ((evaluated-config-alist '()))
+  (let* ((config-alist (or config-alist
+                           (loop for x in (gethash proj-name mk-proj-list)
+                                 if (and (not (eq (car x) 'name))
+                                         (not (eq (car x) 'basedir)))
+                                 collect (read-string (concat (symbol-name (car x)) ": ") (prin1-to-string (car (cdr x)))))
+                           (loop for y in mk-proj-optional-vars
+                                 if (and (not (eq (car y) 'name))
+                                         (not (eq (car y) 'basedir)))
+                                 collect (read-string (concat (symbol-name y))))))
+         (evaluated-config-alist (let ((evaluated-config-alist '()))
                                    (dolist (cv config-alist evaluated-config-alist)
                                      (let* ((key (car cv))
                                             ;; super behaves like a keyword that can be used within a configuration
