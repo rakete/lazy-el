@@ -892,15 +892,15 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
         (file (concat (symbol-name symbol))))
     (make-directory directory t)
     (let ((r (concat directory file)))
-      (print r)
       (cond ((file-exists-p r)
              r)
-            ((mk-proj-get-config-val 'parent name)
+            ((and (mk-proj-get-config-val 'parent name) (file-exists-p (mk-proj-get-config-val 'parent name)))
              (progn
                (copy-file (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent name))
                           r)
                r))
-            (t r)))))
+            (t
+             r)))))
 
 (defun mk-proj-join (delimiter strings)
   (reduce (lambda (a b)
