@@ -470,7 +470,7 @@ than the current one."
            (org-entry-get (point) (mk-org-symbol-table 'name)))
      t)))
 
-(defun mk-org-entry-is-todo-p (&optional marker)
+(defun mk-org-entry-is-in-project-p (&optional marker)
   (interactive)
   (with-or-without-marker marker
                           (when (save-excursion
@@ -571,31 +571,28 @@ than the current one."
                             (narrow-to-region beg end)
                             (show-all)
                             (beginning-of-buffer)
-                            (org-cycle)
-                            (mk-org-reveal nil)
-                            (when (or (not (mk-proj-config-val 'basedir name))
-                                      (and mk-org-active-todo-keyword
-                                           (not (string-equal mk-org-active-todo-keyword (org-get-todo-state)))))
-                              (goto-char (org-find-exact-headline-in-buffer headline (current-buffer) t))
-                              (org-show-context)
-                              (beginning-of-line)
-                              ;;(org-cycle)
-                              ;;(org-cycle)
-                              )
+                            (when (mk-org-entry-is-todo-p) (org-cycle))
+                            (mk-org-reveal)
+                            (goto-char (marker-position marker))
                             (set-frame-name (mk-org-entry-headline))
                             (current-buffer)
                             ))))))))
 
-(defun mk-org-reveal (&optional arg)
-  (interactive "P")
+(defun mk-org-reveal ()
+  (interactive)
   ;;(mk-org-assert-org)
   (mk-org-map-entries
    :file (current-buffer)
    :match (point)
    :scope 'project-single
    :function (lambda ()
-               (when (or arg (mk-proj-any (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords))
-                 (org-show-context)))))
+               (when (mk-proj-any (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
+                 (org-show-context)
+                 (when (and mk-proj-name
+                            (not (mk-org-entry-is-project-p))
+                            (string-equal (mk-org-entry-name) mk-proj-name))
+                   (org-cycle))
+                 ))))
 
 
 (defun mk-org-get-project-buffer (&optional name)
