@@ -705,9 +705,19 @@ breaks."
           (goto-char (marker-position m)))
         (display-buffer buf)))))
 
-(defun mk-proj-set-sourcemarker-point (&optional p)
+(defun mk-proj-update-sourcemarker ()
   "Update a projects sourcemarker. Not implemented yet."
-  (interactive))
+  (interactive)
+  (mk-proj-set-config-val 'sourcemarker (mk-proj-sourcemarker-create)))
+
+
+
+
+
+
+
+
+
 
 ;; ---------------------------------------------------------------------
 ;; Project Configuration
