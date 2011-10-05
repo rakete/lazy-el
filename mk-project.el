@@ -224,6 +224,38 @@ applied to the value of the var before loading the project.
 
 See also `mk-proj-load-vars'.")
 
+(setq mk-proj-ask-functions '((name . (lambda ()
+                                          (read-string "Name: " super)))
+                              (basedir . (lambda ()
+                                         (expand-file-name (concat "~/" (ido-completing-read "Basedir: " (ido-file-name-all-completions "~"))))))
+                              (src-patterns . (lambda ()
+                                                (let ((xs '()))
+                                                  (loop for p = (read-string "Source pattern regex: " super) then (read-string (concat "Source pattern regex " (prin1-to-string xs) ": "))
+                                                        until (string-equal p "")
+                                                        if (condition-case nil (listp (read p)) (error nil))
+                                                        append (read p) into xs
+                                                        else
+                                                        collect p into xs
+                                                        finally return xs))))
+                              (ignore-patterns . (lambda ()
+                                                   (let ((xs '()))
+                                                     (loop for p = (read-string "Ignore pattern regex: " super) then (read-string (concat "Ignore pattern regex " (prin1-to-string xs) ": "))
+                                                           until (string-equal p "")
+                                                           if (condition-case nil (listp (read p)) (error nil))
+                                                           append (read p) into xs
+                                                           else
+                                                           collect p into xs
+                                                           finally return xs))))
+                              (ack-args . (lambda ()
+                                            (read-string "Ack arguments: " super)))
+                              (vcs . (lambda ()
+                                       (loop for v = (read-string "vcs: " super) then (read-string "vcs: " super)
+                                             until (mk-proj-any (lambda (x) (eq (car x) (read v))) mk-proj-vcs-path)
+                                             finally return (read v))))
+                              (compile-cmd . (lambda ()
+                                               (read-string "Compile command: " super)))
+                              (patterns-are-regex . (lambda () t))))
+
 (defvar mk-proj-project-var-load-hook '())
 (defvar mk-proj-project-var-unload-hook '())
 
@@ -791,23 +823,24 @@ like a lisp expression or symbol. So make sure to quote lists!
 
 See also `project-undef'."
   (interactive)
-  (unless (and proj-name config-alist)
-    (setq proj-name (read-string "Name: " nil nil nil t)
-          proj-basedir (ido-completing-read "Basedir: " (ido-file-name-all-completions "~") nil nil nil nil nil)))
   ;; I changed the behaviour of this function to evaluate the config values (when they look like something
   ;; that could be evaluated)
   ;; thats rather nasty because now lists must be quoted or else project definition will fail
   ;; on the other hand it enables my org-mode integration to have its property values evaluated
   ;; EDIT: I think I made it backwards compatible through a condition-case, lets see if anyone complains...
-  (let* ((config-alist (or config-alist
-                           (loop for x in (gethash proj-name mk-proj-list)
-                                 if (and (not (eq (car x) 'name))
-                                         (not (eq (car x) 'basedir)))
-                                 collect (read-string (concat (symbol-name (car x)) ": ") (prin1-to-string (car (cdr x)))))
-                           (loop for y in mk-proj-optional-vars
-                                 if (and (not (eq (car y) 'name))
-                                         (not (eq (car y) 'basedir)))
-                                 collect (read-string (concat (symbol-name y))))))
+  (unless proj-name
+    (if (assoc 'name mk-proj-ask-functions)
+        (let ((super (when inherit (mk-proj-get-config-val 'name inherit t))))
+          (setq proj-name (funcall (cdr (assoc 'name mk-proj-ask-functions)))))
+      (error "project-def: no name given!")))
+  (let* ((config-alist (loop for k in (append mk-proj-required-vars mk-proj-optional-vars)
+                             if (eq k 'name)
+                             collect (list k proj-name)
+                             else if (assoc k config-alist)
+                             collect (assoc k config-alist)
+                             else if (and (assoc k mk-proj-ask-functions) (not config-alist))
+                             collect (let ((super (prin1-to-string (mk-proj-get-config-val k inherit t))))
+                                       (list k (funcall (cdr (assoc k mk-proj-ask-functions)))))))
          (evaluated-config-alist (let ((evaluated-config-alist '()))
                                    (dolist (cv config-alist evaluated-config-alist)
                                      (let* ((key (car cv))
