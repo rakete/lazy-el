@@ -804,7 +804,11 @@ Works only for projects defined in org-mode. See also `mk-proj-config-get-val'"
         (if (cdr (assoc key (mk-org-symbol-table)))
             (progn
               (org-set-property (cdr (assoc key (mk-org-symbol-table))) (prin1-to-string value))
-              (setf (symbol-value (intern (concat "mk-proj-" (symbol-name key)))) value))
+              (setf (symbol-value (intern (concat "mk-proj-" (symbol-name key)))) value)
+              ;; (append `((,name ,key)) (mk-proj-filter (lambda (x)
+              ;;                                           (not (eq (car x) key)))
+              ;;                                         (mk-proj-find-config name)))
+              (project-def name `((,key ,value)) t))
           (error "mk-proj-set-config-val: could not find property string for key"))))))
 
 (defun project-def (&optional proj-name config-alist inherit)
