@@ -58,7 +58,7 @@ the active subtree, instead of the parent subtree.")
      (add-to-list 'mk-proj-optional-vars 'org-level)
 
      (add-hook 'org-clock-in-hook (lambda ()
-                                    (when (mk-org-entry-is-todo-p)
+                                    (when (mk-org-entry-is-in-project-p)
                                       (mk-proj-load (mk-org-entry-name)))))
 
      ;; (add-hook 'org-clock-out-hook (lambda ()
@@ -571,7 +571,7 @@ than the current one."
                             (narrow-to-region beg end)
                             (show-all)
                             (beginning-of-buffer)
-                            (when (mk-org-entry-is-todo-p) (org-cycle))
+                            (when (mk-org-entry-is-in-project-p) (org-cycle))
                             (mk-org-reveal)
                             (goto-char (marker-position marker))
                             (set-frame-name (mk-org-entry-headline))
