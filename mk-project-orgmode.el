@@ -591,7 +591,7 @@ than the current one."
                  (when (and mk-proj-name
                             (not (mk-org-entry-is-project-p))
                             (string-equal (mk-org-entry-name) mk-proj-name))
-                   (org-cycle))
+                   (org-show-entry))
                  ))))
 
 
