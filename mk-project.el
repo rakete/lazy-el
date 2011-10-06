@@ -224,44 +224,42 @@ applied to the value of the var before loading the project.
 
 See also `mk-proj-load-vars'.")
 
-(setq mk-proj-ask-functions '((name . (lambda ()
+(defvar mk-proj-ask-functions '((name . (lambda ()
                                           (read-string "Name: " super)))
-                              (basedir . (lambda ()
-                                         (expand-file-name (concat "~/" (ido-completing-read "Basedir: " (ido-file-name-all-completions "~"))))))
-                              (src-patterns . (lambda ()
-                                                (let ((xs '()))
-                                                  (loop for p = (read-string "Source pattern regex: " super) then (read-string (concat "Source pattern regex " (prin1-to-string xs) ": "))
-                                                        until (string-equal p "")
-                                                        if (condition-case nil (listp (read p)) (error nil))
-                                                        append (read p) into xs
-                                                        else
-                                                        collect p into xs
-                                                        finally return xs))))
-                              (ignore-patterns . (lambda ()
-                                                   (let ((xs '()))
-                                                     (loop for p = (read-string "Ignore pattern regex: " super) then (read-string (concat "Ignore pattern regex " (prin1-to-string xs) ": "))
-                                                           until (string-equal p "")
-                                                           if (condition-case nil (listp (read p)) (error nil))
-                                                           append (read p) into xs
-                                                           else
-                                                           collect p into xs
-                                                           finally return xs))))
-                              (ack-args . (lambda ()
-                                            (read-string "Ack arguments: " super)))
-                              (vcs . (lambda ()
-                                       (loop for v = (read-string "vcs: " super) then (read-string "vcs: " super)
-                                             until (mk-proj-any (lambda (x) (eq (car x) (read v))) mk-proj-vcs-path)
-                                             finally return (read v))))
-                              (compile-cmd . (lambda ()
-                                               (read-string "Compile command: " super)))
-                              (patterns-are-regex . (lambda () t))))
+                                (basedir . (lambda ()
+                                             (expand-file-name (concat "~/" (ido-completing-read "Basedir: " (ido-file-name-all-completions "~"))))))
+                                (src-patterns . (lambda ()
+                                                  (let ((xs '()))
+                                                    (loop for p = (read-string "Source pattern regex: " super) then (read-string (concat "Source pattern regex " (prin1-to-string xs) ": "))
+                                                          until (string-equal p "")
+                                                          if (condition-case nil (listp (read p)) (error nil))
+                                                          append (read p) into xs
+                                                          else
+                                                          collect p into xs
+                                                          finally return xs))))
+                                (ignore-patterns . (lambda ()
+                                                     (let ((xs '()))
+                                                       (loop for p = (read-string "Ignore pattern regex: " super) then (read-string (concat "Ignore pattern regex " (prin1-to-string xs) ": "))
+                                                             until (string-equal p "")
+                                                             if (condition-case nil (listp (read p)) (error nil))
+                                                             append (read p) into xs
+                                                             else
+                                                             collect p into xs
+                                                             finally return xs))))
+                                (ack-args . (lambda ()
+                                              (read-string "Ack arguments: " super)))
+                                (vcs . (lambda ()
+                                         (loop for v = (read-string "vcs: " super) then (read-string "vcs: " super)
+                                               until (mk-proj-any (lambda (x) (eq (car x) (read v))) mk-proj-vcs-path)
+                                               finally return (read v))))
+                                (compile-cmd . (lambda ()
+                                                 (read-string "Compile command: " super)))
+                                (patterns-are-regex . (lambda () t))))
 
 (defvar mk-proj-project-var-load-hook '())
 (defvar mk-proj-project-var-unload-hook '())
 
-
 (defvar mk-proj-project-load-hook '())
-
 (defvar mk-proj-project-unload-hook '())
 
 ;; ---------------------------------------------------------------------
@@ -1716,19 +1714,33 @@ With C-u prefix, act like `project-ack'."
 
 (defun mk-proj-find-projects-owning-file (file))
 
-(defun project-add-friend (&optional name)
+(defun project-friend-this (&optional name)
   (interactive "P")
-  (print name)
   (setq name (cond ((and (listp name) (numberp (car name)))
                     (mk-proj-get-config-val 'parent))
                    ((stringp name)
                     name)
                    (t nil)))
-  (unless name
-    (mk-proj-assert-proj)
-    (setq name mk-proj-name))
   (mk-proj-assert-proj)
+  (unless name
+    (setq name mk-proj-name))
   (mk-proj-set-config-val 'friends (append mk-proj-friends `(,(buffer-file-name (current-buffer)))) name))
+
+(defun project-friend-add (&optional friend)
+  (interactive "P")
+  (let ((parent nil))
+    (when (and (listp friend) (numberp (car friend)))
+      (setq parent (mk-proj-get-config-val 'parent)
+            friend nil))
+    (unless friend
+      (setq friend (expand-file-name
+                    (concat "~/"
+                            (ido-completing-read "Friend: "
+                                                 (append (ido-file-name-all-completions "~")
+                                                         (mk-proj-names)))))))
+    (mk-proj-assert-proj)
+    (when (or (and (file-exists-p friend) (not (file-directory-p friend))) (gethash friend mk-proj-list))
+      (mk-proj-set-config-val 'friends (append mk-proj-friends `(,friend)) parent))))
 
 (provide 'mk-project)
 
