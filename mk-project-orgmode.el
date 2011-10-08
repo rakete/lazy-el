@@ -727,7 +727,7 @@ See also `mk-org-entry-nearest-active'."
         (with-current-buffer buf
           (set (make-local-variable 'local-prefix-arg) arg)
           (org-insert-heading)
-          (when (mk-proj-buffer-p proj-b)
+          (when (and (or (mk-proj-buffer-p proj-b) (mk-proj-friendly-buffer-p proj-b)) (buffer-file-name proj-b))
             (org-set-property "MKP_SOURCEMARKER" (concat "'" (prin1-to-string sm)))))))))
 
 (defun project-remove-todo (&optional arg)
