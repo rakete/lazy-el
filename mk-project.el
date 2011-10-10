@@ -1003,7 +1003,9 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
 (defun mk-proj-kill-emacs-hook ()
   "Ensure we save the open-files-cache info on emacs exit"
   (when (and mk-proj-name mk-proj-open-files-cache)
-    (mk-proj-save-open-file-info)))
+    (mk-proj-save-open-file-info))
+  (when (and mk-proj-friends mk-proj-open-friends-cache)
+    (mk-proj-save-open-friends-info)))
 
 (defun project-unload (&optional arg)
   "Unload the current project's settings after running the shutdown hook."
