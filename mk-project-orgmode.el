@@ -180,8 +180,10 @@ than the current one."
                               (marker-position (mk-proj-sourcemarker-restore match)))
                              ((numberp match)
                               match)
+                             ((and match (listp match) (eq (car match) 'headline))
+                              (format org-complex-heading-regexp-format (regexp-quote (cadr match))))
                              ((and match (listp match) (eq (car match) 're))
-                              (cadr match))
+                              (regexp-quote (cadr match)))
                              ((and match (listp match) (eq (car match) 'property) (= (list-length match) 3))
                               (concat "^[ \t]*:" (second match) ":[ \t]*\\(" (third match) "\\)"))
                              ((and match (listp match) (functionp (car match)))
@@ -311,7 +313,6 @@ than the current one."
 
 
 
-
 (defmacro with-or-without-marker (marker &rest body)
   `(let ((marker ,marker))
      (if (markerp marker)
@@ -338,7 +339,7 @@ than the current one."
     (save-excursion
       (beginning-of-line)
       (when (looking-at org-complex-heading-regexp)
-        (copy-marker (point))))))
+        (copy-marker (point-marker))))))
 
 (defun mk-org-entry-level (&optional marker)
   (interactive)
@@ -503,7 +504,7 @@ than the current one."
                                                                 (buffer-file-name (buffer-base-buffer (current-buffer)))))
                                                  (org-marker ,(mk-org-entry-marker))
                                                  (org-level ,(- (mk-org-entry-level) (mk-org-entry-parent-level))))))
-       (message "%s -> %s : %s" (mk-org-entry-name) (or (mk-org-entry-parent-name) t) (assoc 'org-file entry-config))
+       (message "%s -> %s : %s : %d" (mk-org-entry-name) (or (mk-org-entry-parent-name) t) (assoc 'org-file entry-config) (marker-position (cadr (assoc 'org-marker entry-config))))
        (project-def (mk-org-entry-name) entry-config (or (mk-org-entry-parent-name) t))
        ;; (when (and mk-proj-name (string-equal (mk-org-entry-name) mk-proj-name))
        ;;   (message (format "org-project: loading %s" (mk-org-entry-name)))
@@ -513,13 +514,13 @@ than the current one."
 (defun mk-org-entry-undefine-project (&optional marker)
   (interactive)
   (with-or-without-marker marker
-   (save-excursion
-     (org-back-to-heading t)
-     (beginning-of-line)
-     (unless (and (org-mode-p)
-                  (looking-at org-complex-heading-regexp))
-       (error "mk-org: buffer is not in org-mode or point is not a org heading"))
-     (project-undef (mk-org-entry-name)))))
+                          (save-excursion
+                            (org-back-to-heading t)
+                            (beginning-of-line)
+                            (unless (and (org-mode-p)
+                                         (looking-at org-complex-heading-regexp))
+                              (error "mk-org: buffer is not in org-mode or point is not a org heading"))
+                            (project-undef (mk-org-entry-name)))))
 
 
 
@@ -537,7 +538,7 @@ than the current one."
                 (progn
                   (mk-proj-assert-proj)
                   mk-proj-name))))
-    (concat "mk-org: " (or (mk-proj-config-val 'parent name) name))))
+    (concat "*mk-org: " (or (mk-proj-config-val 'parent name) name) "*")))
 
 
 
@@ -718,7 +719,7 @@ See also `mk-org-entry-nearest-active'."
       (mk-org-assert-org)
       (let* ((proj-b (current-buffer))
              (sm (mk-proj-sourcemarker-create))
-             (buf (get-buffer-create "mk-org: add todo"))
+             (buf (get-buffer-create "*mk-org: add todo*"))
              (window (display-buffer buf)))
         (select-window window)
         (set-window-dedicated-p window t)
@@ -778,21 +779,89 @@ manually constructed project org entry at point (see also `mk-org-entry-define-p
 
 
 
-(defun project-insert-org (name config-alist &optional headline)
+(defun mk-org-config-insert (&optional config-alist name insert-undefined headline)
   (interactive)
   (unless (org-mode-p)
     (error "mk-org: current buffer not in org-mode"))
+  (unless name
+    (setq name (or (cadr (assoc 'name config-alist)) "NewProject")))
   (save-excursion
     (save-restriction
-      (org-insert-heading-after-current)
+      (org-insert-heading)
       (if headline
           (insert headline)
         (insert name))
       (org-set-property "MKP_NAME" name)
-      (loop for v in config-alist
-            do (let* ((prop (cdr (assoc (car v) (mk-org-symbol-table))))
-                      (val (cdr v)))
-                 (org-set-property prop val))))))
+      (loop for k in (append mk-proj-required-vars mk-proj-optional-vars)
+            if (not (or (eq k 'name)
+                        (mk-proj-any (lambda (j) (eq k j)) mk-proj-internal-vars)))
+            do (when (or insert-undefined
+                         (assoc k config-alist))
+                 (let* ((prop (cdr (assoc k (mk-org-symbol-table))))
+                        (val (cdr (assoc k config-alist))))
+                   (org-set-property prop (prin1-to-string val))))))))
+
+(defvar mk-org-config-file "/home/lazor/org/projects.org")
+(defvar mk-org-config-section "Projects")
+
+(defun mk-org-config-save (config-alist &optional name)
+  (with-current-buffer (find-file-noselect mk-org-config-file)
+    (let ((section (org-find-exact-headline-in-buffer mk-org-config-section)))
+      (when section
+        (goto-char (marker-position section)))
+      (let* ((org-show-hierarchy-above t)
+             (org-show-following-heading nil)
+             (org-show-siblings nil))
+        (save-excursion
+          (mk-org-config-insert config-alist name))))))
+
+(defun* mk-org-config-buffer (&optional (state :create))
+  (case state
+    (:create
+     (let* ((proj-b (current-buffer))
+            (buf (get-buffer-create "*mk-proj: new project*"))
+            (window (display-buffer buf)))
+       (select-window window)
+       (set-window-dedicated-p window t)
+       (org-mode)
+       (buffer-disable-undo)
+       (mk-org-config-insert nil "NewProject" t)
+       (goto-char 0)
+       (end-of-line)
+       (mk-proj-new-project-mode)
+       (buffer-enable-undo)))
+    (:finalize
+     (save-excursion
+       (let ((has-error t))
+         (beginning-of-buffer)
+         (outline-next-heading)
+         (let ((headline (mk-org-entry-headline)))
+           (org-copy-subtree 1 nil)
+           (with-current-buffer (find-file-noselect mk-org-config-file)
+             (let ((section (org-find-exact-headline-in-buffer mk-org-config-section)))
+               (when section
+                 (goto-char (marker-position section)))
+               (let* ((org-show-hierarchy-above t)
+                      (org-show-following-heading nil)
+                      (org-show-siblings nil))
+                 (save-excursion
+                   (goto-char (mk-org-yank-below))
+                   (if (condition-case nil (mk-org-entry-define-project) (error nil))
+                       (progn
+                         (print (concat "added: " headline))
+                         (mk-org-reveal)
+                         (setq has-error nil))
+                     (progn
+                       (goto-char 0)
+                       (goto-char (marker-position (org-find-exact-headline-in-buffer headline)))
+                       (let ((beg (point))
+                             (end (org-end-of-subtree)))
+                         (delete-region beg end)))
+                     ))))))
+         (unless has-error
+           (kill-buffer)))))))
+
+;;(setq mk-proj-config-function 'mk-org-config-buffer)
 
 (defun mk-org-read (cell)
   "Convert the string value of CELL to a number if appropriate.
@@ -829,6 +898,7 @@ This is taken almost directly from `org-babel-read'."
                             (or (and (org-get-todo-state) (mk-proj-any (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords))
                                      (mk-org-entry-is-project-p)))
                    (mk-org-entry-define-project))))))
+
 
 (defun mk-org-undefine-entries ()
   (interactive)
