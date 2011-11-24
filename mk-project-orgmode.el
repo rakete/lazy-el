@@ -652,7 +652,6 @@ than the current one."
                     (org-shiftmetaright))
                 (outline-previous-heading))
               (setq p (point)))))))
-    (mk-org-reveal)
     p))
 
 
@@ -689,6 +688,7 @@ than the current one."
                    (goto-char active))
                  (save-excursion
                    (goto-char (mk-org-yank-below arg))
+                   (mk-org-reveal)
                    (print (concat "added: " (mk-org-entry-headline)))
                    (mk-org-entry-define-project)
                    (goto-char parent)
