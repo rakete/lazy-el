@@ -118,7 +118,7 @@ The behaviour of this command is modified with
 
 (defvar anything-c-source-mk-friendly-files
   '((name . "Friendly files")
-    (candidates . (lambda () (mk-proj-friend-matches)))
+    (candidates . (lambda () (mk-proj-fib-friend-matches)))
     (match anything-c-match-on-file-name
            anything-c-match-on-directory-name)
     (type . file))
