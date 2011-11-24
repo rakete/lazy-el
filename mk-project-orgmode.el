@@ -166,7 +166,9 @@ than the current one."
                                (org-find-base-buffer-visiting project-file)
                                (if (file-exists-p project-file)
                                    (find-file-noselect project-file)
-                                 (error (format "mk-org: No such file %s" project-file))))
+                                 (progn
+                                   (message (format "mk-org: No such file %s" project-file))
+                                   (return-from "mk-org-map-entries" nil))))
         (save-excursion
           (save-restriction
             (when widen (widen))
