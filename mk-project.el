@@ -753,14 +753,16 @@ breaks."
   (interactive)
   (when mk-proj-sourcemarker
     (let* ((m (mk-proj-sourcemarker-restore mk-proj-sourcemarker))
-           (buf (marker-buffer m)))
+           (buf (marker-buffer m))
+           (oldframe (current-frame)))
       (when (markerp m)
-        (with-current-buffer buf
-          (goto-char (marker-position m)))
+        (when (get-buffer-window (get-buffer buf) 'visible)
+          (select-frame (window-frame (get-buffer-window (get-buffer buf) 'visible))))
+        (goto-char (marker-position m))
         (display-buffer buf)))))
 
 (defun mk-proj-update-sourcemarker ()
-  "Update a projects sourcemarker. Not implemented yet."
+  "Update a projects sourcemarker."
   (interactive)
   (mk-proj-set-config-val 'sourcemarker (mk-proj-sourcemarker-create)))
 
