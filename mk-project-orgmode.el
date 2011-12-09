@@ -687,14 +687,14 @@ than the current one."
                       (org-show-following-heading nil)
                       (org-show-siblings nil))
                  (if arg
-                     (goto-char parent)
-                   (goto-char active))
+                     (when parent (goto-char parent))
+                   (when active (goto-char active)))
                  (save-excursion
                    (goto-char (mk-org-yank-below arg))
                    (mk-org-reveal)
                    (print (concat "added: " (mk-org-entry-headline)))
                    (mk-org-entry-define-project)
-                   (goto-char parent)
+                   (when parent (goto-char parent))
                    (mk-org-reveal)))))
   (kill-buffer))
 

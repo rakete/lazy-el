@@ -91,6 +91,10 @@ not one relative to basedir. Value is expanded with expand-file-name.")
   "Command to build the entire project. Can be either a string specifying
 a shell command or the name of a function. Optional. Example: make -k.")
 
+(defvar mk-proj-install-cmd nil)
+(defvar mk-proj-run-cmd nil)
+(defvar mk-proj-syntaxcheck-cmd nil)
+
 (defvar mk-proj-startup-hook nil
   "Hook function to run after the project is loaded. Optional. Project
 variables (e.g. mk-proj-basedir) will be set and can be referenced from this
@@ -164,12 +168,12 @@ used by `project-find-file' to quickly locate project files."
     (setq name mk-proj-name))
   (concat "*" name " file-index*"))
 
-(defconst mk-proj-vcs-path '((git . "'*/.git/*'")
-                             (cvs . "'*/.CVS/*'")
-                             (svn . "'*/.svn/*'")
-                             (bzr . "'*/.bzr/*'")
-                             (hg  . "'*/.hg/*'")
-                             (darcs . "'*/_darcs/*'"))
+(defconst mk-proj-vcs-path '((git . ".git")
+                             (cvs . ".CVS")
+                             (svn . ".svn")
+                             (bzr . ".bzr")
+                             (hg  . ".hg")
+                             (darcs . "_darcs"))
   "When `mk-proj-vcs' is one of the VCS types listed here, ignore
 the associated paths when greping or indexing the project. This
 value is not used if a custom find command is set in
@@ -188,6 +192,9 @@ See also `mk-proj-optional-vars' `mk-proj-var-functions' `mk-proj-load-vars'")
                                 vcs
                                 tags-file
                                 compile-cmd
+                                install-cmd
+                                run-cmd
+                                syntaxcheck-cmd
                                 startup-hook
                                 shutdown-hook
                                 file-list-cache
@@ -318,6 +325,27 @@ load time. See also `project-menu-remove'."
 ;; Utils
 ;; ---------------------------------------------------------------------
 
+(defun mk-proj-zip (&rest lists)
+  (let* (;;(lists (append (list a) rest))
+         (n (- (length lists) 1))
+         (i 0)
+         (rs '()))
+    (while (some 'identity (mapcar (lambda (l) (> (length l) i)) lists))
+      (setq rs (append rs (list (loop for m from 0 to n
+                                      collect (nth i (nth m lists))))))
+      (setq i (1+ i)))
+    rs))
+
+;;(mk-proj-zip (make-list 3 0) (make-list 3 nil) (make-list 3 mk-proj-sourcemarker))
+
+(defun mk-proj-basename (path)
+  (apply #'concat (reverse (mapcar (lambda (s)
+                                     (concat s "/"))
+                                   (cdr (reverse (split-string path "/")))))))
+
+(defun mk-proj-filename (path)
+  (car (reverse (split-string path "/"))))
+
 (defun mk-proj-replace-tail (str tail-str replacement)
   (if (string-match (concat tail-str "$")  str)
     (replace-match replacement t t str)
@@ -373,11 +401,9 @@ all others filtered."
 (defun* mk-proj-any (condp lst)
   "Apply CONDP to all elements of LST, return t as soon as CONDP
 yields t."
-  (let (b)
-    (dolist (x lst b)
-      (when b
-        (return-from "mk-proj-any" t))
-      (setq b (funcall condp x)))))
+  (dolist (x lst)
+    (when (funcall condp x)
+      (return-from "mk-proj-any" x))))
 
 (defun* mk-proj-all (condp lst)
   "Apply CONDP to all elements of LST, return nil as soon as
@@ -539,7 +565,132 @@ sourcemarker have partly changed in the file."
                        ))))))))
     r))
 
-(defun mk-proj-sourcemarker-restore (m)
+;; (defun mk-proj-string-entropy (str)
+;;   (let ((c-hash (make-hash-table))
+;;         (c-count 0))
+;;     (mapcar (lambda (c) (puthash c (1+ (or (gethash c c-hash nil)
+;;                                            (progn
+;;                                              (setq c-count (1+ c-count))
+;;                                              0))) c-hash)) str)
+;;     (/ (float c-count) (float (length str)))))
+
+;; (require 'fuzzy-match)
+
+;; (FM-closeness "(defun mk-proj-sourcemarker-search (ms)" "(defun mk-proj-sourcemarker-search (ms &optional foo)")
+
+;; (FM-matchiness "foo" "foo")
+
+(require 'fuzzy-match)
+
+;; (defun mk-proj-fuzzy-matches (string strings)
+;;   (let* ((string (FM-string-to-char-list string))
+;;          (strings (FM-strings-to-char-lists strings))
+;;          (bestfuzz (FM-matchiness-intern string (car strings)))
+;;          (matches (list (car strings)))
+;;          (strings (cdr strings))
+;;          thisfuzz)
+;;     (while strings
+;;       (setq thisfuzz (FM-matchiness-intern string (car strings)))
+;;       (cond ((= bestfuzz thisfuzz)
+;;              (setq matches (cons (car strings) matches)))
+;;             ((< bestfuzz thisfuzz)
+;;              (setq bestfuzz thisfuzz
+;;                    matches (list (car strings)))))
+;;       (setq strings (cdr strings)))
+;;     (and (not (zerop bestfuzz)) (FM-fuzzy-sort string matches))))
+
+;; (mk-proj-fuzzy-matches "(defun mk-proj-sourcemarker-search (ms)" (split-string (buffer-string) "\n"))
+
+;; (FM-matchiness "(defun mk-proj-sourcemarker-search (ms)" "(defun mk-proj-sourcemarker-search (m &optional ms)")
+
+(defun mk-proj-sourcemarker-fuzzy-search (ms)
+  (interactive)
+  (save-excursion
+    (widen)
+    (let (ms2 ms3)
+      (dolist (m ms)
+        (let ((p (first m))
+              (l (second (third m))))
+          (goto-char p)
+          (unless (looking-at (regexp-quote l))
+            (setq ms2 (cons m ms2)))))
+      (print ms2)
+      (print (length ms2))
+      (dolist (m ms2)
+        (let ((l (second (third m))))
+          (goto-char 0)
+          (unless (re-search-forward (regexp-quote l) nil t)
+            (setq ms3 (cons m ms3)))))
+      (print ms3)
+      (print (length ms3))
+      ;; (let ((lines (FM-strings-to-char-lists (split-string (buffer-string) "\n")))
+      ;;       (zms (mk-proj-zip ms3
+      ;;                         (mapcar (lambda (m) (FM-string-to-char-list (second (third m)))) ms3)
+      ;;                         (make-list (length ms3) 0)
+      ;;                         (make-list (length ms3) '())
+      ;;                         (make-list (length ms3) t)
+      ;;                         )))
+      ;;   (while lines
+      ;;     (let* ((line (car lines)))
+      ;;       (setq zms (mapcar (lambda (zs)
+      ;;                           (if (fifth zs)
+      ;;                               (let* ((m (first zs))
+      ;;                                      (string (second zs))
+      ;;                                      (bestfuzz (third zs))
+      ;;                                      (matches (fourth zs))
+      ;;                                      (thisfuzz (FM-matchiness-intern string line)))
+      ;;                                 (cond ((> thisfuzz (- (length string) 5))
+      ;;                                        (list m string thisfuzz (list line)))
+      ;;                                       ((= bestfuzz thisfuzz)
+      ;;                                        (list m string bestfuzz (cons line matches) t))
+      ;;                                       ((< bestfuzz thisfuzz)
+      ;;                                        (list m string thisfuzz (list line) t))
+      ;;                                       (t (list m string bestfuzz matches t))))
+      ;;                             zs)) zms))
+      ;;       (setq lines (cdr lines))))
+      ;;   (dolist (zs zms)
+      ;;     (let ((m (first zs))
+      ;;           (string (second zs))
+      ;;           (bestfuzz (third zs))
+      ;;           (matches (fourth zs)))
+      ;;       (print (prin1-to-string (FM-char-lists-to-strings matches))))))
+      )))
+
+;; (mk-proj-sourcemarker-fuzzy-search (make-list 5 mk-proj-sourcemarker))
+;; (print mk-proj-sourcemarker)
+
+;; (second (third mk-proj-sourcemarker))
+
+(defun we-need-to-be-faster-then-this (ms)
+  (interactive)
+  (let ((strings (split-string (buffer-string) "\n"))
+        (r '()))
+    (dolist (m ms r)
+      (let ((string (FM-string-to-char-list (second (third m)))))
+        (setq r (append r (FM-all-fuzzy-matches string strings)))))))
+
+;;(we-need-to-be-faster-then-this (make-list 50 mk-proj-sourcemarker))
+
+(defun mk-proj-sourcemarker-restore2 (ms)
+  (interactive)
+  ;; alle marker testen ob der point und central line noch passen
+  ;; in dem selben loop alle dateien/marker sammeln die gesucht werden müssen (search-marker)
+  ;; (dateien öffnen und merken welche am schluss geschlossen werden müssen)
+  ;;
+  ;; loop über alle dateien in den marker die zu suchen sind
+  ;; -- defun mk-proj-sourcemarker-fuzzy-search
+  ;; jede zeile mit allen marker central lines vergleichen die in der datei erwartet werden
+  ;; nur die central lines suchen, wenn eine gefunden wird das umfeld untersuchen
+  ;; bei perfektem(gut genug) hit den marker nicht mehr bei weiteren suchen berücksichtigen
+  ;; -- rückgabe aller marker die gefunden werden
+  ;; -- setzen von externen symbol auf liste von nicht gefundenen markern (wenn symbol existiert)
+  ;;
+  ;;
+)
+
+;;(mk-proj-sourcemarker-search `(,mk-proj-sourcemarker ,mk-proj-sourcemarker))
+
+(defun mk-proj-sourcemarker-restore (m &optional abort-rules)
   "Restoring point refered to by a sourcemarker M.
 
 This will look at all pieces of code that are a possible match for the sourcemarker
@@ -548,6 +699,8 @@ form of a marker.
 
 See also `mk-proj-sourcemarker-create'."
   (interactive)
+  (unless abort-rules
+    (setq abort-rules '(full-house central-line-matches)))
   (let* ((m-point (save-excursion
                     (goto-char (nth 0 m))
                     (point-at-bol)))
@@ -557,12 +710,12 @@ See also `mk-proj-sourcemarker-create'."
          (stamp-line (nth 1 m-stamp))
          (stamp-next-lines (nth 2 m-stamp))
          (n (+ (length stamp-next-lines) (length stamp-prev-lines) 1))
-         (m (/ (- n 1) 2))
-         (c (+ m 1))
+         (l (/ (- n 1) 2))
+         (c (+ l 1))
          (re-all (let ((s (concat "\\(^" (regexp-quote stamp-line) "$\\)")))
-                   (loop for i from 0 to (- m 1)
+                   (loop for i from 0 to (- l 1)
                          do (progn
-                              (let ((left (regexp-quote (nth (- (- m 1) i) stamp-prev-lines)))
+                              (let ((left (regexp-quote (nth (- (- l 1) i) stamp-prev-lines)))
                                     (right (regexp-quote (nth i stamp-next-lines))))
                                 (setq s (concat (unless (or (string-equal left "#eobp#")
                                                             (string-equal left "#bobp#"))
@@ -697,24 +850,49 @@ See also `mk-proj-sourcemarker-create'."
           ;; that tokens line number is then set to be our result, if the score is better then the last score
           (let* ((best-k nil)
                  (k nil)
-                 (best-point (loop for m in matches
-                                   do (setq k (nth 0 m))
+                 (best-point (loop for ma in matches
+                                   do (setq k (nth 0 ma))
                                    if (or (eq k c) (and k best-k (< (abs (- c k)) (abs (- c best-k)))) (eq best-k nil))
                                    do (setq best-k k)
                                    finally return (when (assoc best-k matches)
                                                     (assoc best-k matches)))))
             (when (or (and result (> score (car result))) (eq result nil))
-              (setq result `(,score ,best-point))))
+              (setq result `(,score ,best-point ,best-k))))
           ;; reset for next iteration
           (setq matches '()
                 score 0))
         ;; end of iteration, now we just return our result as a marker
         (print result)
         (when result
-          (let* ((p (nth 1 (car (last result))))
-                 (m (make-marker)))
-            ;;`(,p ,buf)
-            (set-marker m p buf)))
+          (let* ((p (nth 1 (second result)))
+                 (k (third result))
+                 (mrk (make-marker)))
+            (with-current-buffer buf
+              (goto-char p)
+              (when (< k c)
+                (loop for i from 1 to (- c k)
+                      do (progn
+                           (next-line-nomark)
+                           (while (and (save-excursion
+                                         (beginning-of-line)
+                                         (looking-at "^\\s-*$"))
+                                       (not (save-excursion
+                                              (end-of-line)
+                                              (eobp))))
+                             (next-line-nomark)))))
+              (when (> k c)
+                (loop for i from 1 to (- k c)
+                      do (progn
+                           (previous-line-nomark)
+                           (while (and (save-excursion
+                                         (beginning-of-line)
+                                         (looking-at "^\\s-*$"))
+                                       (not (save-excursion
+                                              (beginning-of-line)
+                                              (bobp))))
+                             (previous-line-nomark)))))
+              (beginning-of-line)
+              (set-marker mrk (point) buf))))
         ))))
 
 ;; (defun test-sourcemarker-create ()
@@ -826,21 +1004,56 @@ Works only for projects defined in org-mode. See also `mk-proj-config-get-val'"
     (mk-proj-assert-proj)
     (setq name mk-proj-name))
   (let ((marker (mk-proj-get-config-val 'org-marker name)))
-    (unless marker
-      (error "mk-project: can only modify config values of projects defined in org-mode"))
-    (with-current-buffer (marker-buffer marker)
-      (save-excursion
-        (goto-char (marker-position marker))
-        (if (cdr (assoc key (mk-org-symbol-table)))
-            (progn
-              (org-set-property (cdr (assoc key (mk-org-symbol-table))) (prin1-to-string value))
-              (setf (symbol-value (intern (concat "mk-proj-" (symbol-name key)))) value)
-              ;; (append `((,name ,key)) (mk-proj-filter (lambda (x)
-              ;;                                           (not (eq (car x) key)))
-              ;;                                         (mk-proj-find-config name)))
-              (project-def name `((,key ,value)) t))
-          (error "mk-proj-set-config-val: could not find property string for key"))))))
+    (if marker
+        (with-current-buffer (marker-buffer marker)
+          (save-excursion
+            (goto-char (marker-position marker))
+            (if (cdr (assoc key (mk-org-symbol-table)))
+                (progn
+                  (org-set-property (cdr (assoc key (mk-org-symbol-table))) (prin1-to-string value))
+                  (setf (symbol-value (intern (concat "mk-proj-" (symbol-name key)))) value)
+                  ;; (append `((,name ,key)) (mk-proj-filter (lambda (x)
+                  ;;                                           (not (eq (car x) key)))
+                  ;;                                         (mk-proj-find-config name)))
+                  (project-def name `((,key ,value)) t))
+              (error "mk-proj-set-config-val: could not find property string for key"))))
+      ;; alternative that finds and modifies a project-def lisp definition
+      (when mk-proj-config-file
+        (with-current-buffer (find-file-noselect mk-proj-config-file)
+          (save-excursion
+            (goto-char 0)
+            ;; find the project-def call that defines name, abort
+            ;; when multiple matches are found
+            (let ((re (concat "\\s-*\(project-def.*\"" name "\""))
+                  (matches '()))
+              (while (re-search-forward re nil t)
+                (setq matches (append matches `(,(point)))))
+              (when (= (length matches) 1)
+                (let ((re2 (concat "\(" (symbol-name key) ".*\)+$")))
+                  ;; either change existing (key value) pair or add new one
+                  (if (re-search-forward re2 nil t)
+                      (let* ((full (match-string 0))
+                             (open (apply #'+ (mapcar (lambda (c) (if (eq c ?\() 1 0)) full)))
+                             (close (apply #'+ (mapcar (lambda (c) (if (eq c ?\)) 1 0)) full))))
+                        ;; check if more open then closing parens, just abort if that is the case
+                        ;; most likely we are looking at a multi-line lambda then
+                        (unless (< (- close open) 0)
+                          (replace-match (concat "(" (symbol-name key) " " (prin1-to-string value) ")"))
+                          (insert (make-string (- close open) ?\)))))
+                    ;; if re2 is not found no such key exists and we add a new (key value) pair
+                    (progn
+                      (end-of-sexp)
+                      (beginning-of-line)
+                      (when (re-search-forward "\\(\(.*\\)\\([\)]++\\)$" nil t)
+                        (let ((full (match-string 0))
+                              (one (match-string 1))
+                              (two (match-string 2)))
+                          (replace-match (concat "(" (symbol-name key) " " (prin1-to-string value) ")\n"))
+                          (indent-according-to-mode)
+                          (insert full))))))))))))))
 
+
+;;(mk-proj-set-config-val 'machnocheinenfertig "kaputt" "testor")
 
 (defun* project-def (proj-name &optional config-alist inherit)
   "Associate the settings in CONFIG-ALIST with project PROJ-NAME.
@@ -930,7 +1143,7 @@ See also `project-undef'."
       (newline))
     (mk-proj-config-insert config-alist name)))
 
-(defun* mk-proj-config-buffer (&optional (state :create))
+(defun* mk-proj-config-buffer (&optional (state :create) config-alist)
   (case state
     (:create
      (let* ((proj-b (current-buffer))
@@ -976,7 +1189,36 @@ See also `project-undef'."
     (interactive)
     (kill-buffer (buffer-name))))
 
-(defun mk-proj-look-for (args &optional dir))
+
+
+
+
+
+
+(defvar mk-proj-guess-functions '((name . ((('basedir)
+                                            (let ((name (car (reverse (mk-proj-filter #'string-to-list
+                                                                                      (split-string basedir) "/")))))
+                                              (unless (gethash name mk-proj-list)
+                                                `(100 . ,name))))
+                                           (('buffer)
+                                            (progn
+                                              (unless buffer
+                                                (setq buffer (current-buffer)))
+                                              `(10 . ,(car (split-string (mk-proj-filename (buffer-file-name buffer)) "\\.")))))))
+                                  (basedir . ((('buffer)
+                                               `(10 . ,(mk-proj-basedir (buffer-file-name buffer))))))
+                                  (vcs . ((('basedir)
+                                           (let ((r nil))
+                                             (loop for f in (directory-files (mk-proj-basename (buffer-file-name (current-buffer))))
+                                                   until (setq r (mk-proj-any (lambda (y) (string-equal (cdr y) ".git")) mk-proj-vcs-path))
+                                                   finally return `(10 . ,(car r)))))))))
+
+(defun mk-proj-guess-config (args &optional dir))
+
+
+
+
+
 
 
 
@@ -1357,7 +1599,7 @@ C-u prefix, start from the current directory."
     (when mk-proj-tags-file
       (setq find-cmd (concat find-cmd " -not -name 'TAGS'")))
     (when (mk-proj-get-vcs-path)
-      (setq find-cmd (concat find-cmd " -not -path " (mk-proj-get-vcs-path))))
+      (setq find-cmd (concat find-cmd " -not -path " (concat "'*/" (mk-proj-get-vcs-path) "/*'"))))
     (let* ((whole-cmd (concat (or (mk-proj-find-cmd-val 'grep)
                                   (concat find-cmd " -print0"))
                               " | xargs -0 -e " grep-cmd))
@@ -1402,36 +1644,66 @@ With C-u prefix, start ack from the current directory."
 ;; Compile
 ;; ---------------------------------------------------------------------
 
-(defun project-compile (&optional opts)
+(defun project-make (&optional opts cmd name)
  "Run the compile command (string or function) for this project."
  (interactive)
- (mk-proj-assert-proj)
+ (unless name
+   (mk-proj-assert-proj)
+   (setq name mk-proj-name))
+ (unless cmd
+   (setq cmd (mk-proj-get-config-val 'compile-cmd name)))
  (let ((default-directory mk-proj-basedir))
-   (cond ((stringp mk-proj-compile-cmd)
+   (cond ((stringp cmd)
           (when (and (null opts) (called-interactively-p))
-            (setq opts (read-string "Compile options: ")))
-          (compile (concat mk-proj-compile-cmd " " opts)))
-         ((fboundp mk-proj-compile-cmd)
-          (cond ((commandp mk-proj-compile-cmd)
-                 (call-interactively mk-proj-compile-cmd))
+            (setq opts (read-string (concat "Compile options (" cmd "):"))))
+          (compile (concat cmd " " opts)))
+         ((fboundp cmd)
+          (cond ((commandp cmd)
+                 (call-interactively cmd))
                 (opts
-                 (funcall mk-proj-compile-cmd opts))
-                (t (funcall mk-proj-compile-cmd))))
+                 (funcall cmd opts))
+                (t (funcall cmd))))
          (t (message "No compile command defined.")))))
 
 (defun project-compile (&optional opts)
-  "Run the compile command for this project."
   (interactive)
   (mk-proj-assert-proj)
-  (project-home)
-  (if (stringp mk-proj-compile-cmd)
-      (if opts
-          (funcall 'mk-proj-compile opts)
-        (call-interactively 'mk-proj-compile))
-    (if (fboundp mk-proj-compile-cmd)
-        (if (commandp mk-proj-compile-cmd)
-            (call-interactively mk-proj-compile-cmd)
-          (funcall mk-proj-compile-cmd)))))
+  (project-make opts mk-proj-compile-cmd))
+
+(defun project-install (&optional opts)
+  (interactive)
+  (mk-proj-assert-proj)
+  (project-make opts mk-proj-install-cmd))
+
+(defun project-run (&optional opts)
+  (interactive)
+  (mk-proj-assert-proj)
+  (project-make opts mk-proj-run-cmd))
+
+(defun project-install-and-run (&optional opts1 opts2)
+  (interactive)
+  (mk-proj-assert-proj)
+  (project-make opts1 mk-proj-install-cmd)
+  (project-make opts2 mk-proj-run-cmd))
+
+(defun project-syntaxcheck (&optional opts)
+  (interactive)
+  (mk-proj-assert-proj)
+  (project-make opts mk-proj-syntaxcheck-cmd))
+
+;; (defun project-compile (&optional opts)
+;;   "Run the compile command for this project."
+;;   (interactive)
+;;   (mk-proj-assert-proj)
+;;   (project-home)
+;;   (if (stringp mk-proj-compile-cmd)
+;;       (if opts
+;;           (funcall 'mk-proj-compile opts)
+;;         (call-interactively 'mk-proj-compile))
+;;     (if (fboundp mk-proj-compile-cmd)
+;;         (if (commandp mk-proj-compile-cmd)
+;;             (call-interactively mk-proj-compile-cmd)
+;;           (funcall mk-proj-compile-cmd)))))
 
 ;; ---------------------------------------------------------------------
 ;; Dired
@@ -1503,7 +1775,7 @@ With C-u prefix, start ack from the current directory."
                              (mk-proj-find-cmd-ignore-args mk-proj-ignore-patterns name)))
            (proc-name "index-process"))
       (when (mk-proj-get-vcs-path)
-        (setq find-cmd (concat find-cmd " -not -path " (mk-proj-get-vcs-path))))
+        (setq find-cmd (concat find-cmd " -not -path " (concat "'*/" (mk-proj-get-vcs-path) "/*'"))))
       (setq find-cmd (or (mk-proj-find-cmd-val 'index name) find-cmd))
       (with-current-buffer (get-buffer-create (mk-proj-fib-name name))
         (buffer-disable-undo) ;; this is a large change we don't need to undo
@@ -1551,31 +1823,39 @@ file-relative-name, file-name-as-directory"
           (concat (char-to-string (+ c1 32)) (substring file 1))
         file))))
 
-(defun* project-find-file (regex)
-  "Find file in the current project matching the given regex.
+(defun* project-match-file (regex)
+  "Ask for REGEX and match files in project accordingly."
+  (interactive "sFind file in project matching: ")
+  (project-find-file regex))
 
-The files listed in buffer *file-index* are scanned for regex
+(defun* project-find-file (&optional regex)
+  "Find file in the current project.
+
+The files listed in buffer *file-index* are scanned for REGEX
 matches. If only one match is found, the file is opened
 automatically. If more than one match is found, prompt for
-completion. See also: `project-index', `project-find-file-ido'."
-  (interactive "sFind file in project matching: ")
+completion.
+
+If REGEX is nil all project files are matched.
+
+See also: `project-index', `project-find-file-ido'."
   (mk-proj-assert-proj)
   (unless (get-buffer (mk-proj-fib-name))
     (message "Please use project-index to create the index before running project-find-file")
     (return-from "project-find-file" nil))
-    (let* ((matches (mk-proj-fib-matches regex))
-           (match-cnt (length matches)))
-      (cond
-       ((= 0 match-cnt)
-        (message "No matches for \"%s\" in this project" regex))
-       ((= 1 match-cnt )
-        (find-file (car matches)))
-       (t
-        (let ((file (if (mk-proj-use-ido)
-                        (ido-completing-read "Multiple matches, pick one (ido): " matches)
-                      (completing-read "Multiple matches, pick one: " matches))))
-          (when file
-            (find-file (concat (file-name-as-directory mk-proj-basedir) file))))))))
+  (let* ((matches (mk-proj-fib-matches (or regex ".*")))
+         (match-cnt (length matches)))
+    (cond
+     ((= 0 match-cnt)
+      (message "No matches for \"%s\" in this project" regex))
+     ((= 1 match-cnt )
+      (find-file (car matches)))
+     (t
+      (let ((file (if (mk-proj-use-ido)
+                      (ido-completing-read "Select match (ido): " matches)
+                    (completing-read "Select match: " matches))))
+        (when file
+          (find-file (concat (file-name-as-directory mk-proj-basedir) file))))))))
 
 (defun* project-find-file-ido ()
   "Find file in the current project using 'ido'.
