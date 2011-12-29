@@ -157,16 +157,16 @@ If non-null (or if the function returns non-null), the custom
 find command will be used and the `mk-proj-ignore-patterns' and
 `mk-proj-vcs' settings are not used when in the grep command.")
 
-(defun mk-proj-fib-name (&optional name)
+(defun mk-proj-fib-name (&optional proj-name)
   "Buffer name of the file-list cache. This buffer contains a
 list of all the files under the project's basedir (minus those
 matching ignore-patterns) or, if index-find-cmd is set, the list
 of files found by calling the custom find command.  The list is
 used by `project-find-file' to quickly locate project files."
-  (unless name
+  (unless proj-name
     (mk-proj-assert-proj)
-    (setq name mk-proj-name))
-  (concat "*" name " file-index*"))
+    (setq proj-name mk-proj-name))
+  (concat "*" proj-name " file-index*"))
 
 (defconst mk-proj-vcs-path '((git . ".git")
                              (cvs . ".CVS")
@@ -219,25 +219,25 @@ See also `mk-proj-required-vars' `mk-proj-var-functions' `mk-proj-load-vars'")
                                 org-marker
                                 org-level))
 
-(defvar mk-proj-var-functions '((basedir . (lambda (var val &optional name)
+(defvar mk-proj-var-functions '((basedir . (lambda (var val &optional proj-name)
                                              (when (stringp val)
                                                (expand-file-name val))))
-                                (tags-file . (lambda (var val &optional name)
+                                (tags-file . (lambda (var val &optional proj-name)
                                                (if val
                                                    (expand-file-name val)
-                                                 (mk-proj-get-cache-path var name))))
-                                (file-list-cache . (lambda (var val &optional name)
+                                                 (mk-proj-get-cache-path var proj-name))))
+                                (file-list-cache . (lambda (var val &optional proj-name)
                                                      (if val
                                                          (expand-file-name val)
-                                                       (mk-proj-get-cache-path var name))))
-                                (open-files-cache . (lambda (var val &optional name)
+                                                       (mk-proj-get-cache-path var proj-name))))
+                                (open-files-cache . (lambda (var val &optional proj-name)
                                                       (if val
                                                           (expand-file-name val)
-                                                        (mk-proj-get-cache-path var name))))
-                                (open-friends-cache . (lambda (var val &optional name)
+                                                        (mk-proj-get-cache-path var proj-name))))
+                                (open-friends-cache . (lambda (var val &optional proj-name)
                                                         (if val
                                                             (expand-file-name val)
-                                                          (mk-proj-get-cache-path var name)))))
+                                                          (mk-proj-get-cache-path var proj-name)))))
   "Config vars from `mk-proj-required-vars' and `mk-proj-optional-vars' (except 'name')
 can be associated with a function in this association list, which will be
 applied to the value of the var right after it is taken from the config-alist.
@@ -359,12 +359,12 @@ load time. See also `project-menu-remove'."
   (let ((b (get-buffer bufname)))
     (when b (kill-buffer b))))
 
-(defun mk-proj-get-vcs-path (&optional name)
-  (unless name
+(defun mk-proj-get-vcs-path (&optional proj-name)
+  (unless proj-name
     (mk-proj-assert-proj)
-    (setq name mk-proj-name))
-  (if (or mk-proj-vcs (mk-proj-get-config-val 'vcs name t))
-      (cdr (assoc (or mk-proj-vcs (mk-proj-get-config-val 'vcs name t)) mk-proj-vcs-path))
+    (setq proj-name mk-proj-name))
+  (if (or mk-proj-vcs (mk-proj-get-config-val 'vcs proj-name t))
+      (cdr (assoc (or mk-proj-vcs (mk-proj-get-config-val 'vcs proj-name t)) mk-proj-vcs-path))
     nil))
 
 (defun mk-proj-has-univ-arg ()
@@ -378,14 +378,14 @@ load time. See also `project-menu-remove'."
 (defun mk-proj-use-ido ()
   (and (boundp 'ido-mode) mk-proj-use-ido-selection))
 
-(defun mk-proj-find-cmd-val (context &optional name)
-  (unless name
+(defun mk-proj-find-cmd-val (context &optional proj-name)
+  (unless proj-name
     (mk-proj-assert-proj)
-    (setq name mk-proj-name))
+    (setq proj-name mk-proj-name))
   (let ((cmd (ecase context
-               ('src   (mk-proj-get-config-val 'src-find-cmd name))
-               ('grep  (mk-proj-get-config-val 'grep-find-cmd name))
-               ('index (mk-proj-get-config-val 'index-find-cmd name)))))
+               ('src   (mk-proj-get-config-val 'src-find-cmd proj-name))
+               ('grep  (mk-proj-get-config-val 'grep-find-cmd proj-name))
+               ('index (mk-proj-get-config-val 'index-find-cmd proj-name)))))
     (if cmd
         (cond ((stringp cmd) cmd)
               ((functionp cmd) (funcall cmd context))
@@ -1034,22 +1034,21 @@ for the KEY and the first value that is found is returned."
                   (when (and inherit parent)
                     (mk-proj-get-config-val key parent t)))))
          (fn (cdr (assoc key mk-proj-var-functions))))
-    (if fn (funcall fn key val proj) val)))
+    (if fn (funcall fn key (unless (some (apply-partially 'eq key) mk-proj-internal-vars) val) proj) val)))
 
-;;(mk-proj-get-config-val 'file-list-cache "mk-project" t)
-
+;;(mk-proj-get-config-val 'file-list-cache "mk-project:overlay for todos in project buffers" nil)
 
 (defalias 'mk-proj-config-val 'mk-proj-get-config-val
   "Alias for `mk-proj-get-config-val' to ensure backward compatibility.")
 
-(defun mk-proj-set-config-val (key value &optional name)
+(defun mk-proj-set-config-val (key value &optional proj-name)
   "Set the value associated with KEY to VALUE in config of project NAME.
 
 Works only for projects defined in org-mode. See also `mk-proj-config-get-val'"
-  (unless name
+  (unless proj-name
     (mk-proj-assert-proj)
-    (setq name mk-proj-name))
-  (let ((marker (mk-proj-get-config-val 'org-marker name)))
+    (setq proj-name mk-proj-name))
+  (let ((marker (mk-proj-get-config-val 'org-marker proj-name)))
     (if marker
         (with-current-buffer (marker-buffer marker)
           (save-excursion
@@ -1060,8 +1059,8 @@ Works only for projects defined in org-mode. See also `mk-proj-config-get-val'"
                   (setf (symbol-value (intern (concat "mk-proj-" (symbol-name key)))) value)
                   ;; (append `((,name ,key)) (mk-proj-filter (lambda (x)
                   ;;                                           (not (eq (car x) key)))
-                  ;;                                         (mk-proj-find-config name)))
-                  (project-def name `((,key ,value)) t))
+                  ;;                                         (mk-proj-find-config proj-name)))
+                  (project-def proj-name `((,key ,value)) t))
               (error "mk-proj-set-config-val: could not find property string for key"))))
       ;; alternative that finds and modifies a project-def lisp definition
       (when mk-proj-config-file
@@ -1070,7 +1069,7 @@ Works only for projects defined in org-mode. See also `mk-proj-config-get-val'"
             (goto-char 0)
             ;; find the project-def call that defines name, abort
             ;; when multiple matches are found
-            (let ((re (concat "\\s-*\(project-def.*\"" name "\""))
+            (let ((re (concat "\\s-*\(project-def.*\"" proj-name "\""))
                   (matches '()))
               (while (re-search-forward re nil t)
                 (setq matches (append matches `(,(point)))))
@@ -1174,7 +1173,7 @@ See also `project-undef'."
 (defvar mk-proj-config-file "/home/lazor/.emacs.d/init-mkproject.el")
 (defvar mk-proj-config-section ";; autogenerated projects")
 
-(defun mk-proj-config-save (config-alist &optional name)
+(defun mk-proj-config-save (config-alist &optional proj-name)
   (with-current-buffer (find-file-noselect mk-proj-config-file)
     (goto-char 0)
     (when (or (search-forward mk-proj-config-section nil t)
@@ -1187,7 +1186,7 @@ See also `project-undef'."
                 nil))
       (end-of-line)
       (newline))
-    (mk-proj-config-insert config-alist name)))
+    (mk-proj-config-insert config-alist proj-name)))
 
 (defun* mk-proj-config-buffer (&optional (state :create) config-alist)
   (case state
@@ -1270,7 +1269,7 @@ See also `project-undef'."
 
 (defun project-undef (name)
   "Opposite of `project-define'."
-  (remhash name mk-proj-list))
+  (remhash proj-name mk-proj-list))
 
 (defun mk-proj-proj-vars ()
   "This returns a list of all proj-vars as symbols.
@@ -1295,9 +1294,10 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
   (catch 'mk-proj-load-vars
     (labels ((maybe-set-var (var)
                             (let ((proj-var (intern (concat "mk-proj-" (symbol-name var))))
-                                  (val (mk-proj-config-val var proj-name t))
-                                  (fn (cdr (assoc var mk-proj-var-functions))))
-                              (setf (symbol-value proj-var) (if fn (funcall fn var val) val)))))
+                                  (val (mk-proj-get-config-val var proj-name t))
+                                  ;;(fn (cdr (assoc var mk-proj-var-functions)))
+                                  )
+                              (setf (symbol-value proj-var) val))))
       (mk-proj-defaults)
       (let ((required-vars (mk-proj-filter (lambda (s)
                                              (not (string-equal (symbol-name s) "name")))
@@ -1311,24 +1311,24 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
       (dolist (v mk-proj-optional-vars)
         (maybe-set-var v)))))
 
-(defun mk-proj-get-cache-path (symbol &optional name)
-  (unless name
+(defun mk-proj-get-cache-path (symbol &optional proj-name)
+  (unless proj-name
     (mk-proj-assert-proj)
-    (setq name mk-proj-name))
+    (setq proj-name mk-proj-name))
   (let ((directory (concat mk-global-cache-root
-                           (cond ((mk-proj-get-config-val 'parent name)
-                                  (let ((a (concat "/" (mk-proj-join "/" (mk-proj-ancestry name)))))
-                                    (if (mk-proj-get-config-val 'basedir name) a (concat a "/"))))
+                           (cond ((mk-proj-get-config-val 'parent proj-name)
+                                  (let ((a (concat "/" (mk-proj-join "/" (mk-proj-ancestry proj-name)))))
+                                    (if (mk-proj-get-config-val 'basedir proj-name) a (concat a "/"))))
                                  (t
-                                  (concat "/" name "/")))))
+                                  (concat "/" proj-name "/")))))
         (file (concat (symbol-name symbol))))
     (make-directory directory t)
     (let ((r (concat directory file)))
       (cond ((file-exists-p r)
              r)
-            ((and (mk-proj-get-config-val 'parent name) (file-exists-p (mk-proj-get-config-val 'parent name)))
+            ((and (mk-proj-get-config-val 'parent proj-name) (file-exists-p (mk-proj-get-config-val 'parent proj-name)))
              (progn
-               (copy-file (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent name))
+               (copy-file (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent proj-name))
                           r)
                r))
             (t
@@ -1339,8 +1339,8 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
             (concatenate 'string a delimiter b))
           strings))
 
-(defun mk-proj-ancestry (&optional name)
-  (let* ((current (or name
+(defun mk-proj-ancestry (&optional proj-name)
+  (let* ((current (or proj-name
                       (progn
                         (mk-proj-assert-proj)
                         mk-proj-name)))
@@ -1353,21 +1353,21 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
 (defun mk-proj-load (name)
   (interactive)
   (let ((oldname mk-proj-name))
-    (unless name
-      (error "mk-proj-load: name should not be nil"))
-    (let ((proj-config (mk-proj-find-config name)))
-      (unless (or (string= oldname name) (eq proj-config nil))
+    (unless proj-name
+      (error "mk-proj-load: proj-name should not be nil"))
+    (let ((proj-config (mk-proj-find-config proj-name)))
+      (unless (or (string= oldname proj-name) (eq proj-config nil))
         (project-unload t))
       (if proj-config
-          (let ((v (mk-proj-load-vars name proj-config)))
+          (let ((v (mk-proj-load-vars proj-name proj-config)))
             (when v
-              (error "Required config value '%s' missing in %s!" (symbol-name v) name)))
-        (error "Project %s does not exist!" name)))
+              (error "Required config value '%s' missing in %s!" (symbol-name v) proj-name)))
+        (error "Project %s does not exist!" proj-name)))
     (when (not (file-directory-p mk-proj-basedir))
       (error "Base directory %s does not exist!" mk-proj-basedir))
     (when (and mk-proj-vcs (not (mk-proj-get-vcs-path)))
       (error "Invalid VCS setting!"))
-    (message "Loading project %s ..." name)
+    (message "Loading project %s ..." proj-name)
     (cd mk-proj-basedir)
     (mk-proj-tags-load)
     (mk-proj-fib-init)
@@ -1378,16 +1378,16 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
     (mk-proj-visit-saved-open-files)
     (mk-proj-visit-saved-open-friends)
     (mk-proj-visit-sourcemarker)
-    (message "Loading project %s done" name)))
+    (message "Loading project %s done" proj-name)))
 
-(defun project-load (&optional name)
+(defun project-load (&optional proj-name)
   "Load a project's settings."
   (interactive)
-  (let ((name (or name
+  (let ((name (or proj-name
                   (if (mk-proj-use-ido)
                       (ido-completing-read "Project Name (ido): " (mk-proj-names))
                     (completing-read "Project Name: " (mk-proj-names))))))
-    (mk-proj-load name)))
+    (mk-proj-load proj-name)))
 
 (defun mk-proj-kill-emacs-hook ()
   "Ensure we save the open-files-cache info on emacs exit"
@@ -1453,33 +1453,34 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
 
 (defun mk-proj-buffers ()
   "Get a list of buffers that reside in this project's basedir"
+  (mk-proj-assert-proj)
   (let ((buffers nil))
     (dolist (b (buffer-list))
       (when (mk-proj-buffer-p b) (push b buffers)))
     buffers))
 
-(defun project-status (&optional name)
+(defun project-status (&optional proj-name)
   "View project's variables."
   (interactive)
-  (unless name
+  (unless proj-name
     (mk-proj-assert-proj)
-    (setq name mk-proj-name))
+    (setq proj-name mk-proj-name))
   (if mk-proj-basedir
       (let ((b (get-buffer-create "*mk-proj: project-status*")))
         (with-current-buffer b
           (kill-region (point-min) (point-max))
           (dolist (v (append mk-proj-required-vars mk-proj-optional-vars))
-            (insert (format "%-24s = %s\n" (symbol-name v) (mk-proj-config-val v name t)))))
+            (insert (format "%-24s = %s\n" (symbol-name v) (mk-proj-config-val v proj-name t)))))
         (when (not (eq b (current-buffer)))
           (switch-to-buffer-other-window b)))
     (message "No project loaded.")))
 
-;; (unless name
+;; (unless proj-name
 ;;   (mk-proj-assert-proj)
-;;   (setq name mk-proj-name))
+;;   (setq proj-name mk-proj-name))
 ;; (let ((msg))
 ;;   (dolist (v (append mk-proj-required-vars mk-proj-optional-vars))
-;;     (setq msg (concat msg (format "%-24s = %s\n" (symbol-name v) (mk-proj-config-val v name t)))))
+;;     (setq msg (concat msg (format "%-24s = %s\n" (symbol-name v) (mk-proj-config-val v proj-name t)))))
 ;;   (message msg))
 ;; )
 
@@ -1593,14 +1594,14 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
         (set-process-sentinel (get-process proc-name) 'mk-proj-etags-cb))
     (message "mk-proj-tags-file is not set")))
 
-(defun mk-proj-find-cmd-src-args (src-patterns &optional name)
+(defun mk-proj-find-cmd-src-args (src-patterns &optional proj-name)
   "Generate the ( -name <pat1> -o -name <pat2> ...) pattern for find cmd"
-  (unless name
+  (unless proj-name
     (mk-proj-assert-proj)
-    (setq name mk-proj-name))
+    (setq proj-name mk-proj-name))
   (if src-patterns
       (let ((name-expr " \\(")
-            (regex-or-name-arg (if (mk-proj-get-config-val 'patterns-are-regex name)
+            (regex-or-name-arg (if (mk-proj-get-config-val 'patterns-are-regex proj-name)
                                    "-regex"
                                  "-name")))
         (dolist (pat src-patterns)
@@ -1608,13 +1609,13 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
         (concat (mk-proj-replace-tail name-expr "-o " "") "\\) "))
     ""))
 
-(defun mk-proj-find-cmd-ignore-args (ignore-patterns &optional name)
+(defun mk-proj-find-cmd-ignore-args (ignore-patterns &optional proj-name)
   "Generate the -not ( -name <pat1> -o -name <pat2> ...) pattern for find cmd"
-  (unless name
+  (unless proj-name
     (mk-proj-assert-proj)
-    (setq name mk-proj-name))
+    (setq proj-name mk-proj-name))
   (if ignore-patterns
-      (concat " -not " (mk-proj-find-cmd-src-args ignore-patterns name))
+      (concat " -not " (mk-proj-find-cmd-src-args ignore-patterns proj-name))
     ""))
 
 ;; ---------------------------------------------------------------------
@@ -1690,14 +1691,14 @@ With C-u prefix, start ack from the current directory."
 ;; Compile
 ;; ---------------------------------------------------------------------
 
-(defun project-make (&optional opts cmd name)
+(defun project-make (&optional opts cmd proj-name)
  "Run the compile command (string or function) for this project."
  (interactive)
- (unless name
+ (unless proj-name
    (mk-proj-assert-proj)
-   (setq name mk-proj-name))
+   (setq proj-name mk-proj-name))
  (unless cmd
-   (setq cmd (mk-proj-get-config-val 'compile-cmd name)))
+   (setq cmd (mk-proj-get-config-val 'compile-cmd proj-name)))
  (let ((default-directory mk-proj-basedir))
    (cond ((stringp cmd)
           (when (and (null opts) (called-interactively-p))
@@ -1765,81 +1766,84 @@ With C-u prefix, start ack from the current directory."
 ;; Find-file
 ;; ---------------------------------------------------------------------
 
-(defun mk-proj-fib-init (&optional name)
+(defun mk-proj-fib-init (&optional proj-name)
   "Either load the *file-index* buffer from the file cache, or create it afresh."
-  (if (and (mk-proj-get-config-val 'file-list-cache name t)
-           (file-readable-p (mk-proj-get-config-val 'file-list-cache name t)))
-      (with-current-buffer (find-file-noselect (mk-proj-get-config-val 'file-list-cache name t))
-          (with-current-buffer (rename-buffer (mk-proj-fib-name name))
+  (if (and (mk-proj-get-config-val 'file-list-cache proj-name t)
+           (file-readable-p (mk-proj-get-config-val 'file-list-cache proj-name t)))
+      (with-current-buffer (find-file-noselect (mk-proj-get-config-val 'file-list-cache proj-name t))
+          (with-current-buffer (rename-buffer (mk-proj-fib-name proj-name))
             (setq buffer-read-only t)
             (set-buffer-modified-p nil)
-            (message (concat "Loading " (mk-proj-fib-name name) " from %s") (mk-proj-get-config-val 'file-list-cache name t))))
-    (project-index name)))
+            (message (concat "Loading " (mk-proj-fib-name proj-name) " from %s") (mk-proj-get-config-val 'file-list-cache proj-name t))))
+    (project-index proj-name)))
 
-(defun mk-proj-fib-clear (&optional name)
+;;(mk-proj-fib-init nil)
+;;(setq proj-name nil)
+
+(defun mk-proj-fib-clear (&optional proj-name)
   "Clear the contents of the fib buffer"
-  (unless name
+  (unless proj-name
     (mk-proj-assert-proj)
-    (setq name mk-proj-name))
-  (let ((buf (get-buffer (mk-proj-fib-name name))))
+    (setq proj-name mk-proj-name))
+  (let ((buf (get-buffer (mk-proj-fib-name proj-name))))
     (when buf
       (with-current-buffer buf
         (setq buffer-read-only nil)
         (kill-region (point-min) (point-max))
         (setq buffer-read-only t)))))
 
-(defun mk-proj-fib-cb (process event &optional name)
+(defun mk-proj-fib-cb (process event &optional proj-name)
   "Handle failure to complete fib building"
-  (unless name
+  (unless proj-name
     (mk-proj-assert-proj)
-    (setq name mk-proj-name))
-  (print name)
+    (setq proj-name mk-proj-name))
+  (print proj-name)
   (cond
    ((string= event "finished\n")
-    (with-current-buffer (get-buffer (mk-proj-fib-name name))
+    (with-current-buffer (get-buffer (mk-proj-fib-name proj-name))
       (setq buffer-read-only t)
-      (when (mk-proj-get-config-val 'file-list-cache name t)
-        (write-file (mk-proj-get-config-val 'file-list-cache name t))
-        (rename-buffer (mk-proj-fib-name name))))
-    (message "Refreshing %s buffer...done" (mk-proj-fib-name name)))
+      (when (mk-proj-get-config-val 'file-list-cache proj-name t)
+        (write-file (mk-proj-get-config-val 'file-list-cache proj-name t))
+        (rename-buffer (mk-proj-fib-name proj-name))))
+    (message "Refreshing %s buffer...done" (mk-proj-fib-name proj-name)))
    (t
-    (mk-proj-fib-clear name)
-    (message "Failed to generate the %s buffer!" (mk-proj-fib-name name)))))
+    (mk-proj-fib-clear proj-name)
+    (message "Failed to generate the %s buffer!" (mk-proj-fib-name proj-name)))))
 
-(defun project-index (&optional name)
+(defun project-index (&optional proj-name)
   "Regenerate the *file-index* buffer that is used for project-find-file"
   (interactive)
-  (unless name
+  (unless proj-name
     (mk-proj-assert-proj)
-    (setq name mk-proj-name))
-  (when (mk-proj-get-config-val 'file-list-cache name t)
-    (mk-proj-fib-clear name)
-    (let* ((default-directory (file-name-as-directory (mk-proj-get-config-val 'basedir name t)))
-           (start-dir (if mk-proj-file-index-relative-paths "." mk-proj-get-config-val 'basedir name t))
+    (setq proj-name mk-proj-name))
+  (when (mk-proj-get-config-val 'file-list-cache proj-name t)
+    (mk-proj-fib-clear proj-name)
+    (let* ((default-directory (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t)))
+           (start-dir (if mk-proj-file-index-relative-paths "." mk-proj-get-config-val 'basedir proj-name t))
            (find-cmd (concat "find '" start-dir "' -type f "
-                             (mk-proj-find-cmd-src-args mk-proj-src-patterns name)
-                             (mk-proj-find-cmd-ignore-args mk-proj-ignore-patterns name)))
+                             (mk-proj-find-cmd-src-args mk-proj-src-patterns proj-name)
+                             (mk-proj-find-cmd-ignore-args mk-proj-ignore-patterns proj-name)))
            (proc-name "index-process"))
       (when (mk-proj-get-vcs-path)
         (setq find-cmd (concat find-cmd " -not -path " (concat "'*/" (mk-proj-get-vcs-path) "/*'"))))
-      (setq find-cmd (or (mk-proj-find-cmd-val 'index name) find-cmd))
-      (with-current-buffer (get-buffer-create (mk-proj-fib-name name))
+      (setq find-cmd (or (mk-proj-find-cmd-val 'index proj-name) find-cmd))
+      (with-current-buffer (get-buffer-create (mk-proj-fib-name proj-name))
         (buffer-disable-undo) ;; this is a large change we don't need to undo
         (setq buffer-read-only nil))
       (message "project-index cmd: \"%s\"" find-cmd)
-      (message "Refreshing %s buffer..." (mk-proj-fib-name name))
-      (start-process-shell-command proc-name (mk-proj-fib-name name) find-cmd)
-      (set-process-sentinel (get-process proc-name) (lambda (p e) (mk-proj-fib-cb p e name))))))
+      (message "Refreshing %s buffer..." (mk-proj-fib-name proj-name))
+      (start-process-shell-command proc-name (mk-proj-fib-name proj-name) find-cmd)
+      (set-process-sentinel (get-process proc-name) (lambda (p e) (mk-proj-fib-cb p e proj-name))))))
 
-(defun mk-proj-fib-matches (&optional regex name)
+(defun mk-proj-fib-matches (&optional regex proj-name)
   "Return list of files in *file-index* matching regex.
 
 If regex is nil, return all files. Returned file paths are
 relative to the project's basedir."
   (let ((files '()))
-    (unless (get-buffer (mk-proj-fib-name name))
-      (mk-proj-fib-init name))
-    (with-current-buffer (mk-proj-fib-name name)
+    (unless (get-buffer (mk-proj-fib-name proj-name))
+      (mk-proj-fib-init proj-name))
+    (with-current-buffer (mk-proj-fib-name proj-name)
       (goto-char (point-min))
       (while
           (progn
@@ -1849,7 +1853,7 @@ relative to the project's basedir."
               (when (> (length raw-file) 0)
                 ;; file names in buffer can be absolute or relative to basedir
                 (let ((file (if (file-name-absolute-p raw-file)
-                                (file-relative-name raw-file (mk-proj-get-config-val 'basedir name))
+                                (file-relative-name raw-file (mk-proj-get-config-val 'basedir proj-name))
                               raw-file)))
                   (if regex
                       (when (string-match regex file) (add-to-list 'files file))
@@ -1982,28 +1986,28 @@ project is not loaded."
 
 (defvar mk-proj-open-friends-cache nil)
 
-(defun mk-proj-find-friendly-projects (&optional name)
-  (unless name
+(defun mk-proj-find-friendly-projects (&optional proj-name)
+  (unless proj-name
     (mk-proj-assert-proj)
-    (setq name mk-proj-name))
+    (setq proj-name mk-proj-name))
   ;; go through all configs
   ;; collect all projects which have the requested name in their friend list
   ;; remove duplicates and return
   (let ((r '()))
     (maphash (lambda (k c)
-               (unless (string-equal k name)
+               (unless (string-equal k proj-name)
                  (when (mk-proj-any (lambda (f)
-                                      (string-equal f name))
+                                      (string-equal f proj-name))
                                     (mk-proj-config-val 'friends c))
                    (setq r (append r `(,k)))))) mk-proj-list)
-    (remove-duplicates (append r (mk-proj-config-val 'friends name t)) :test #'string-equal)))
+    (remove-duplicates (append r (mk-proj-config-val 'friends proj-name t)) :test #'string-equal)))
 
-(defun mk-proj-fib-friend-matches (&optional regex name)
-  (unless name
+(defun mk-proj-fib-friend-matches (&optional regex proj-name)
+  (unless proj-name
     (mk-proj-assert-proj)
-    (setq name mk-proj-name))
+    (setq proj-name mk-proj-name))
   (let ((resulting-matches '()))
-    (dolist (friend (mk-proj-get-config-val 'friends name) resulting-matches)
+    (dolist (friend (mk-proj-get-config-val 'friends proj-name) resulting-matches)
       (if (file-exists-p (expand-file-name friend))
           (if regex
               (when (string-match regex friend) (add-to-list 'resulting-matches (expand-file-name friend)))
@@ -2134,17 +2138,17 @@ With C-u prefix, act like `project-ack'."
 
 (defun mk-proj-find-projects-owning-file (file))
 
-(defun project-friend-this (&optional name)
+(defun project-friend-this (&optional proj-name)
   (interactive "P")
-  (setq name (cond ((and (listp name) (numberp (car name)))
+  (setq proj-name (cond ((and (listp proj-name) (numberp (car proj-name)))
                     (mk-proj-get-config-val 'parent))
-                   ((stringp name)
-                    name)
+                   ((stringp proj-name)
+                    proj-name)
                    (t nil)))
   (mk-proj-assert-proj)
-  (unless name
-    (setq name mk-proj-name))
-  (mk-proj-set-config-val 'friends (append mk-proj-friends `(,(buffer-file-name (current-buffer)))) name))
+  (unless proj-name
+    (setq proj-name mk-proj-name))
+  (mk-proj-set-config-val 'friends (append mk-proj-friends `(,(buffer-file-name (current-buffer)))) proj-name))
 
 (defun project-friend-add (&optional friend)
   (interactive "P")
