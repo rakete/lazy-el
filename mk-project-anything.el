@@ -95,11 +95,12 @@ The behaviour of this command is modified with
 (defvar anything-c-source-mk-project-files
   '((name . "Files")
     (candidates . (lambda ()
-                    (mapcar (lambda (s)
-                              (replace-regexp-in-string "/\\./" "/" (concat (file-name-as-directory mk-proj-basedir) s)))
-                            (if mk-proj-patterns-are-regex
-                                (flatten (mapcar 'mk-proj-fib-matches mk-proj-src-patterns))
-                              (mk-proj-fib-matches nil)))))
+                    (condition-case nil
+                        (mapcar (lambda (s)
+                                  (replace-regexp-in-string "/\\./" "/" (concat (file-name-as-directory mk-proj-basedir) s)))
+                                (if mk-proj-patterns-are-regex
+                                    (flatten (mapcar 'mk-proj-fib-matches mk-proj-src-patterns))
+                                  (mk-proj-fib-matches nil))) (error nil))))
     (match anything-c-match-on-file-name
            anything-c-match-on-directory-name)
     (type . file))
@@ -107,7 +108,7 @@ The behaviour of this command is modified with
 
 (defvar anything-c-source-mk-project-open-buffers
   '((name . "Mk-Project Buffers")
-    (candidates . (lambda () (mapcar 'buffer-name (mk-proj-buffers))))
+    (candidates . (lambda () (mapcar 'buffer-name (condition-case nil (mk-proj-buffers) (error nil)))))
     (type . buffer)
     (candidate-transformer anything-c-skip-current-buffer
                            anything-c-highlight-buffers
@@ -118,7 +119,7 @@ The behaviour of this command is modified with
 
 (defvar anything-c-source-mk-friendly-files
   '((name . "Friendly files")
-    (candidates . (lambda () (mk-proj-fib-friend-matches)))
+    (candidates . (lambda () (condition-case nil (mk-proj-fib-friend-matches) (error nil))))
     (match anything-c-match-on-file-name
            anything-c-match-on-directory-name)
     (type . file))
@@ -126,7 +127,7 @@ The behaviour of this command is modified with
 
 (defvar anything-c-source-mk-project-open-friendly-buffers
   '((name . "Mk-Project friendly buffers")
-    (candidates . (lambda () (mapcar 'buffer-name (mk-proj-friendly-buffers))))
+    (candidates . (lambda () (mapcar 'buffer-name (condition-case nil (mk-proj-friendly-buffers) (error nil)))))
     (type . buffer)
     (candidate-transformer anything-c-skip-current-buffer
                            anything-c-highlight-buffers
