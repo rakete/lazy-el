@@ -565,56 +565,101 @@ sourcemarker have partly changed in the file."
                        ))))))))
     r))
 
-(defun mk-proj-string-entropy (str)
+(defun mk-proj-string-char-entropy (str &optional char-histogram)
   (let ((c-hash (make-hash-table))
         (c-count 0)
         (length-weight '(0.01 0.1 0.2 0.4 0.6 0.8 1 1.2 1.4 1.6 1.8 2 2.2 2.4 2.6 2.8 3 3.5 4 5 6 7 8 9 10)))
-    (mapcar (lambda (c) (puthash c (1+ (or (gethash c c-hash nil)
+    (mapcar (lambda (c) (puthash c (+ (if (hash-table-p char-histogram)
+                                          (gethash c char-histogram 1)
+                                        1)
+                                      (or (gethash c c-hash nil)
+                                          (progn
+                                            (setq c-count (1+ c-count))
+                                            0))) c-hash)) str)
+    ;; frequency=c-hash[c]/length(str) (0 < frequency < 1)
+    ;; -1*frequency[c]*log(frequency[c]) (klein nahe null und eins)
+    ;; Sum(score[c] * -1 * frequency[c] * log(frequency[c] / log(length(str)+1)/log(101))
+    (let ((r 0)
+          (w (/ (log (+ (length str) 1)) (log 101))))
+      (maphash (lambda (k v)
+                 (let ((frequency (/ (float v) (float (length str)))))
+                   (setq r (+ (* (if (hash-table-p char-histogram)
+                                     (gethash k char-histogram 1)
+                                   1)
+                                 (* (* -1 frequency) (log (/ frequency (float (length str))))))
+                              r)))) c-hash)
+      ;;(* r (if (> w 100) 100 w))
+      r)))
+
+;; Sum(scores)/c-count * c-count/length(str) * weight
+;; (* (if (hash-table-p char-histogram)
+;;        (let ((r 0))
+;;          (maphash (lambda (k v) (setq r (+ r v))) c-hash)
+;;          (/ (float r) (float c-count)))
+;;      1)
+;;    (/ (float c-count)
+;;       (float (length str)))
+;;    (or (nth (- (length str) 1) length-weight)
+;;        10))))
+
+(defun mk-proj-buffer-char-histogram (&optional buf)
+  (unless buf
+    (setq buf (current-buffer)))
+  (let ((char-histogram (make-hash-table))
+        (c-count 0)
+        (str (with-current-buffer buf
+               (buffer-string))))
+    (mapcar (lambda (c) (puthash c (1+ (or (gethash c char-histogram nil)
                                            (progn
                                              (setq c-count (1+ c-count))
-                                             0))) c-hash)) str)
-    (* (/ (float c-count) (float (length str))) (or (nth (- (length str) 1) length-weight) 10))))
+                                             0))) char-histogram)) str)
+    (maphash (lambda (k v) (puthash k (- 1.0 (/ (float v) (float (length str)))) char-histogram)) char-histogram)
+    (print char-histogram)
+    char-histogram))
 
-;; (mk-proj-string-entropy ")")
-;; (mk-proj-string-entropy "))))))))((((((")
-;; (mk-proj-string-entropy "abcdefgh")
-;; (mk-proj-string-entropy "                 (setq rs (cons (car matches) rs)))")
-;; (mk-proj-string-entropy "                (t")
+(defun mk-proj-string-word-entropy (str &optional word-frequencies)
+  (let ((word-counts (make-hash-table :test 'equal))
+        (counts-length 0)
+        (words (split-string str " " t))
+        (r 0))
+    (mapcar (lambda (s) (puthash s (1+ (or (gethash s word-counts nil)
+                                           (progn
+                                             (setq counts-length (1+ counts-length))
+                                             0))) word-counts)) words)
+    (maphash (lambda (k v) (let* ((freq (if (hash-table-p word-frequencies)
+                                            (gethash k word-frequencies 0.0)
+                                          0.0))
+                                  (score (/ 1.0 (exp (* freq freq)))))
+                             (setq r (+ r (* v score)))))
+             word-counts)
+    r))
 
-;; (mapcar (lambda (x) (/ (* x x) 67.6)) '(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26))
+(defun mk-proj-buffer-word-frequencies (&optional buf)
+  (unless buf
+    (setq buf (current-buffer)))
+  (let ((word-histogram (make-hash-table :test 'equal))
+        (w-count 0)
+        (words (with-current-buffer buf
+                 (split-string (buffer-string) " " t))))
+    (mapcar (lambda (s) (puthash s (1+ (or (gethash s word-histogram nil)
+                                           (progn
+                                             (setq w-count (1+ w-count))
+                                             0))) word-histogram)) words)
+    (maphash (lambda (k v) (puthash k (/ (float v) (float (length words))) word-histogram)) word-histogram)
+    word-histogram))
 
-;; (/ (* 26 26) 67.6)
+;; (let ((r 0))
+;;   (maphash (lambda (k v) (setq r (+ r v))) (mk-proj-buffer-word-histogram))
+;;   (print r))
 
-;; (require 'fuzzy-match)
-
-;; (FM-closeness "(defun mk-proj-sourcemarker-search (ms)" "(defun mk-proj-sourcemarker-search (ms &optional foo)")
-
-;; (FM-matchiness "foo" "foo")
+;; (let ((went (mk-proj-buffer-word-frequencies)))
+;;   (print (mk-proj-string-word-entropy "(defun mk-proj-buffer-word-histogram (&optional buf)\n"))
+;;   (print (mk-proj-string-word-entropy "(defun mk-proj-sourcemarker-fuzzy-search (ms &optional threshold)\n"))
+;;   (print (mk-proj-string-word-entropy "       (setq buf (current-buffer)))"))
+;;   (print (mk-proj-string-word-entropy "      (dolist (x lst)"))
+;;   )
 
 (require 'fuzzy-match)
-
-;; (defun mk-proj-fuzzy-matches (string strings)
-;;   (let* ((string (FM-string-to-char-list string))
-;;          (strings (FM-strings-to-char-lists strings))
-;;          (bestfuzz (FM-matchiness-intern string (car strings)))
-;;          (matches (list (car strings)))
-;;          (strings (cdr strings))
-;;          thisfuzz)
-;;     (while strings
-;;       (setq thisfuzz (FM-matchiness-intern string (car strings)))
-;;       (cond ((= bestfuzz thisfuzz)
-;;              (setq matches (cons (car strings) matches)))
-;;             ((< bestfuzz thisfuzz)
-;;              (setq bestfuzz thisfuzz
-;;                    matches (list (car strings)))))
-;;       (setq strings (cdr strings)))
-;;     (and (not (zerop bestfuzz)) (FM-fuzzy-sort string matches))))
-
-;; (mk-proj-fuzzy-matches "(defun mk-proj-sourcemarker-search (ms)" (split-string (buffer-string) "\n"))
-
-;; (FM-matchiness "(defun mk-proj-sourcemarker-search (ms)" "(defun mk-proj-sourcemarker-search (m &optional ms)")
-
-;;(print (third mk-proj-sourcemarker))
 
 (defun mk-proj-sourcemarker-fuzzy-search (ms &optional threshold)
   (interactive)
@@ -622,28 +667,32 @@ sourcemarker have partly changed in the file."
     (setq threshold 5))
   (save-excursion
     (widen)
-    (let (rs nf1 nf2 nf4 tm)
+    (let (rs not-found1 not-found2 not-found3 tm)
       (dolist (m ms)
-        (let ((p (first m))
-              (up (first (third m)))
-              (l (second (third m)))
-              (down (third (third m))))
+        (let* ((p (first m))
+               (up (first (third m)))
+               (l (second (third m)))
+               (down (third (third m)))
+               (cn (1+ (length up))))
           (goto-char p)
           (beginning-of-line)
           (if (or (looking-at (regexp-quote l))
                   (> (FM-matchiness (thing-at-point 'line) l) (- (length string) threshold)))
               (setq rs (cons (point) rs))
-            (let* ((entl (sort (append up (list l) down) (lambda (a b) (> (mk-proj-string-entropy a)
-                                                                          (mk-proj-string-entropy b)))))
-                   (zentl (mk-proj-zip (loop for x from 0 to (1- (length entl)) collect x) entl)))
-              (setq nf1 (cons (list m zentl) nf1))))))
-      (print rs)
-      (print (length rs))
-      (print nf1)
-      (print (length nf1))
-      (dolist (nfl nf1)
+            (let* ((all-lines (append up (list l) down))
+                   (entropy-sorted-lines (sort (mk-proj-zip (loop for x from 1 to (length all-lines) collect (- cn x)) all-lines)
+                                               (lambda (a b) (> (mk-proj-string-entropy (second a))
+                                                                (mk-proj-string-entropy (second b)))))))
+              (setq not-found1 (cons (list m entropy-sorted-lines) not-found1))))))
+      ;; (print rs)
+      ;; (print (length rs))
+      ;; (print not-found1)
+      ;; (print (length not-found1))
+      (dolist (nfl not-found1)
         (let* ((m (first nfl))
                (l (second (third m)))
+               (el (second (car (second nfl))))
+               (el-offset (first (car (second nfl))))
                matches)
           (goto-char 0)
           (while (re-search-forward (regexp-quote l) nil t)
@@ -653,21 +702,21 @@ sourcemarker have partly changed in the file."
                 ((= (length matches) 1)
                  (setq rs (cons (car matches) rs)))
                 (t
-                 (setq nf2 (cons m nf2))))))
-      (print rs)
-      (print (length rs))
-      (print nf2)
-      (print (length nf2))
-      (dolist (m nf2)
+                 (setq not-found2 (cons m not-found2))))))
+      ;; (print rs)
+      ;; (print (length rs))
+      ;; (print not-found2)
+      ;; (print (length not-found2))
+      (dolist (m not-found2)
 
         )
-      (unless (null nf3)
+      (unless (null not-found3)
         (let* ((lines (FM-strings-to-char-lists (split-string (buffer-string) "\n")))
-               (znf3 (mk-proj-zip nf3
-                                  (mapcar (lambda (m) (FM-string-to-char-list (second (third m)))) nf3)
-                                  (make-list (length nf3) 0)
-                                  (make-list (length nf3) '())
-                                  (make-list (length nf3) t)
+               (znf3 (mk-proj-zip not-found3
+                                  (mapcar (lambda (m) (FM-string-to-char-list (second (third m)))) not-found3)
+                                  (make-list (length not-found3) 0)
+                                  (make-list (length not-found3) '())
+                                  (make-list (length not-found3) t)
                                   )))
           (while lines
             (let* ((line (car lines)))
@@ -1155,10 +1204,42 @@ See also `project-undef'."
                                 (append evaluated-config-alist `((parent ,inherit)))))))
     (puthash proj-name combined-alist mk-proj-list)))
 
-(defun mk-proj-config-insert (&optional config-alist name insert-undefined)
-  (unless name
-    (setq name (or (cadr (assoc 'name config-alist)) "NewProject")))
-  (insert (concat "(project-def \"" name "\" '("))
+(defvar mk-proj-guess-functions '((name . ((('basedir)
+                                            '(let ((name (car (reverse (mk-proj-filter #'string-to-list
+                                                                                       (split-string basedir) "/")))))
+                                               (unless (gethash proj-name mk-proj-list)
+                                                 `(100 . ,name))))
+                                           (('buffer)
+                                            '(progn
+                                               (unless buffer
+                                                 (setq buffer (current-buffer)))
+                                               `(10 . ,(car (split-string (mk-proj-filename (buffer-file-name buffer)) "\\.")))))))
+                                  (src-patterns . ((('mode)
+                                                    '(progn
+                                                       (unless mode
+                                                         (setq mode major-mode))
+                                                       `(10 . ,(loop for buf in (buffer-list)
+                                                                     if (eq (with-current-buffer buf major-mode) mode)
+                                                                     append (list (regexp-quote (mk-proj-filename (buffer-file-name buf))))))))))
+                                  (basedir . ((('buffer)
+                                               `(10 . ,(mk-proj-basedir (buffer-file-name buffer))))))
+                                  (vcs . ((('basedir)
+                                           '(let ((r nil))
+                                              (loop for f in (directory-files (mk-proj-basename (buffer-file-name (current-buffer))))
+                                                    until (setq r (mk-proj-any (lambda (y) (string-equal (cdr y) ".git")) mk-proj-vcs-path))
+                                                    finally return `(10 . ,(car r)))))))))
+
+;; (loop for buf in (buffer-list)
+;;       if (eq (with-current-buffer buf major-mode) major-mode)
+;;       append (list (regexp-quote (mk-proj-filename (buffer-file-name buf)))))
+
+(defun mk-proj-config-guess-alist (alist)
+  )
+
+(defun mk-proj-config-insert (&optional config-alist proj-name insert-undefined)
+  (unless proj-name
+    (setq proj-name (or (cadr (assoc 'name config-alist)) "NewProject")))
+  (insert (concat "(project-def \"" proj-name "\" '("))
   (loop for k in (append mk-proj-required-vars mk-proj-optional-vars)
         if (not (or (eq k 'name)
                     (mk-proj-any (lambda (j) (eq k j)) mk-proj-internal-vars)))
@@ -1239,26 +1320,6 @@ See also `project-undef'."
 
 
 
-
-(defvar mk-proj-guess-functions '((name . ((('basedir)
-                                            (let ((name (car (reverse (mk-proj-filter #'string-to-list
-                                                                                      (split-string basedir) "/")))))
-                                              (unless (gethash name mk-proj-list)
-                                                `(100 . ,name))))
-                                           (('buffer)
-                                            (progn
-                                              (unless buffer
-                                                (setq buffer (current-buffer)))
-                                              `(10 . ,(car (split-string (mk-proj-filename (buffer-file-name buffer)) "\\.")))))))
-                                  (basedir . ((('buffer)
-                                               `(10 . ,(mk-proj-basedir (buffer-file-name buffer))))))
-                                  (vcs . ((('basedir)
-                                           (let ((r nil))
-                                             (loop for f in (directory-files (mk-proj-basename (buffer-file-name (current-buffer))))
-                                                   until (setq r (mk-proj-any (lambda (y) (string-equal (cdr y) ".git")) mk-proj-vcs-path))
-                                                   finally return `(10 . ,(car r)))))))))
-
-(defun mk-proj-guess-config (args &optional dir))
 
 
 
