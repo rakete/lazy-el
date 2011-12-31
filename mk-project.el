@@ -1411,7 +1411,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
             current (mk-proj-config-val 'parent current)))
     ancestry))
 
-(defun mk-proj-load (name)
+(defun mk-proj-load (proj-name)
   (interactive)
   (let ((oldname mk-proj-name))
     (unless proj-name
@@ -1448,7 +1448,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
                   (if (mk-proj-use-ido)
                       (ido-completing-read "Project Name (ido): " (mk-proj-names))
                     (completing-read "Project Name: " (mk-proj-names))))))
-    (mk-proj-load proj-name)))
+    (mk-proj-load name)))
 
 (defun mk-proj-kill-emacs-hook ()
   "Ensure we save the open-files-cache info on emacs exit"
@@ -1894,7 +1894,8 @@ With C-u prefix, start ack from the current directory."
       (message "project-index cmd: \"%s\"" find-cmd)
       (message "Refreshing %s buffer..." (mk-proj-fib-name proj-name))
       (start-process-shell-command proc-name (mk-proj-fib-name proj-name) find-cmd)
-      (set-process-sentinel (get-process proc-name) (lambda (p e) (mk-proj-fib-cb p e proj-name))))))
+      (set-process-sentinel (get-process proc-name) 'mk-proj-fib-cb)
+      )))
 
 (defun mk-proj-fib-matches (&optional regex proj-name)
   "Return list of files in *file-index* matching regex.
