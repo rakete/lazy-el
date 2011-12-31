@@ -1477,6 +1477,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
           (run-hooks 'mk-proj-project-unload-hook))
       (error nil)))
   (mk-proj-defaults)
+  (cd (mk-proj-basename (buffer-file-name (current-buffer))))
   (message "Project settings have been cleared"))
 
 (defun project-close-files ()
