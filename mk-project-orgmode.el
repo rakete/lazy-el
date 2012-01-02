@@ -448,7 +448,7 @@ than the current one."
   (with-or-without-marker marker
    (save-excursion
      (beginning-of-line)
-     (and (looking-at org-complex-heading-regexp)e
+     (and (looking-at org-complex-heading-regexp)
           (let* ((headline-raw (org-match-string-no-properties 4)))
             (string-match org-bracket-link-regexp headline-raw))))))
 
@@ -506,7 +506,7 @@ than the current one."
                                                                 (buffer-file-name (buffer-base-buffer (current-buffer)))))
                                                  (org-marker ,(mk-org-entry-marker))
                                                  (org-level ,(- (mk-org-entry-level) (mk-org-entry-parent-level))))))
-       (message "%s -> %s : %s : %d" (mk-org-entry-name) (or (mk-org-entry-parent-name) t) (assoc 'org-file entry-config) (marker-position (cadr (assoc 'org-marker entry-config))))
+       ;;(message "%s -> %s : %s : %d" (mk-org-entry-name) (or (mk-org-entry-parent-name) t) (assoc 'org-file entry-config) (marker-position (cadr (assoc 'org-marker entry-config))))
        (project-def (mk-org-entry-name) entry-config (or (mk-org-entry-parent-name) t))
        ;; (when (and mk-proj-name (string-equal (mk-org-entry-name) mk-proj-name))
        ;;   (message (format "org-project: loading %s" (mk-org-entry-name)))
@@ -897,7 +897,7 @@ This is taken almost directly from `org-babel-read'."
      :scope 'project-tree
      :function (lambda ()
                  (when (and (not (mk-org-entry-is-link-p))
-                            (or (and (org-get-todo-state) (mk-proj-any (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords))
+                            (or (and (org-get-todo-state) (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords))
                                      (mk-org-entry-is-project-p)))
                    (mk-org-entry-define-project))))))
 
