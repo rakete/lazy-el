@@ -294,15 +294,19 @@ than the current one."
                            (funcall project-recursion))
                           (t
                            (org-map-entries f-closure nil scope nil nil)))))))))))
+    (dolist (f opened-files)
+      (when (and (stringp f) (file-exists-p f))
+        (let ((buf (find-buffer-visiting f)))
+          (when (and buf (not (buffer-modified-p buf)) (not (mk-proj-buffer-has-markers-p buf)))
+            (kill-buffer buf)))))
     results))
-
 
 (defun test-mk-org-map-entries ()
   (interactive)
   (mk-org-map-entries
    :file (mk-org-files-containing-projects)
    :function (lambda ()
-               (message (format "%s -> %s -> %s" (read (prin1-to-string parent-name)) project-name entry-name))
+               (message (format "%s -> %s" (read (prin1-to-string parent-name)) entry-name))
                )))
 
 (defun mk-org-entry-map-ancestry (&key function
