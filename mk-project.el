@@ -916,9 +916,10 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
       nil)))
 
 (defun mk-proj-buffer-p (buf)
-  "Is the given buffer in our project based on filename? Also detects dired buffers open to basedir/*"
+  "Is the given buffer in our project, is a file opened? Also detects dired buffers open to basedir/*"
   (let ((file-name (mk-proj-buffer-name buf)))
     (if (and file-name
+             (file-exists-p file-name)
              (string-match (concat "^" (regexp-quote mk-proj-basedir)) file-name))
         t
       nil)))
