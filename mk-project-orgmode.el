@@ -926,11 +926,13 @@ This is taken almost directly from `org-babel-read'."
     (mk-proj-assert-proj)
     (setq name mk-proj-name))
   (mk-org-assert-org name)
-  (mk-org-map-entries
-   :match (mk-proj-get-config-val 'org-marker name)
-   :scope 'project-headline
-   :function (lambda ()
-               (org-clock-out))))
+  (org-clock-out))
+
+  ;; (mk-org-map-entries
+  ;;  :match (mk-proj-get-config-val 'org-marker name)
+  ;;  :scope 'project-headline
+  ;;  :function (lambda ()
+  ;;              (org-clock-out))))
 
 (provide 'mk-project-orgmode)
 
