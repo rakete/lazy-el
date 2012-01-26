@@ -83,8 +83,12 @@ in which projects have been defined as well as the files specified by
                (when (cdr (assoc 'org-file p))
                  (setq org-files (append (cdr (assoc 'org-file p)) org-files))))
              mk-proj-list)
-    (remove-if (lambda (x) (eq x nil)) (remove-duplicates (append org-files mk-org-project-files) :test #'string-equal))))
-
+    (remove-if (lambda (x)
+                 (or (not (file-exists-p x))
+                     (eq x nil)))
+               (remove-duplicates
+                (append org-files (concatl (mapcar 'file-expand-wildcards mk-org-project-files)))
+                :test #'string-equal))))
 
 (defun mk-org-symbol-table (&optional symbol)
   "Creates an alist of (symbol . org-property-string) that can be used
