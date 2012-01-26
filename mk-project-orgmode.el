@@ -18,6 +18,7 @@
 ;; Boston, MA 02111-1307, USA.
 
 (require 'mk-project)
+(require 'mk-project-sourcemarker)
 
 (require 'org-install)
 (require 'org-protocol)
@@ -57,20 +58,16 @@ the active subtree, instead of the parent subtree.")
      (add-to-list 'mk-proj-optional-vars 'org-marker)
      (add-to-list 'mk-proj-optional-vars 'org-level)
 
+     (add-to-list 'mk-proj-internal-vars 'org-file)
+     (add-to-list 'mk-proj-internal-vars 'org-marker)
+     (add-to-list 'mk-proj-internal-vars 'org-level)
+
      (add-hook 'org-clock-in-hook (lambda ()
                                     (when (mk-org-entry-is-in-project-p)
-                                      (mk-proj-load (mk-org-entry-name)))))
+                                      (mk-proj-load (mk-org-entry-name))
+                                      (sourcemarker-visit))))
 
-     ;; (add-hook 'org-clock-out-hook (lambda ()
-     ;;                                 (when (string-equal (mk-org-entry-name) mk-proj-name)
-     ;;                                   (if (mk-org-entry-parent-point)
-     ;;                                       (progn
-     ;;                                         (goto-char (mk-org-entry-parent-point))
-     ;;                                         (org-clock-in))
-     ;;                                     (project-unload t)))))
      ))
-
-
 
 
 

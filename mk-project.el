@@ -205,8 +205,7 @@ See also `mk-proj-optional-vars' `mk-proj-var-functions' `mk-proj-load-vars'")
                                 etags-cmd
                                 patterns-are-regex
                                 friends
-                                open-friends-cache
-                                sourcemarker)
+                                open-friends-cache)
   "Project config vars that are optional.
 
 See also `mk-proj-required-vars' `mk-proj-var-functions' `mk-proj-load-vars'")
@@ -214,10 +213,7 @@ See also `mk-proj-required-vars' `mk-proj-var-functions' `mk-proj-load-vars'")
 (defvar mk-proj-internal-vars '(open-files-cache
                                 open-friends-cache
                                 file-list-cache
-                                tags-file
-                                org-file
-                                org-marker
-                                org-level))
+                                tags-file))
 
 (defvar mk-proj-var-functions '((basedir . (lambda (var val &optional proj-name)
                                              (when (stringp val)
