@@ -332,8 +332,6 @@ load time. See also `project-menu-remove'."
       (setq i (1+ i)))
     rs))
 
-;;(mk-proj-zip (make-list 3 0) (make-list 3 nil) (make-list 3 mk-proj-sourcemarker))
-
 (defun mk-proj-basename (path)
   (apply #'concat (reverse (mapcar (lambda (s)
                                      (concat s "/"))
@@ -467,7 +465,6 @@ contain a similar key."
 (defun mk-proj-find-config (proj-name)
   "Get a projects config-alist from the global projects hashmap."
   (gethash proj-name mk-proj-list))
-
 
 (defun mk-proj-get-config-val (key &optional proj inherit)
   "Finds the value associated with KEY. A project PROJ

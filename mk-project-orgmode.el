@@ -193,7 +193,7 @@ than the current one."
                               "^[ \t]*:MKP_NAME:[ \t]*\\(.*\\)")))
                    (case-fold-search nil)
                    (skip-project-functions nil))
-              (print (concat "re: " (prin1-to-string re)))
+              ;;(print (concat "re: " (prin1-to-string re)))
               (while (cond ((numberp re)
                             t)
                            ((stringp re)
@@ -668,7 +668,7 @@ than the current one."
 (defun mk-org-add-todo-finalize (&optional arg)
   (interactive "P")
   (setq arg (or arg local-prefix-arg))
-  (print arg)
+  ;;(print arg)
   (mk-org-assert-org)
   (beginning-of-buffer)
   (outline-next-heading)
@@ -689,7 +689,7 @@ than the current one."
                  (save-excursion
                    (goto-char (mk-org-yank-below arg))
                    (mk-org-reveal)
-                   (print (concat "added: " (mk-org-entry-headline)))
+                   ;;(print (concat "added: " (mk-org-entry-headline)))
                    (mk-org-entry-define-project)
                    (when parent (goto-char parent))
                    (mk-org-reveal)))))
@@ -847,7 +847,7 @@ manually constructed project org entry at point (see also `mk-org-entry-define-p
                    (goto-char (mk-org-yank-below))
                    (if (condition-case nil (mk-org-entry-define-project) (error nil))
                        (progn
-                         (print (concat "added: " headline))
+                         ;;(print (concat "added: " headline))
                          (mk-org-reveal)
                          (setq has-error nil))
                      (progn
