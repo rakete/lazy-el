@@ -107,8 +107,10 @@ The behaviour of this command is modified with
   "All files of the currently active project.")
 
 (defvar anything-c-source-mk-project-open-buffers
-  '((name . "Mk-Project Buffers")
-    (candidates . (lambda () (mapcar 'buffer-name (condition-case nil (mk-proj-buffers) (error nil)))))
+  '((name . "Mk-Project buffers")
+    (candidates . (lambda () (mapcar 'buffer-name (condition-case nil
+                                                      (remove-if (lambda (buf) (string-match "\*[^\*]\*" (buffer-name buf))) (mk-proj-buffers))
+                                                    (error nil)))))
     (type . buffer)
     (candidate-transformer anything-c-skip-current-buffer
                            anything-c-highlight-buffers
@@ -123,22 +125,37 @@ The behaviour of this command is modified with
     (match anything-c-match-on-file-name
            anything-c-match-on-directory-name)
     (type . file))
-  "All files and files of projects which are friends of this project.")
+  "All files of projects which are friends of this project.")
 
 (defvar anything-c-source-mk-project-open-friendly-buffers
   '((name . "Mk-Project friendly buffers")
-    (candidates . (lambda () (mapcar 'buffer-name (condition-case nil (mk-proj-friendly-buffers) (error nil)))))
+    (candidates . (lambda () (mapcar 'buffer-name (condition-case nil
+                                                      (mk-proj-friendly-buffers t)
+                                                    (error nil)))))
     (type . buffer)
     (candidate-transformer anything-c-skip-current-buffer
                            anything-c-highlight-buffers
                            anything-c-skip-boring-buffers)
     (persistent-action . anything-c-mk-project-buffer-persistent-action)
     (persistent-help . "Show this buffer / C-u \\[anything-execute-persistent-action]: Kill this buffer"))
-  "All buffers of the currently active project." )
+  "All friendly buffers of the currently active project." )
+
+(defvar anything-c-source-mk-project-open-special-buffers
+  '((name . "Mk-Project special buffers")
+    (candidates . (lambda () (mapcar 'buffer-name (condition-case nil
+                                                      (mk-proj-special-buffers)
+                                                    (error nil)))))
+    (type . buffer)
+    (candidate-transformer anything-c-skip-current-buffer
+                           anything-c-highlight-buffers)
+    (persistent-action . anything-c-mk-project-buffer-persistent-action)
+    (persistent-help . "Show this buffer / C-u \\[anything-execute-persistent-action]: Kill this buffer"))
+  "All special buffers of the currently active project." )
 
 (defvar mk-proj-anything-sources
   '(anything-c-source-mk-project-open-buffers
     anything-c-source-mk-project-open-friendly-buffers
+    anything-c-source-mk-project-open-special-buffers
     anything-c-source-mk-project-files
     anything-c-source-mk-friendly-files
     anything-c-source-mk-project-projects)
