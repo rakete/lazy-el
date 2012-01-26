@@ -1499,16 +1499,21 @@ project is not loaded."
                                                 basedir
                                               (concat basedir "/"))))
                        (when (string-match (concat "^" (regexp-quote friend-basedir)) file-name)
-                         (print friend-basedir)
+                         ;;(print friend-basedir)
                          (return-from "friend-loop" t))))))))
         t
       nil)))
 
-(defun mk-proj-friendly-buffers ()
+(defun mk-proj-friendly-buffers (&optional friends-only)
   (let ((buffers nil))
     (dolist (b (buffer-list))
-      (when (mk-proj-friendly-buffer-p b) (push b buffers)))
-    buffers))
+      (when (or (and friends-only
+                     (mk-proj-friendly-buffer-p b)
+                     (not (some (lambda (buf) (eq buf b)) (mk-proj-buffers))))
+                (and (not friends-only)
+                     (mk-proj-friendly-buffer-p b)))
+        (push b buffers)))
+      buffers))
 
 (defun mk-proj-save-open-friends-info ()
   (when mk-proj-open-friends-cache
