@@ -931,6 +931,14 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
       (when (mk-proj-buffer-p b) (push b buffers)))
     buffers))
 
+(defun mk-proj-special-buffers ()
+  (mk-proj-assert-proj)
+  (append (remove-if (lambda (buf) (not (string-match "\*[^\*]\*" (buffer-name buf)))) (mk-proj-buffers))
+          (remove-if (lambda (buf) (or (and (symbolp 'mk-org-project-buffer-name)
+                                            (not (string-equal (mk-org-project-buffer-name) (buffer-name buf))))
+                                       (compilation-buffer-p buf)))
+                     (buffer-list))))
+
 (defun project-status (&optional proj-name)
   "View project's variables."
   (interactive)
