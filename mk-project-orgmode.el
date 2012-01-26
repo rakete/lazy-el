@@ -887,16 +887,28 @@ This is taken almost directly from `org-babel-read'."
   (interactive)
   (unless mk-org-project-files
     (error "mk-org: could not find any projects, mk-org-project-files is not set"))
-  (progn
+  (let ((buffer-with-projects nil)
+        (pre-define-buffer-list (buffer-list)))
     (mk-org-map-entries
      :file (mk-org-files-containing-projects)
      ;;:match "mk-project"
      :scope 'project-tree
+     :close-files nil
      :function (lambda ()
                  (when (and (not (mk-org-entry-is-link-p))
-                            (or (and (org-get-todo-state) (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords))
-                                     (mk-org-entry-is-project-p)))
-                   (mk-org-entry-define-project))))))
+                          (or (and (org-get-todo-state) (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords))
+                              (mk-org-entry-is-project-p)))
+                   (mk-org-entry-define-project)
+                   (unless (eq (last buffer-with-projects) (current-buffer))
+                     (add-to-list 'buffer-with-projects (current-buffer))))))
+    (dolist (f (mk-org-files-containing-projects))
+      (when (file-exists-p f)
+        (let ((buf (find-buffer-visiting f)))
+          (when (and buf
+                     (not (buffer-modified-p buf))
+                     (not (some (lambda (b) (eq b buf)) buffer-with-projects))
+                     (not (some (lambda (b) (eq b buf)) pre-define-buffer-list)))
+            (kill-buffer buf)))))))
 
 
 (defun mk-org-undefine-entries ()
