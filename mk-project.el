@@ -277,11 +277,11 @@ See also `mk-proj-load-vars',`mk-proj-get-config-val'.")
                                                  (read-string "Compile command: " super)))
                                 (patterns-are-regex . (lambda () t))))
 
-(defvar mk-proj-project-var-load-hook '())
-(defvar mk-proj-project-var-unload-hook '())
+(defvar mk-proj-before-load-hook '())
+(defvar mk-proj-after-load-hook '())
 
-(defvar mk-proj-project-load-hook '())
-(defvar mk-proj-project-unload-hook '())
+(defvar mk-proj-before-unload-hook '())
+(defvar mk-proj-after-unload-hook '())
 
 ;; ---------------------------------------------------------------------
 ;; Customization
@@ -826,9 +826,10 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
   (let ((oldname mk-proj-name))
     (unless proj-name
       (error "mk-proj-load: proj-name should not be nil"))
+    (run-hooks 'mk-proj-before-load-hook)
     (let ((proj-config (mk-proj-find-config proj-name)))
       (unless (or (string= oldname proj-name) (eq proj-config nil))
-        (project-unload t))
+        (project-unload))
       (if proj-config
           (let ((v (mk-proj-load-vars proj-name proj-config)))
             (when v
@@ -845,10 +846,9 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
     (add-hook 'kill-emacs-hook 'mk-proj-kill-emacs-hook)
     (when mk-proj-startup-hook
       (run-hooks 'mk-proj-startup-hook))
-    (run-hooks 'mk-proj-project-load-hook)
     (mk-proj-visit-saved-open-files)
     (mk-proj-visit-saved-open-friends)
-    (mk-proj-visit-sourcemarker)
+    (run-hooks 'mk-proj-after-load-hook)
     (message "Loading project %s done" proj-name)))
 
 (defun project-load (&optional proj-name)
