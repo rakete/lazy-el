@@ -17,11 +17,14 @@ Org-Mode Integration
 Anything Integration
 --------------------
 
+KDE Desktop Intergration/DBus
+-----------------------------
+
 Sourcemarker
 ------------
 
-KDE Desktop Intergration/DBus
------------------------------
+Project Creation
+----------------
 
 Dependencies
 ------------
