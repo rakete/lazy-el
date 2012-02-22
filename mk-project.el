@@ -283,6 +283,8 @@ See also `mk-proj-load-vars',`mk-proj-get-config-val'.")
 (defvar mk-proj-before-unload-hook '())
 (defvar mk-proj-after-unload-hook '())
 
+(defvar mk-proj-history '())
+
 ;; ---------------------------------------------------------------------
 ;; Customization
 ;; ---------------------------------------------------------------------
@@ -332,7 +334,7 @@ load time. See also `project-menu-remove'."
       (setq i (1+ i)))
     rs))
 
-(defun mk-proj-basename (path)
+(defun mk-proj-dirname (path)
   (apply #'concat (reverse (mapcar (lambda (s)
                                      (concat s "/"))
                                    (cdr (reverse (split-string path "/")))))))
@@ -861,6 +863,18 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
   (when (and mk-proj-friends mk-proj-open-friends-cache)
     (mk-proj-save-open-friends-info)))
 
+(defun mk-proj-unload-vars ()
+  (let ((vars (append mk-proj-required-vars mk-proj-optional-vars))
+        (last-alist '()))
+    (dolist (var vars)
+      (let ((sym (intern-soft (concat "mk-proj-" (symbol-name var)))))
+        (when (and (boundp sym)
+                   (eval sym))
+          (add-to-list 'last-alist `(,sym ,(eval sym))))))
+    (when last-alist
+      (add-to-list 'mk-proj-history last-alist))
+    (mk-proj-defaults)))
+
 (defun project-unload (&optional arg)
   "Unload the current project's settings after running the shutdown hook."
   (interactive "P")
@@ -868,6 +882,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
     (condition-case nil
         (progn
           (message "Unloading project %s" mk-proj-name)
+          (run-hooks 'mk-proj-before-unload-hook)
           (mk-proj-tags-clear)
           (mk-proj-maybe-kill-buffer (mk-proj-fib-name))
           (mk-proj-save-open-file-info)
@@ -878,11 +893,12 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
                (project-close-files)
                (project-close-friends))
           (when mk-proj-shutdown-hook (run-hooks 'mk-proj-shutdown-hook))
-          (run-hooks 'mk-proj-project-unload-hook))
+          (run-hooks 'mk-proj-project-unload-hook)
+          (run-hooks 'mk-proj-after-unload-hook))
       (error nil)))
-  (mk-proj-defaults)
+  (mk-proj-unload-vars)
   (when (buffer-file-name (current-buffer))
-    (cd (mk-proj-basename (buffer-file-name (current-buffer)))))
+    (cd (mk-proj-dirname (buffer-file-name (current-buffer)))))
   (message "Project settings have been cleared"))
 
 (defun project-close-files ()
