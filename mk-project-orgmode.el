@@ -148,7 +148,31 @@ than the current one."
                                  (scope 'project-tree)
                                  (widen nil)
                                  (close-files nil)) ;; dangerous
-  "This conversation can serve no purpose anymore. Goodbye."
+  "Map over org entries. Similar to `org-map-entries', but implements
+scopes better suited to map other org entries that are projects and accepts
+a wider variety of matches.
+
+FUNCTION is a function that is called for every match found by searching
+for MATCH in sources specified by FILE.
+
+FILE can be either just a filename, a list of files or a buffer.
+
+MATCH can be a marker or sourcemarker, a single number representing a point or
+a project name. FUNCTION is called with point on everything MATCH finds.
+
+Furthermore it can be:
+a exact headline: '(headline \"A headline\")
+a regular expression: '(re \"expression\")
+a org property: '(property \"NAME\" \"VALUE\")
+a function with arguments '(func args) (some leftover experiment, use at own risk)
+
+SCOPE can be either project-tree to map of a whole tree of projects, including
+all child projects, project-single to map over a single project tree excluding
+child projects and project-headline to map over just the headline(s) of projects.
+
+If scope is nil or one of the `org-map-entries' scope symbols, `org-map-entries'
+will be used internally. You can specify match to be used in that case with:
+'(org \"tags/property/todo match\")"
   (let ((results '())
         (next-point nil)
         (opened-files nil))
@@ -164,7 +188,6 @@ than the current one."
                                                     (progn (mk-org-assert-org) `(,mk-proj-org-file)))
                                                    (t
                                                     (mk-org-files-containing-projects)))))
-      ;;(print (concat "file: " (prin1-to-string project-file)))
       (with-current-buffer (or (when (buffer-live-p project-file) project-file)
                                (org-find-base-buffer-visiting project-file)
                                (if (file-exists-p project-file)
@@ -187,10 +210,12 @@ than the current one."
                               match)
                              ((and match (listp match) (eq (car match) 'headline))
                               (format org-complex-heading-regexp-format (regexp-quote (cadr match))))
+                             ((and match (listp match) (eq (car match) 'org))
+                              (cadr match))
                              ((and match (listp match) (eq (car match) 're))
                               (regexp-quote (cadr match)))
                              ((and match (listp match) (eq (car match) 'property) (= (list-length match) 3))
-                              (concat "^[ \t]*:" (second match) ":[ \t]*\\(" (third match) "\\)"))
+                              (concat "^[ \t]*:" (or (second match) "[^:]+") ":[ \t]*\\(" (or (third match) ".*") "\\)"))
                              ((and match (listp match) (functionp (car match)))
                               (funcall (car match) (cadr match)))
                              ((stringp match)
@@ -199,7 +224,6 @@ than the current one."
                               "^[ \t]*:MKP_NAME:[ \t]*\\(.*\\)")))
                    (case-fold-search nil)
                    (skip-project-functions nil))
-              ;;(print (concat "re: " (prin1-to-string re)))
               (while (cond ((numberp re)
                             t)
                            ((stringp re)
@@ -297,7 +321,7 @@ than the current one."
                                (eq scope 'project-single))
                            (funcall project-recursion))
                           (t
-                           (org-map-entries f-closure nil scope nil nil)))))))))))
+                           (org-map-entries f-closure re scope nil nil)))))))))))
     (dolist (f opened-files)
       (when (and (stringp f) (file-exists-p f))
         (let ((buf (find-buffer-visiting f)))
