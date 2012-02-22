@@ -93,7 +93,7 @@ a shell command or the name of a function. Optional. Example: make -k.")
 
 (defvar mk-proj-install-cmd nil)
 (defvar mk-proj-run-cmd nil)
-(defvar mk-proj-syntaxcheck-cmd nil)
+;;(defvar mk-proj-syntaxcheck-cmd nil)
 
 (defvar mk-proj-startup-hook nil
   "Hook function to run after the project is loaded. Optional. Project
@@ -194,7 +194,7 @@ See also `mk-proj-optional-vars' `mk-proj-var-functions' `mk-proj-load-vars'")
                                 compile-cmd
                                 install-cmd
                                 run-cmd
-                                syntaxcheck-cmd
+                                ;;syntaxcheck-cmd
                                 startup-hook
                                 shutdown-hook
                                 file-list-cache
@@ -703,9 +703,6 @@ See also `project-undef'."
   (interactive)
   (funcall mk-proj-config-function))
 
-(defalias 'project-add 'project-new)
-(defalias 'project-create 'project-new)
-
 (defvar mk-proj-new-project-mode-map (make-sparse-keymap))
 
 (defvar mk-proj-new-project-mode-hook nil)
@@ -1203,10 +1200,10 @@ With C-u prefix, start ack from the current directory."
   (project-make opts1 mk-proj-install-cmd)
   (project-make opts2 mk-proj-run-cmd))
 
-(defun project-syntaxcheck (&optional opts)
-  (interactive)
-  (mk-proj-assert-proj)
-  (project-make opts mk-proj-syntaxcheck-cmd))
+;; (defun project-syntaxcheck (&optional opts)
+;;   (interactive)
+;;   (mk-proj-assert-proj)
+;;   (project-make opts mk-proj-syntaxcheck-cmd))
 
 ;; (defun project-compile (&optional opts)
 ;;   "Run the compile command for this project."
@@ -1551,10 +1548,6 @@ project is not loaded."
               (message "Attempting to open %s" line)
               (find-file-noselect line t)))
           (forward-line))))))
-
-;; (defun mk-proj-kill-emacs-hook-friends ()
-;;   (when (and mk-proj-name mk-proj-open-friends-cache)
-;;     (mk-proj-save-open-friends-info)))
 
 (defun project-close-friends ()
   (interactive)
