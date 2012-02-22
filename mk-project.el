@@ -1510,6 +1510,7 @@ project is not loaded."
     ))
 
 (defun mk-proj-friendly-buffer-p (buf)
+  "Check if BUF belongs to the project or is friendly towards it."
   (let ((file-name (mk-proj-buffer-name buf)))
     (if (and file-name
              (block "friend-loop"
@@ -1531,6 +1532,8 @@ project is not loaded."
       nil)))
 
 (defun mk-proj-friendly-buffers (&optional friends-only)
+  "Return all buffers that belong to the project. When FRIENDS-ONLY is
+non-nil return only buffers that are friendly toward the project."
   (let ((buffers nil))
     (dolist (b (buffer-list))
       (when (or (and friends-only
