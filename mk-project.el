@@ -518,7 +518,10 @@ Works only for projects defined in org-mode. See also `mk-proj-config-get-val'"
                   ;; (append `((,name ,key)) (mk-proj-filter (lambda (x)
                   ;;                                           (not (eq (car x) key)))
                   ;;                                         (mk-proj-find-config proj-name)))
-                  (project-def proj-name `((,key ,value)) t))
+                  (project-def proj-name `((,key ,value)) t)
+                  (let ((mod (buffer-modified-p)))
+                    (save-buffer)
+                    (set-buffer-modified-p mod)))
               (error "mk-proj-set-config-val: could not find property string for key"))))
       ;; alternative that finds and modifies a project-def lisp definition
       (when mk-proj-config-file
@@ -553,10 +556,10 @@ Works only for projects defined in org-mode. See also `mk-proj-config-get-val'"
                               (two (match-string 2)))
                           (replace-match (concat "(" (symbol-name key) " " (prin1-to-string value) ")\n"))
                           (indent-according-to-mode)
-                          (insert full))))))))))))))
-
-
-;;(mk-proj-set-config-val 'machnocheinenfertig "kaputt" "testor")
+                          (insert full))))))))
+            (let ((mod (buffer-modified-p)))
+              (save-buffer)
+              (set-buffer-modified-p mod))))))))
 
 (defun* project-def (proj-name &optional config-alist inherit)
   "Associate the settings in CONFIG-ALIST with project PROJ-NAME.
@@ -676,7 +679,10 @@ See also `project-undef'."
                 nil))
       (end-of-line)
       (newline))
-    (mk-proj-config-insert config-alist proj-name)))
+    (mk-proj-config-insert config-alist proj-name)
+    (let ((mod (buffer-modified-p)))
+      (save-buffer)
+      (set-buffer-modified-p mod))))
 
 (defun* mk-proj-config-buffer (&optional (state :create) config-alist)
   (case state
