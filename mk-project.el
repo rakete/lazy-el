@@ -301,7 +301,7 @@ See also `mk-proj-load-vars',`mk-proj-get-config-val'.")
   :type 'boolean
   :group 'mk-project)
 
-(defcustom mk-proj-ack-cmd (if (eq system-type 'windows-nt) "ack.pl" "ack")
+(defcustom mk-proj-ack-cmd (if (eq system-type 'windows-nt) "ack.pl" "ack-grep")
   "Name of the ack program to run. Defaults to \"ack\" (or \"ack.pl\" on Windows)."
   :type 'string
   :group 'mk-project)
