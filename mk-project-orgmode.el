@@ -834,19 +834,23 @@ manually constructed project org entry at point (see also `mk-org-entry-define-p
                         (val (cdr (assoc k config-alist))))
                    (org-set-property prop (prin1-to-string val))))))))
 
-(defvar mk-org-config-file "/home/lazor/org/projects.org")
+(defvar mk-org-config-file nil)
 (defvar mk-org-config-section "Projects")
 
 (defun mk-org-config-save (config-alist &optional name)
-  (with-current-buffer (find-file-noselect mk-org-config-file)
-    (let ((section (org-find-exact-headline-in-buffer mk-org-config-section)))
-      (when section
-        (goto-char (marker-position section)))
-      (let* ((org-show-hierarchy-above t)
-             (org-show-following-heading nil)
-             (org-show-siblings nil))
-        (save-excursion
-          (mk-org-config-insert config-alist name))))))
+  (when mk-org-config-file
+    (with-current-buffer (find-file-noselect mk-org-config-file)
+      (let ((section (org-find-exact-headline-in-buffer mk-org-config-section)))
+        (when section
+          (goto-char (marker-position section)))
+        (let* ((org-show-hierarchy-above t)
+               (org-show-following-heading nil)
+               (org-show-siblings nil))
+          (save-excursion
+            (mk-org-config-insert config-alist name)))
+        (let ((mod (buffer-modified-p)))
+          (save-buffer)
+          (set-buffer-modified-p mod))))))
 
 (defun* mk-org-config-buffer (&optional (state :create))
   (case state
@@ -870,27 +874,28 @@ manually constructed project org entry at point (see also `mk-org-entry-define-p
          (outline-next-heading)
          (let ((headline (mk-org-entry-headline)))
            (org-copy-subtree 1 nil)
-           (with-current-buffer (find-file-noselect mk-org-config-file)
-             (let ((section (org-find-exact-headline-in-buffer mk-org-config-section)))
-               (when section
-                 (goto-char (marker-position section)))
-               (let* ((org-show-hierarchy-above t)
-                      (org-show-following-heading nil)
-                      (org-show-siblings nil))
-                 (save-excursion
-                   (goto-char (mk-org-yank-below))
-                   (if (condition-case nil (mk-org-entry-define-project) (error nil))
+           (when mk-org-config-file
+             (with-current-buffer (find-file-noselect mk-org-config-file)
+               (let ((section (org-find-exact-headline-in-buffer mk-org-config-section)))
+                 (when section
+                   (goto-char (marker-position section)))
+                 (let* ((org-show-hierarchy-above t)
+                        (org-show-following-heading nil)
+                        (org-show-siblings nil))
+                   (save-excursion
+                     (goto-char (mk-org-yank-below))
+                     (if (condition-case nil (mk-org-entry-define-project) (error nil))
+                         (progn
+                           ;;(print (concat "added: " headline))
+                           (mk-org-reveal)
+                           (setq has-error nil))
                        (progn
-                         ;;(print (concat "added: " headline))
-                         (mk-org-reveal)
-                         (setq has-error nil))
-                     (progn
-                       (goto-char 0)
-                       (goto-char (marker-position (org-find-exact-headline-in-buffer headline)))
-                       (let ((beg (point))
-                             (end (org-end-of-subtree)))
-                         (delete-region beg end)))
-                     ))))))
+                         (goto-char 0)
+                         (goto-char (marker-position (org-find-exact-headline-in-buffer headline)))
+                         (let ((beg (point))
+                               (end (org-end-of-subtree)))
+                           (delete-region beg end)))
+                       )))))))
          (unless has-error
            (kill-buffer)))))))
 
