@@ -922,7 +922,9 @@ This is taken almost directly from `org-babel-read'."
   (unless mk-org-project-files
     (error "mk-org: could not find any projects, mk-org-project-files is not set"))
   (let ((buffer-with-projects nil)
-        (pre-define-buffer-list (buffer-list)))
+        (pre-define-buffer-list (buffer-list))
+        (continue-prevent-save t)
+        (continue-prevent-restore t))
     (mk-org-map-entries
      :file (mk-org-files-containing-projects)
      ;;:match "mk-project"
