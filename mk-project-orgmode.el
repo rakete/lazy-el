@@ -732,7 +732,7 @@ will be used internally. You can specify match to be used in that case with:
   (kill-buffer))
 
 
-(defun project-add-todo (&optional arg)
+(defun project-todo (&optional arg)
   "Pop up a buffer where the user can create a new org entry to be added to the current
 project. Will add it to the nearest entry that has a `mk-org-active-todo-keyword' or to the
 parent entry. Adding to the parent can be forced with a prefix argument.
