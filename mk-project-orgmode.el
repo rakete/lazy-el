@@ -762,28 +762,11 @@ See also `mk-org-entry-nearest-active'."
           (when (and (or (mk-proj-buffer-p proj-b) (mk-proj-friendly-buffer-p proj-b)) (buffer-file-name proj-b))
             (org-set-property "MKP_SOURCEMARKER" (concat "'" (prin1-to-string sm)))))))))
 
-(defun project-remove-todo (&optional arg)
-  (interactive "P")
-  ;; (point) nicht auf org headline und kein arg -> undo letztes todo
-  ;; arg gesetzt -> frag nach match und alles was matched
-  ;; (point) auf headline und kein arg -> lösche project at (point)
-  ;; alle children müssen auch gelöscht werden, nachfragen wären nicht schlecht
-  (cond (arg
-         (read-string "Match: "))
-         )
-        (t
-         (message "hello interactive")))
-
 (defun project-org-define (&optional arg)
-  "Define a project. This should eventually ask the user a couple of questions about
-the project, then insert either lisp code into the current buffer or create an org
-entry. None of that is implemented so far, but you can use this function to define a
-manually constructed project org entry at point (see also `mk-org-entry-define-project'."
   (interactive "P")
-  (if (and (org-mode-p)
-           (looking-at org-complex-heading-regexp))
-      (mk-org-entry-define-project)
-    (message "Defining projects via function not implemeted yet. You have to create the properties manually.")))
+  (when (and (org-mode-p)
+             (looking-at org-complex-heading-regexp))
+      (mk-org-entry-define-project)))
 
 ;; (defvar mk-org-edit-todo-mode-map (make-sparse-keymap))
 
