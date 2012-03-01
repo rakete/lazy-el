@@ -1070,6 +1070,29 @@ Replaces the old mk-proj-proj-vars constant."
     (dolist (var (mk-proj-proj-vars))
       (set var nil)))
 
+(defmacro mk-proj-with-current-project (proj-name proj-alist &rest body)
+  `(let ((saved-name (when (and (boundp 'mk-proj-name)
+                                mk-proj-name)
+                       mk-proj-name))
+         (saved-history mk-proj-history)
+         (alist (or ,proj-alist
+                    (gethash ,proj-name mk-proj-list)
+                    (error "mk-proj-with-current-project: Project %s not found" ,proj-name))))
+     (when (and saved-name
+                (not (string-equal ,proj-name saved-name)))
+       (mk-proj-unload-vars))
+     (unless (string-equal ,proj-name saved-name)
+       (mk-proj-load-vars ,proj-name alist))
+     ,@body
+     (when (and saved-name
+                (not (string-equal ,proj-name saved-name)))
+       (mk-proj-load-vars saved-name (car mk-proj-history))
+       (setq mk-proj-history saved-history))
+     alist))
+
+ ;; (mk-proj-with-current-project "cl-horde3d" nil
+ ;;                               (project-status))
+
 (defun mk-proj-load-vars (proj-name proj-alist)
   "Set project variables from proj-alist. A project variable is what
 a config variable becomes after loading a project. Essentially
