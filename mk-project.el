@@ -908,7 +908,9 @@ See also `project-undef'."
                  (add-to-list 'result `(,var ,gv))
                (when (some (apply-partially 'eq var) mk-proj-required-vars)
                    (return-from "mk-proj-guess-alist" nil)))))
-         (let ((already-defined (mk-proj-find-projects-in-directory (cadr (assoc 'basedir result))))
+         (let ((already-defined (or (and (buffer-file-name (current-buffer))
+                                         (mk-proj-find-projects-in-directory (mk-proj-dirname (buffer-file-name (current-buffer)))))
+                                    (mk-proj-find-projects-in-directory (cadr (assoc 'basedir result)))))
                (pattern-projects nil))
            (if already-defined
                (loop for proj-name in already-defined
