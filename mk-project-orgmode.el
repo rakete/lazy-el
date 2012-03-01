@@ -64,9 +64,7 @@ the active subtree, instead of the parent subtree.")
 
      (add-hook 'org-clock-in-hook (lambda ()
                                     (when (mk-org-entry-is-in-project-p)
-                                      (mk-proj-load (mk-org-entry-name))
-                                      (sourcemarker-visit))))
-
+                                      (mk-proj-load (mk-org-entry-name)))))
      ))
 
 
