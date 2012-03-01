@@ -66,7 +66,7 @@
   "Set/update a projects sourcemarker."
   (interactive)
   (when (and (buffer-file-name (current-buffer))
-             (mk-proj-friendly-buffer-p (current-buffer)))
+             (mk-proj-buffer-p (current-buffer)))
     (mk-proj-set-config-val 'sourcemarker (continue-sourcemarker-create))))
 
 (provide 'mk-project-sourcemarker)
