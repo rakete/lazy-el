@@ -1087,18 +1087,18 @@ Replaces the old mk-proj-proj-vars constant."
                 (not (string-equal ,proj-name saved-name)))
        (mk-proj-unload-vars))
      (unless (string-equal ,proj-name saved-name)
-       (mk-proj-load-vars ,proj-name alist))
+       (mk-proj-load-vars ,proj-name))
      ,@body
      (when (and saved-name
                 (not (string-equal ,proj-name saved-name)))
-       (mk-proj-load-vars saved-name (car mk-proj-history))
+       (mk-proj-load-vars saved-name)
        (setq mk-proj-history saved-history))
      alist))
 
  ;; (mk-proj-with-current-project "cl-horde3d" nil
  ;;                               (project-status))
 
-(defun mk-proj-load-vars (proj-name proj-alist)
+(defun mk-proj-load-vars (proj-name)
   "Set project variables from proj-alist. A project variable is what
 a config variable becomes after loading a project. Essentially
 a global lisp symbol with the same name as the config variable
@@ -1176,7 +1176,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
       (unless (or (string= oldname proj-name) (eq proj-alist nil))
         (project-unload))
       (if proj-alist
-          (let ((v (mk-proj-load-vars proj-name proj-alist)))
+          (let ((v (mk-proj-load-vars proj-name)))
             (when v
               (error "Required config value '%s' missing in %s!" (symbol-name v) proj-name)))
         (error "Project %s does not exist!" proj-name)))
