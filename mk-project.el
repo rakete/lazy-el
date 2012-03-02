@@ -777,12 +777,12 @@ See also `project-undef'."
 
 (defvar mk-proj-paths-to-ignore-when-guessing `(,(expand-file-name "~")))
 
-(defvar mk-proj-src-pattern-table '(("h" ".c" ".cpp" ".cc")
-                                    ("c" ".h")
-                                    ("cpp" ".hh" ".h")
-                                    ("cc" ".hh" ".h")
-                                    ("hs" ".lhs")
-                                    ("php" ".html")))
+(defvar mk-proj-src-pattern-table '(("h" ".*\\.c" ".*\\.cpp" ".*\\.cc")
+                                    ("c" ".*\\.h")
+                                    ("cpp" ".*\\.hh" ".*\\.h")
+                                    ("cc" ".*\\.hh" ".*\\.h")
+                                    ("hs" ".*\\.lhs")
+                                    ("php" ".*\\.html")))
 
 (setq    mk-proj-guess-functions '((buffer . ((()
                                                `(1 . ,(current-buffer)))))
@@ -828,7 +828,10 @@ See also `project-undef'."
                                                  `(10 . ,(car (split-string (mk-proj-filename (buffer-file-name buffer)) "\\."))))))
                                             ((basedir)
                                              (let ((pname (car (reverse (split-string basedir "/" t)))))
-                                               (unless (gethash pname mk-proj-list)
+                                               (when (loop for ig in mk-proj-paths-to-ignore-when-guessing
+                                                           if (mk-proj-path-equal ig basedir)
+                                                           return nil
+                                                           finally return t)
                                                  `(100 . ,pname))))))
                                    (src-patterns . (((basedir mode)
                                                      (let* ((files (loop for buf in (mk-proj-guess-buffers (current-buffer) nil mode)
@@ -843,7 +846,7 @@ See also `project-undef'."
                                                              do (let ((file-ending (car (last (split-string f "\\." t)))))
                                                                   (add-to-list 'patterns (concat ".*\\." (regexp-quote file-ending)))
                                                                   (mapc (lambda (s)
-                                                                          (add-to-list 'patterns (regexp-quote s)))
+                                                                          (add-to-list 'patterns s))
                                                                         (cdr (assoc file-ending mk-proj-src-pattern-table))))
                                                              else
                                                              do (add-to-list 'patterns (regexp-quote f)))
@@ -851,7 +854,7 @@ See also `project-undef'."
                                                          (mapc (apply-partially 'add-to-list 'patterns)
                                                                (mapcar 'regexp-quote files))
                                                          `(100 . ,patterns))))))
-                                   (pattern-are-regex . ((()
+                                   (patterns-are-regex . ((nil
                                                           '(10 . t))))
                                    (compile-cmd . (((basedir)
                                                     (let ((bsystem))
