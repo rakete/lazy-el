@@ -358,7 +358,8 @@ load time. See also `project-menu-remove'."
             ((and guessed-alist
                   try-guessing
                   (not (gethash (cadr (assoc 'name guessed-alist)) mk-proj-list nil))
-                  (y-or-n-p (concat "Temporary load project " (cadr (assoc 'name guessed-alist)) "? ")))
+                  (y-or-n-p (concat "Create project " (cadr (assoc 'name guessed-alist)) "? ")))
+             (project-def (cadr (assoc 'name guessed-alist)) guessed-alist)
              (mk-proj-load (cadr (assoc 'name guessed-alist)) guessed-alist))
             (t
              (error "No project is set!"))))))
