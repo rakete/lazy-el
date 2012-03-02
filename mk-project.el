@@ -1307,7 +1307,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars' `mk-proj-var-functions'
   "View project's variables."
   (interactive)
   (unless proj-name
-    (mk-proj-assert-proj)
+    (mk-proj-assert-proj t)
     (setq proj-name mk-proj-name))
   (if mk-proj-basedir
       (let ((b (get-buffer-create "*mk-proj: project-status*")))
@@ -1465,7 +1465,7 @@ If the phrase argument is not included, it will prompt for a
 search phrase.  If the from-current-dir argument is true, or with
 C-u prefix, start from the current directory."
   (interactive)
-  (mk-proj-assert-proj)
+  (mk-proj-assert-proj t)
   (let* ((wap (word-at-point))
          (regex (or phrase
                     (if wap (read-string (concat "Grep project for (default \"" wap "\"): ") nil nil wap)
@@ -1509,7 +1509,7 @@ C-u prefix, start from the current directory."
   "Run ack from project's basedir, using the `ack-args' configuration.
 With C-u prefix, start ack from the current directory."
   (interactive)
-  (mk-proj-assert-proj)
+  (mk-proj-assert-proj t)
   (let* ((wap (word-at-point))
          (regex (or phrase
                     (if wap (read-string (concat "Ack project for (default \"" wap "\"): ") nil nil wap)
@@ -1530,7 +1530,7 @@ With C-u prefix, start ack from the current directory."
  "Run the compile command (string or function) for this project."
  (interactive)
  (unless proj-name
-   (mk-proj-assert-proj)
+   (mk-proj-assert-proj t)
    (setq proj-name mk-proj-name))
  (unless cmd
    (setq cmd (mk-proj-get-config-val 'compile-cmd proj-name)))
@@ -1594,7 +1594,7 @@ With C-u prefix, start ack from the current directory."
 (defun project-dired ()
   "Open dired in the project's basedir (or jump to the existing dired buffer)"
   (interactive)
-  (mk-proj-assert-proj)
+  (mk-proj-assert-proj t)
   (dired mk-proj-basedir))
 
 ;; ---------------------------------------------------------------------
@@ -1649,7 +1649,7 @@ With C-u prefix, start ack from the current directory."
   "Regenerate the *file-index* buffer that is used for project-find-file"
   (interactive)
   (unless proj-name
-    (mk-proj-assert-proj)
+    (mk-proj-assert-proj t)
     (setq proj-name mk-proj-name))
   (when (mk-proj-get-config-val 'file-list-cache proj-name t)
     (mk-proj-fib-clear proj-name)
@@ -1725,7 +1725,7 @@ completion.
 If REGEX is nil all project files are matched.
 
 See also: `project-index', `project-find-file-ido'."
-  (mk-proj-assert-proj)
+  (mk-proj-assert-proj t)
   (unless (get-buffer (mk-proj-fib-name))
     (message "Please use project-index to create the index before running project-find-file")
     (return-from "project-find-file" nil))
@@ -1751,7 +1751,7 @@ Choose a file to open from among the files listed in buffer
 selection of the file. See also: `project-index',
 `project-find-file'."
   (interactive)
-  (mk-proj-assert-proj)
+  (mk-proj-assert-proj t)
   (unless (get-buffer (mk-proj-fib-name))
     (message "Please use project-index to create the index before running project-find-file-ido")
     (return-from "project-find-file-ido" nil))
@@ -1763,6 +1763,7 @@ selection of the file. See also: `project-index',
 (defun project-multi-occur (regex)
   "Search all open project files for 'regex' using `multi-occur'"
   (interactive "sRegex: ")
+  (mk-proj-assert-proj t)
   (multi-occur (mk-proj-filter (lambda (b) (if (buffer-file-name b) b nil))
                                (mk-proj-buffers))
                regex))
@@ -1941,6 +1942,7 @@ non-nil return only buffers that are friendly toward the project."
 
 If called with prefix arg it will behave just like `project-multi-occur'"
   (interactive "sRegex: ")
+  (mk-proj-assert-proj t)
   (multi-occur (mk-proj-filter (lambda (b) (if (buffer-file-name b) b nil))
                                (if current-prefix-arg
                                    (mk-proj-buffers)
@@ -1959,7 +1961,7 @@ If called with prefix arg it will behave just like `project-multi-occur'"
   "Run ack with project's basedir and all friend basedirs as arguments, using the `ack-args' configuration.
 With C-u prefix, act like `project-ack'."
   (interactive)
-  (mk-proj-assert-proj)
+  (mk-proj-assert-proj t)
   (if current-prefix-arg
       (project-ack)
     (let* ((wap (word-at-point))
@@ -1976,10 +1978,11 @@ With C-u prefix, act like `project-ack'."
                                  mk-proj-basedir))))
       (compilation-start confirmed-cmd 'ack-mode))))
 
-(defun mk-proj-find-projects-owning-file (file))
+;;(defun mk-proj-find-projects-owning-file (file))
 
 (defun project-friend-this (&optional proj-name)
   (interactive "P")
+  (mk-proj-assert-proj t)
   (setq proj-name (cond ((and (listp proj-name) (numberp (car proj-name)))
                     (mk-proj-get-config-val 'parent))
                    ((stringp proj-name)
@@ -1992,6 +1995,7 @@ With C-u prefix, act like `project-ack'."
 
 (defun project-friend-add (&optional friend)
   (interactive "P")
+  (mk-proj-assert-proj t)
   (let ((parent nil))
     (when (and (listp friend) (numberp (car friend)))
       (setq parent (mk-proj-get-config-val 'parent)
