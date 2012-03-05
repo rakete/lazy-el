@@ -102,17 +102,17 @@ a single symbol and don't need the whole alist."
         (cdr (assoc symbol table))
       table)))
 
-(defun mk-org-assert-org (&optional name)
+(defun mk-org-assert-org (&optional proj-name)
   "Same as `mk-proj-assert-proj' but makes sure that the project has
 an associated org file.
 
-Optionally NAME can be specified to test a specific project other
+Optionally PROJ-NAME can be specified to test a specific project other
 than the current one."
   (mk-proj-assert-proj)
-  (if (eq name nil)
+  (if (eq proj-name nil)
       (unless mk-proj-org-file
         (error (format "mk-org: Project %s has no associated org file!" mk-proj-name)))
-    (unless (mk-proj-config-val 'org-file name)
+    (unless (mk-proj-config-val 'org-file proj-name)
       (error (format "mk-org: Project %s has no associated org file!" mk-proj-name)))))
 
 (defun mk-org-forward-same-level ()
@@ -563,23 +563,23 @@ will be used internally. You can specify match to be used in that case with:
 
 
 
-(defun mk-org-project-buffer-name (&optional name)
-  (let ((name (if name
-                  name
+(defun mk-org-project-buffer-name (&optional proj-name)
+  (let ((proj-name (if proj-name
+                  proj-name
                 (progn
                   (mk-proj-assert-proj)
                   mk-proj-name))))
-    (concat "*mk-org: " (or (mk-proj-config-val 'parent name) name) "*")))
+    (concat "*mk-org: " (or (mk-proj-config-val 'parent proj-name) proj-name) "*")))
 
 
 
-(defun mk-org-create-project-buffer (&optional name)
-  (unless name
+(defun mk-org-create-project-buffer (&optional proj-name buffer-name)
+  (unless proj-name
     (mk-proj-assert-proj)
-    (setq name mk-proj-name))
-  (mk-org-assert-org name)
-  (let* ((marker (mk-proj-config-val 'org-marker name))
-         (buffername (mk-org-project-buffer-name name))
+    (setq proj-name mk-proj-name))
+  (mk-org-assert-org proj-name)
+  (let* ((marker (mk-proj-config-val 'org-marker proj-name))
+         (buffername (or buffer-name (mk-org-project-buffer-name proj-name)))
          (headline (mk-org-entry-headline marker))
          (org-show-hierarchy-above t)
          (org-show-following-heading nil)
@@ -627,27 +627,27 @@ will be used internally. You can specify match to be used in that case with:
                  ))))
 
 
-(defun mk-org-get-project-buffer (&optional name)
-  (or (get-buffer (mk-org-project-buffer-name name))
-      (mk-org-create-project-buffer name)))
+(defun mk-org-get-project-buffer (&optional proj-name buffer-name)
+  (or (get-buffer (mk-org-project-buffer-name proj-name))
+      (mk-org-create-project-buffer proj-name buffer-name)))
 
-(defun project-org-buffer (&optional name)
+(defun project-org-buffer (&optional proj-name)
   "Open current projects org tree as indirect buffer."
   (interactive)
-  (display-buffer (mk-org-get-project-buffer name)))
+  (display-buffer (mk-org-get-project-buffer proj-name)))
 
-;; (defun project-org-marker (&optional name)
-;;   "Get current or NAME projects org entry as marker."
+;; (defun project-org-marker (&optional proj-name)
+;;   "Get current or PROJ-NAME projects org entry as marker."
 ;;   (interactive)
-;;   (unless name
+;;   (unless proj-name
 ;;     (mk-proj-assert-proj)
-;;     (setq name mk-proj-name))
-;;   (mk-org-assert-org name)
-;;   (let ((org-file (mk-proj-config-val 'org-file name t))
-;;         (org-headline (mk-proj-config-val 'org-headline name t))
+;;     (setq proj-name mk-proj-name))
+;;   (mk-org-assert-org proj-name)
+;;   (let ((org-file (mk-proj-config-val 'org-file proj-name t))
+;;         (org-headline (mk-proj-config-val 'org-headline proj-name t))
 ;;         )
 ;;     (car (mk-org-map-entries
-;;           :file (mk-org-get-project-buffer) name)
+;;           :file (mk-org-get-project-buffer) proj-name)
 ;;           :match `(eval (format org-complex-heading-regexp-format ,org-headline))
 ;;           :scope 'project-headline
 ;;           :function (lambda ()
@@ -793,19 +793,19 @@ See also `mk-org-entry-nearest-active'."
 
 
 
-(defun mk-org-config-insert (&optional config-alist name insert-undefined headline)
+(defun mk-org-config-insert (&optional config-alist proj-name insert-undefined headline)
   (interactive)
   (unless (org-mode-p)
     (error "mk-org: current buffer not in org-mode"))
-  (unless name
-    (setq name (or (cadr (assoc 'name config-alist)) "NewProject")))
+  (unless proj-name
+    (setq proj-name (or (cadr (assoc 'name config-alist)) "NewProject")))
   (save-excursion
     (save-restriction
       (org-insert-heading)
       (if headline
           (insert headline)
-        (insert name))
-      (org-set-property "MKP_NAME" name)
+        (insert proj-name))
+      (org-set-property "MKP_NAME" proj-name)
       (loop for k in (append mk-proj-required-vars mk-proj-optional-vars)
             if (not (or (eq k 'name)
                         (mk-proj-any (lambda (j) (eq k j)) mk-proj-internal-vars)))
@@ -818,7 +818,7 @@ See also `mk-org-entry-nearest-active'."
 (defvar mk-org-config-file nil)
 (defvar mk-org-config-section "Projects")
 
-(defun mk-org-config-save (config-alist &optional name)
+(defun mk-org-config-save (config-alist &optional proj-name)
   (when mk-org-config-file
     (with-current-buffer (find-file-noselect mk-org-config-file)
       (let ((section (org-find-exact-headline-in-buffer mk-org-config-section)))
@@ -828,7 +828,7 @@ See also `mk-org-entry-nearest-active'."
                (org-show-following-heading nil)
                (org-show-siblings nil))
           (save-excursion
-            (mk-org-config-insert config-alist name)))
+            (mk-org-config-insert config-alist proj-name)))
         (let ((mod (buffer-modified-p)))
           (save-buffer)
           (set-buffer-modified-p mod))))))
@@ -942,31 +942,25 @@ This is taken almost directly from `org-babel-read'."
                (when (not (mk-org-entry-is-project-p))
                  (project-undef entry-name)))))
 
-(defun project-clock-in (&optional name)
+(defun project-clock-in (&optional proj-name)
   (interactive)
-  (unless name
+  (unless proj-name
     (mk-proj-assert-proj)
-    (setq name mk-proj-name))
-  (mk-org-assert-org name)
+    (setq proj-name mk-proj-name))
+  (mk-org-assert-org proj-name)
   (mk-org-map-entries
-   :match (mk-proj-get-config-val 'org-marker name)
+   :match (mk-proj-get-config-val 'org-marker proj-name)
    :scope 'project-headline
    :function (lambda ()
                (org-clock-in))))
 
-(defun project-clock-out (&optional name)
+(defun project-clock-out (&optional proj-name)
   (interactive)
-  (unless name
+  (unless proj-name
     (mk-proj-assert-proj)
-    (setq name mk-proj-name))
-  (mk-org-assert-org name)
+    (setq proj-name mk-proj-name))
+  (mk-org-assert-org proj-name)
   (org-clock-out))
-
-  ;; (mk-org-map-entries
-  ;;  :match (mk-proj-get-config-val 'org-marker name)
-  ;;  :scope 'project-headline
-  ;;  :function (lambda ()
-  ;;              (org-clock-out))))
 
 (provide 'mk-project-orgmode)
 
