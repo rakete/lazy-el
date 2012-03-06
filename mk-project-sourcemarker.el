@@ -22,8 +22,8 @@
 
 (defun sourcemarker-setup ()
    (add-to-list 'mk-proj-optional-vars 'sourcemarker)
-   (add-hook 'mk-proj-after-load-hook 'sourcemarker-visit)
-   (add-hook 'mk-proj-before-unload-hook 'sourcemarker-set)
+   (add-hook 'mk-proj-after-load-hook 'sourcemarker-display-most-recent-buffer)
+   ;;(add-hook 'mk-proj-before-unload-hook 'sourcemarker-set)
    (add-hook 'after-save-hook (lambda ()
                                 (when (and (boundp 'mk-proj-name) mk-proj-name
                                            (or (mk-proj-buffer-p (current-buffer))
@@ -46,6 +46,15 @@
                                      (when next-buf
                                        (with-current-buffer next-buf
                                          (sourcemarker-set))))))))
+
+(defun sourcemarker-display-most-recent-buffer ()
+  (let ((buffer (cdar (sort (loop for b in (mk-proj-buffers)
+                                  if (and (buffer-file-name b)
+                                          (assoc :timestamp (gethash (buffer-file-name b) continue-db nil)))
+                                  collect `(,(read (cdr (assoc :timestamp (gethash (buffer-file-name b) continue-db nil)))) . ,b))
+                            (lambda (a b) (> (car a) (car b)))))))
+    (when buffer
+      (display-buffer buffer))))
 
 (defun sourcemarker-visit ()
   "Restore project sourcemarker and go there."
