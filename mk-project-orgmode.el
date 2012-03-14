@@ -26,7 +26,7 @@
 (require 'org-depend)
 (require 'ob)
 
-(defvar mk-org-project-files nil
+(defvar mk-org-project-search-files nil
   "List of .org files that mk-org searches for project definitions.")
 
 (defvar mk-org-todo-keywords '("TODO" "ACTIVE" "PLAN" "BUG" "WAITING")
@@ -46,25 +46,42 @@ the active subtree, instead of the parent subtree.")
 (defvar mk-proj-org-file nil
   "The current projects .org file.")
 
-(defvar mk-proj-org-marker nil
-  "Marker for the current projects org headline." )
+(defvar mk-proj-org-headline nil
+  "The current projects org headline." )
 
 (defvar mk-proj-org-level nil
   "The number of stars in front of the projects headline.")
 
+(defvar mk-org-config-save-location t
+  "Where to store project org trees. Can be either a directory name to use
+one org file per project stored in a single directory, can be a filename
+to use a single org file for all projects, for every other non-nil value
+a single org file is stored in the projects basedir.")
+
+(defvar mk-org-config-save-section "Projects")
+
+
 (eval-after-load "mk-project-orgmode"
   '(progn
      (add-to-list 'mk-proj-optional-vars 'org-file)
-     (add-to-list 'mk-proj-optional-vars 'org-marker)
+     (add-to-list 'mk-proj-optional-vars 'org-headline)
      (add-to-list 'mk-proj-optional-vars 'org-level)
 
      (add-to-list 'mk-proj-internal-vars 'org-file)
-     (add-to-list 'mk-proj-internal-vars 'org-marker)
+     (add-to-list 'mk-proj-internal-vars 'org-headline)
      (add-to-list 'mk-proj-internal-vars 'org-level)
 
      (add-hook 'org-clock-in-hook (lambda ()
                                     (when (mk-org-entry-is-in-project-p)
                                       (mk-proj-load (mk-org-entry-name)))))
+
+     (mk-proj-define-backend 'org-mode
+                             :buffer-fun 'mk-org-config-buffer
+                             :save-fun 'mk-org-config-save
+                             :insert-fun 'mk-org-config-insert
+                             :test-fun (lambda (ca)
+                                         (assoc 'org-file ca)))
+
      ))
 
 
@@ -75,7 +92,7 @@ the active subtree, instead of the parent subtree.")
 (defun mk-org-files-containing-projects ()
   "Searches all defined projects and returns list of all .org files
 in which projects have been defined as well as the files specified by
-`mk-org-project-files'"
+`mk-org-project-search-files'"
   (let ((org-files '()))
     (maphash (lambda (k p)
                (when (cdr (assoc 'org-file p))
@@ -85,8 +102,21 @@ in which projects have been defined as well as the files specified by
                  (or (not (file-exists-p x))
                      (eq x nil)))
                (remove-duplicates
-                (append org-files (concatl (mapcar 'file-expand-wildcards mk-org-project-files)))
+                (append org-files (concatl (mapcar (lambda (path)
+                                                     (cond ((condition-case nil (directory-files path) (error nil))
+                                                            (let ((currentdir default-directory))
+                                                              (cd path)
+                                                              (let ((result (split-string (shell-command-to-string "grep -ls \"MKP_NAME\" *.org") "\n" t)))
+                                                                (cd currentdir)
+                                                                (mapcar (lambda (f) (expand-file-name (concat path f))) result))))
+                                                           ((file-exists-p path)
+                                                            `(,(expand-file-name path)))
+                                                           (t (file-expand-wildcards path))))
+                                                   mk-org-project-search-files)))
                 :test #'string-equal))))
+
+;; (setq mk-org-project-search-files '("~/org/" "~/org/projects.org"))
+;; (mk-org-files-containing-projects)
 
 (defun mk-org-symbol-table (&optional symbol)
   "Creates an alist of (symbol . org-property-string) that can be used
@@ -102,18 +132,51 @@ a single symbol and don't need the whole alist."
         (cdr (assoc symbol table))
       table)))
 
-(defun mk-org-assert-org (&optional proj-name)
+(defun mk-org-assert-org (&optional proj-name try-guessing)
   "Same as `mk-proj-assert-proj' but makes sure that the project has
 an associated org file.
 
 Optionally PROJ-NAME can be specified to test a specific project other
 than the current one."
-  (mk-proj-assert-proj)
-  (if (eq proj-name nil)
-      (unless mk-proj-org-file
-        (error (format "mk-org: Project %s has no associated org file!" mk-proj-name)))
-    (unless (mk-proj-config-val 'org-file proj-name)
-      (error (format "mk-org: Project %s has no associated org file!" mk-proj-name)))))
+  ;; 6. guessed exists, not org -> convert and load guessed
+  ;; 7. guessed does not exist -> define, convert and load guessed
+  (let ((guessed-alist nil))
+    (cond
+     ;; 1. project loaded, org -> nothing
+     ((and (not (condition-case nil (mk-proj-assert-proj) (error t)))
+           (mk-proj-get-config-val 'org-file mk-proj-name)))
+     ;; 2. project loaded, not org -> convert and load mk-proj-name
+     ((and (not (condition-case nil (mk-proj-assert-proj) (error t)))
+           (not (mk-proj-get-config-val 'org-file mk-proj-name))
+           (y-or-n-p (concat "2. Convert and load " mk-proj-name "? ")))
+      (mk-org-config-save mk-proj-name (mk-proj-find-config mk-proj-name t))
+      (mk-proj-load mk-proj-name))
+     ;; 3. project not loaded, proj-name and org -> load proj-name
+     ((and (condition-case nil (mk-proj-assert-proj) (error t))
+           proj-name
+           (mk-proj-get-config-val 'org-file proj-name)
+           (y-or-n-p (concat "3. Load " proj-name "? ")))
+      (mk-proj-load proj-name))
+     ;; 4. project not loaded, proj-name not org -> convert and load proj-name
+     ((and (condition-case nil (mk-proj-assert-proj) (error t))
+           proj-name
+           (not (mk-proj-get-config-val 'org-file proj-name))
+           (y-or-n-p (concat "4. Convert and load " proj-name "? ")))
+      (mk-org-config-save mk-proj-name (mk-proj-find-config proj-name t))
+      (mk-proj-load proj-name))
+     ;; 5. guessed exists, org -> load guessed
+     ((and try-guessing
+           (setq guessed-alist (mk-proj-guess-alist))
+           (assoc 'org-file (mk-proj-find-config (cadr (assoc 'name guessed-alist)) t))
+           (y-or-n-p (concat "5. Load " (cadr (assoc 'name guessed-alist)) "? ")))
+      (mk-proj-load (cadr (assoc 'name guessed-alist))))
+     ;; 6. try-guessing t -> create, convert and load guessed
+     ((and try-guessing
+           guessed-alist
+           (y-or-n-p (concat "6. Create and load " (cadr (assoc 'name guessed-alist)) "? ")))
+      (mk-org-save-config-save (cadr (assoc 'name guessed-alist)) guessed-alist))
+     (t
+      (error (format "mk-org: Project %s has no associated org file!" mk-proj-name))))))
 
 (defun mk-org-forward-same-level ()
   (interactive)
@@ -176,7 +239,8 @@ will be used internally. You can specify match to be used in that case with:
         (opened-files nil))
     (dolist (project-file (setq opened-files (cond ((and (markerp match) (marker-buffer match))
                                                     `(,(marker-buffer match)))
-                                                   ((continue-sourcemarker-p match)
+                                                   ((and (boundp 'continue-sourcemarker-p)
+                                                         (continue-sourcemarker-p match))
                                                     `(,(marker-buffer (continue-sourcemarker-restore match))))
                                                    ((or (buffer-live-p file) (and (char-or-string-p file) (file-exists-p file)))
                                                     `(,file))
@@ -202,7 +266,8 @@ will be used internally. You can specify match to be used in that case with:
                                    project-file))
                    (re (cond ((and (markerp match) (marker-position match))
                               (marker-position match))
-                             ((continue-sourcemarker-p match)
+                             ((and (boundp 'continue-sourcemarker-p)
+                                   (continue-sourcemarker-p match))
                               (marker-position (continue-sourcemarker-restore match)))
                              ((numberp match)
                               match)
@@ -344,14 +409,6 @@ will be used internally. You can specify match to be used in that case with:
 
 
 
-(defmacro with-or-without-marker (marker &rest body)
-  `(let ((marker ,marker))
-     (if (markerp marker)
-         (with-current-buffer (marker-buffer marker)
-           (save-excursion
-             (goto-char (marker-position marker))
-             ,@body))
-       ,@body)))
 
 (defun mk-org-entry-name (&optional marker)
   (interactive)
@@ -370,7 +427,9 @@ will be used internally. You can specify match to be used in that case with:
     (save-excursion
       (beginning-of-line)
       (when (looking-at org-complex-heading-regexp)
-        (copy-marker (point-marker))))))
+        (let ((point (point)))
+          (with-current-buffer (or (buffer-base-buffer (current-buffer)) (current-buffer))
+            (copy-marker (point-marker))))))))
 
 (defun mk-org-entry-level (&optional marker)
   (interactive)
@@ -510,8 +569,8 @@ will be used internally. You can specify match to be used in that case with:
                                   (org-entry-get (point) (mk-org-symbol-table 'name) t))
                             t)))
 
-(defun mk-org-entry-define-project (&optional marker)
-  "Define a project from the org entry at (point)."
+(defun mk-org-entry-alist (&optional marker)
+  "Get config-alist from org entry properties at point."
   (interactive)
   (with-or-without-marker marker
    (save-excursion
@@ -531,16 +590,23 @@ will be used internally. You can specify match to be used in that case with:
                       (config-item (car sym))
                       (item-value (read (cdr (assoc config-propname entry-properties)))))
                  (add-to-list 'entry-config `(,config-item ,item-value))))))
-       (setq entry-config (append entry-config `((org-file ,(or (buffer-file-name (current-buffer))
-                                                                (buffer-file-name (buffer-base-buffer (current-buffer)))))
-                                                 (org-marker ,(mk-org-entry-marker))
-                                                 (org-level ,(- (mk-org-entry-level) (mk-org-entry-parent-level))))))
-       ;;(message "%s -> %s : %s : %d" (mk-org-entry-name) (or (mk-org-entry-parent-name) t) (assoc 'org-file entry-config) (marker-position (cadr (assoc 'org-marker entry-config))))
-       (project-def (mk-org-entry-name) entry-config (or (mk-org-entry-parent-name) t))
-       ;; (when (and mk-proj-name (string-equal (mk-org-entry-name) mk-proj-name))
-       ;;   (message (format "org-project: loading %s" (mk-org-entry-name)))
-       ;;   (mk-proj-load (mk-org-entry-name)))
-       ))))
+       (let ((entry-config (append entry-config `((org-file ,(or (buffer-file-name (current-buffer))
+                                                                 (buffer-file-name (buffer-base-buffer (current-buffer)))))
+                                                  (org-headline ,(mk-org-entry-headline))
+                                                  (org-level ,(- (mk-org-entry-level) (mk-org-entry-parent-level))))))
+             (proj-parent (mk-org-entry-parent-name)))
+         (when proj-parent
+           (add-to-list 'entry-config `(parent ,proj-parent)))
+         ;;(message "%s -> %s : %s : %d" (mk-org-entry-name) (or (mk-org-entry-parent-name) t) (assoc 'org-file entry-config) (marker-position (cadr (assoc 'org-marker entry-config))))
+         ;;(project-def (mk-org-entry-name) entry-config (or (mk-org-entry-parent-name) t))
+         ;; (when (and mk-proj-name (string-equal (mk-org-entry-name) mk-proj-name))
+         ;;   (message (format "org-project: loading %s" (mk-org-entry-name)))
+         ;;   (mk-proj-load (mk-org-entry-name)))
+         entry-config)))))
+
+(defun mk-org-entry-define-project (&optional marker)
+  (project-def (mk-org-entry-name marker)
+               (mk-org-entry-alist marker)))
 
 (defun mk-org-entry-undefine-project (&optional marker)
   (interactive)
@@ -561,7 +627,26 @@ will be used internally. You can specify match to be used in that case with:
 
 
 
-
+(defun mk-org-project-marker (&optional proj-name)
+  "Get current or PROJ-NAME projects org entry as marker."
+  (interactive)
+  (unless proj-name
+    (mk-proj-assert-proj)
+    (setq proj-name mk-proj-name))
+  (mk-org-assert-org proj-name)
+  (let ((org-file (mk-proj-config-val 'org-file proj-name t))
+        (org-headline (mk-proj-config-val 'org-headline proj-name t)))
+    (with-current-buffer (find-file-noselect org-file)
+      (car (mk-org-map-entries
+            :file (current-buffer)
+            :match `(headline ,org-headline)
+            :scope 'project-headline
+            :function (lambda ()
+                        (save-excursion
+                          (org-back-to-heading t)
+                          (beginning-of-line)
+                          (mk-org-entry-marker)
+                          )))))))
 
 (defun mk-org-project-buffer-name (&optional proj-name)
   (let ((proj-name (if proj-name
@@ -572,14 +657,13 @@ will be used internally. You can specify match to be used in that case with:
     (concat "*mk-org: " (or (mk-proj-config-val 'parent proj-name) proj-name) "*")))
 
 
-
-(defun mk-org-create-project-buffer (&optional proj-name buffer-name)
+(defun mk-org-create-project-buffer (&optional proj-name bufname)
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
   (mk-org-assert-org proj-name)
-  (let* ((marker (mk-proj-config-val 'org-marker proj-name))
-         (buffername (or buffer-name (mk-org-project-buffer-name proj-name)))
+  (let* ((marker (mk-org-project-marker))
+         (buffername (or bufname (mk-org-project-buffer-name proj-name)))
          (headline (mk-org-entry-headline marker))
          (org-show-hierarchy-above t)
          (org-show-following-heading nil)
@@ -627,37 +711,17 @@ will be used internally. You can specify match to be used in that case with:
                  ))))
 
 
-(defun mk-org-get-project-buffer (&optional proj-name buffer-name)
-  (or (get-buffer (mk-org-project-buffer-name proj-name))
-      (mk-org-create-project-buffer proj-name buffer-name)))
+(defun mk-org-get-project-buffer (&optional proj-name bufname)
+  (or (get-buffer (or bufname (mk-org-project-buffer-name proj-name)))
+      (mk-org-create-project-buffer proj-name bufname)))
 
 (defun project-org-buffer (&optional proj-name)
   "Open current projects org tree as indirect buffer."
   (interactive)
   (display-buffer (mk-org-get-project-buffer proj-name)))
 
-;; (defun project-org-marker (&optional proj-name)
-;;   "Get current or PROJ-NAME projects org entry as marker."
-;;   (interactive)
-;;   (unless proj-name
-;;     (mk-proj-assert-proj)
-;;     (setq proj-name mk-proj-name))
-;;   (mk-org-assert-org proj-name)
-;;   (let ((org-file (mk-proj-config-val 'org-file proj-name t))
-;;         (org-headline (mk-proj-config-val 'org-headline proj-name t))
-;;         )
-;;     (car (mk-org-map-entries
-;;           :file (mk-org-get-project-buffer) proj-name)
-;;           :match `(eval (format org-complex-heading-regexp-format ,org-headline))
-;;           :scope 'project-headline
-;;           :function (lambda ()
-;;                       (save-excursion
-;;                         (org-back-to-heading t)
-;;                         (beginning-of-line)
-;;                         (point-marker)
-;;                         )))))
 
-(defun mk-org-yank-below (&optional arg)
+(defun mk-org-yank-below (&optional arg adjust-subtree)
   (interactive "P")
   (let (p)
     (save-excursion
@@ -666,19 +730,21 @@ will be used internally. You can specify match to be used in that case with:
           (when (looking-at org-complex-heading-regexp)
             (show-all)
             (let ((level (org-outline-level))
-                  (adjust t))
+                  (auto-adjust (or (org-entry-get (point) (cdr (assoc 'name (mk-org-symbol-table))))
+                                   'todo)))
               (outline-next-heading)
               (while (and (> (org-outline-level) level)
                           (not (eobp)))
                 (outline-next-heading)
-                (when adjust (setq adjust nil)))
+                (when (eq auto-adjust 'todo)
+                  (setq auto-adjust nil)))
               (outline-previous-heading)
               (org-end-of-subtree)
               (newline)
               (let ((org-yank-folded-subtrees t)
-                    (org-yank-adjusted-subtrees t))
+                    (org-yank-adjusted-subtrees nil))
                 (org-yank))
-              (if (and arg adjust)
+              (if (or adjust-subtree auto-adjust)
                   (progn
                     (outline-previous-heading)
                     (org-shiftmetaright))
@@ -700,14 +766,13 @@ will be used internally. You can specify match to be used in that case with:
 (defun mk-org-add-todo-finalize (&optional arg)
   (interactive "P")
   (setq arg (or arg local-prefix-arg))
-  ;;(print arg)
   (mk-org-assert-org)
   (beginning-of-buffer)
   (outline-next-heading)
   (org-copy-subtree 1 t)
   (mk-org-map-entries
    :file (mk-org-get-project-buffer)
-   :match mk-proj-org-marker ;;`(re ,(format org-complex-heading-regexp-format mk-proj-org-headline))
+   :match `(headline ,mk-proj-org-headline)
    :scope 'project-headline
    :function (lambda ()
                (let* ((active (mk-org-entry-nearest-active))
@@ -721,7 +786,6 @@ will be used internally. You can specify match to be used in that case with:
                  (save-excursion
                    (goto-char (mk-org-yank-below arg))
                    (mk-org-reveal)
-                   ;;(print (concat "added: " (mk-org-entry-headline)))
                    (mk-org-entry-define-project)
                    (when parent (goto-char parent))
                    (mk-org-reveal)))))
@@ -742,46 +806,20 @@ which entry (all of them not just the parent or nearest active) to add the todo.
 
 See also `mk-org-entry-nearest-active'."
   (interactive "P")
-  (if (and (org-mode-p)
-           (looking-at org-complex-heading-regexp)
-           (not (gethash (mk-org-entry-name) mk-proj-list)))
-      (mk-org-entry-define-project)
-    (progn
-      (mk-org-assert-org)
-      (let* ((proj-b (current-buffer))
-             (sm (continue-sourcemarker-create))
-             (buf (get-buffer-create "*mk-org: add todo*"))
-             (window (display-buffer buf)))
-        (select-window window)
-        (set-window-dedicated-p window t)
-        (org-mode)
-        (mk-org-add-todo-mode 1)
-        (with-current-buffer buf
-          (set (make-local-variable 'local-prefix-arg) arg)
-          (org-insert-heading)
-          (when (and (or (mk-proj-buffer-p proj-b) (mk-proj-friendly-buffer-p proj-b)) (buffer-file-name proj-b))
-            (org-set-property "MKP_SOURCEMARKER" (concat "'" (prin1-to-string sm)))))))))
-
-(defun project-org-define (&optional arg)
-  (interactive "P")
-  (when (and (org-mode-p)
-             (looking-at org-complex-heading-regexp))
-      (mk-org-entry-define-project)))
-
-;; (defvar mk-org-edit-todo-mode-map (make-sparse-keymap))
-
-;; (defvar mk-org-edit-todo-mode-hook nil)
-
-;; (define-minor-mode mk-org-edit-todo-mode nil nil " EditTodo" mk-org-edit-todo-mode-map
-;;   (run-hooks 'mk-org-edit-todo-mode-hook))
-
-;; (define-key mk-org-edit-todo-mode-map "\C-c\C-c" 'mk-org-edit-todo-finalize)
-;; (define-key mk-org-edit-todo-mode-map "\C-c\C-k" 'mk-org-edit-todo-abort)
-
-;; (defun mk-org-edit-todo-finalize ()
-;;   (interactive))
-
-;; (defun project-edit-todo ())
+  (mk-org-assert-org)
+  (let* ((proj-b (current-buffer))
+         (sm (continue-sourcemarker-create))
+         (buf (get-buffer-create "*mk-proj: add todo*"))
+         (window (display-buffer buf)))
+    (select-window window)
+    (set-window-dedicated-p window t)
+    (org-mode)
+    (mk-org-add-todo-mode 1)
+    (with-current-buffer buf
+      (set (make-local-variable 'local-prefix-arg) arg)
+      (org-insert-heading)
+      (when (and (or (mk-proj-buffer-p proj-b) (mk-proj-friendly-buffer-p proj-b)) (buffer-file-name proj-b))
+        (org-set-property "MKP_SOURCEMARKER" (concat "'" (prin1-to-string sm)))))))
 
 
 
@@ -791,94 +829,198 @@ See also `mk-org-entry-nearest-active'."
 
 
 
+(defun mk-org-find-save-location-marker (&optional proj-name config-alist)
+  (unless proj-name
+    (mk-proj-assert-proj)
+    (setq proj-name mk-proj-name))
+  (cond ;; find parent headline
+        ((and (mk-proj-get-config-val 'parent proj-name t)
+              (mk-proj-get-config-val 'org-file proj-name t)
+              (mk-proj-get-config-val 'org-headline proj-name t))
+         (with-current-buffer (find-file-noselect (mk-proj-get-config-val 'org-file proj-name t))
+           (save-excursion
+             (if (condition-case nil (goto-char (org-find-exact-headline-in-buffer (mk-proj-get-config-val 'org-headline proj-name t))) (error nil))
+                 (point-marker)
+               (error "mk-org: could not find a location to save project %s" proj-name)))))
+        ;; find existing project headline
+        ((and (mk-proj-get-config-val 'org-file proj-name t)
+              (mk-proj-get-config-val 'org-headline proj-name t))
+         (with-current-buffer (find-file-noselect (mk-proj-get-config-val 'org-file proj-name t))
+           (save-excursion
+             (if (condition-case nil (goto-char (org-find-exact-headline-in-buffer (mk-proj-get-config-val 'org-headline proj-name t))) (error nil))
+                 (point-marker)
+               (error "mk-org: could not find a loctationto save project %s" proj-name)))))
+        ;; find file in directory named after project
+        ((condition-case nil (directory-files (expand-file-name mk-org-config-save-location)) (error nil))
+         (with-current-buffer (find-file-noselect (concat (expand-file-name mk-org-config-save-location) proj-name ".org"))
+           (save-excursion
+             (goto-char (point-max))
+             (point-marker))))
+        ;; find headline (section) to save under in one big org file
+        ((and (stringp mk-org-config-save-location)
+              (stringp mk-org-config-save-section)
+              (file-exists-p (expand-file-name mk-org-config-save-location)))
+         (with-current-buffer (find-file-noselect (expand-file-name mk-org-config-save-location))
+           (save-excursion
+             (if (condition-case nil (goto-char (org-find-exact-headline-in-buffer mk-org-config-save-section)) (error nil))
+                 (point-marker)
+               (error "mk-org: could not find a location to save project %s" proj-name)))))
+        ;; find file in project basedir
+        ((and mk-org-config-save-location
+              (or (mk-proj-get-config-val 'basedir proj-name t)
+                  (cadr (assoc 'basedir config-alist))))
+         (with-current-buffer (find-file-noselect (concat (or (mk-proj-get-config-val 'basedir proj-name t)
+                                                              (cadr (assoc 'basedir config-alist))) "/" proj-name ".org"))
+           (goto-char (point-max))
+           (point-marker)))
+        ;; no suitable location found
+        (t (error "mk-org: could not find a location to save project %s" proj-name))))
 
 
-(defun mk-org-config-insert (&optional config-alist proj-name insert-undefined headline)
+
+
+
+
+
+(defun mk-org-config-insert (proj-name config-alist &optional insert-undefined insert-internal headline)
   (interactive)
   (unless (org-mode-p)
     (error "mk-org: current buffer not in org-mode"))
   (unless proj-name
-    (setq proj-name (or (cadr (assoc 'name config-alist)) "NewProject")))
+    (setq proj-name (or (cadr (assoc 'name config-alist) headline) "NewProject")))
   (save-excursion
     (save-restriction
       (org-insert-heading)
       (if headline
           (insert headline)
         (insert proj-name))
-      (org-set-property "MKP_NAME" proj-name)
+      (org-set-property "MKP_NAME" (prin1-to-string proj-name))
       (loop for k in (append mk-proj-required-vars mk-proj-optional-vars)
             if (not (or (eq k 'name)
-                        (mk-proj-any (lambda (j) (eq k j)) mk-proj-internal-vars)))
+                        (or (mk-proj-any (lambda (j) (eq k j)) mk-proj-internal-vars)
+                            insert-internal)))
             do (when (or insert-undefined
                          (assoc k config-alist))
                  (let* ((prop (cdr (assoc k (mk-org-symbol-table))))
-                        (val (cdr (assoc k config-alist))))
-                   (org-set-property prop (prin1-to-string val))))))))
+                        (val (cadr (assoc k config-alist))))
+                   (org-set-property prop (prin1-to-string val)))))
+      (point-marker))))
 
-(defvar mk-org-config-file nil)
-(defvar mk-org-config-section "Projects")
+;; (setq mk-org-config-save-location "~/org/projects.org")
+;; (mk-org-find-save-location-marker "cl-horde3d")
 
-(defun mk-org-config-save (config-alist &optional proj-name)
-  (when mk-org-config-file
-    (with-current-buffer (find-file-noselect mk-org-config-file)
-      (let ((section (org-find-exact-headline-in-buffer mk-org-config-section)))
-        (when section
-          (goto-char (marker-position section)))
-        (let* ((org-show-hierarchy-above t)
-               (org-show-following-heading nil)
-               (org-show-siblings nil))
-          (save-excursion
-            (mk-org-config-insert config-alist proj-name)))
-        (let ((mod (buffer-modified-p)))
-          (save-buffer)
-          (set-buffer-modified-p mod))))))
+(defun mk-org-config-save (proj-name config-alist &optional headline)
+  (unless headline
+    (setq headline (or (cadr (assoc 'org-headline config-alist)) proj-name)))
+  (when mk-org-config-save-location
+    (let ((marker (mk-org-find-save-location-marker proj-name config-alist)))
+      (with-marker
+       marker
+       (let* ((org-show-hierarchy-above t)
+              (org-show-following-heading nil)
+              (org-show-siblings nil)
+              (mod (buffer-modified-p))
+              (saved-marker (save-excursion
+                              (cond ((looking-at (format org-complex-heading-regexp-format headline))
+                                     (progn
+                                       (org-set-property "MKP_NAME" (prin1-to-string proj-name))
+                                       (loop for k in (append mk-proj-required-vars mk-proj-optional-vars)
+                                             if (not (or (eq k 'name)
+                                                         (mk-proj-any (lambda (j) (eq k j)) mk-proj-internal-vars)))
+                                             do (when (assoc k config-alist)
+                                                  (let* ((prop (cdr (assoc k (mk-org-symbol-table))))
+                                                         (val (cadr (assoc k config-alist))))
+                                                    (org-set-property prop (prin1-to-string val)))))
+                                       (point-marker)))
+                                    ((looking-at org-complex-heading-regexp)
+                                     (org-end-of-subtree)
+                                     (mk-org-config-insert proj-name config-alist nil nil headline))
+                                    ((org-mode-p)
+                                     (mk-org-config-insert proj-name config-alist nil nil headline))))))
+         (save-buffer)
+         (set-buffer-modified-p mod)
+         (mk-org-entry-define-project saved-marker))))))
 
-(defun* mk-org-config-buffer (&optional (state :create))
+;;(mk-org-config-save "sauerbraten" (mk-proj-find-config "sauerbraten" t))
+;; (mk-org-find-save-location-marker "sauerbraten")
+;;(cadr (assoc 'name (mk-proj-find-config "cl-horde3d" t)))
+
+(defun* mk-org-config-buffer (&optional (state :create) proj-name config-alist)
   (case state
     (:create
-     (let* ((proj-b (current-buffer))
-            (buf (get-buffer-create "*mk-proj: new project*"))
-            (window (display-buffer buf)))
+     (let* ((buf (get-buffer-create "*mk-proj: new project*"))
+            (window (display-buffer buf))
+            (config-alist (or config-alist (mk-proj-guess-alist))))
        (select-window window)
        (set-window-dedicated-p window t)
        (org-mode)
        (buffer-disable-undo)
-       (mk-org-config-insert nil "NewProject" t)
+       (mk-org-config-insert (or proj-name (cadr (assoc 'name config-alist)) "NewProject") config-alist t)
        (goto-char 0)
        (end-of-line)
-       (mk-proj-new-project-mode)
+       (mk-proj-backend-create-project-mode 'org-mode)
        (buffer-enable-undo)))
-    (:finalize
+    (:edit
+     (let* ((buf (mk-org-get-project-buffer nil "*mk-proj: edit project*"))
+            (window (display-buffer buf)))
+       (select-window window)
+       (set-window-dedicated-p window t)
+       (re-search-forward ":PROPERTIES:" nil t)
+       (org-cycle)
+       (buffer-disable-undo)
+       (mk-proj-backend-edit-project-mode 'org-mode)
+       (buffer-enable-undo)))
+    (:finalize-create
      (save-excursion
        (let ((has-error t))
          (beginning-of-buffer)
          (outline-next-heading)
-         (let ((headline (mk-org-entry-headline)))
+         (let ((headline (mk-org-entry-headline))
+               (marker (mk-org-find-save-location-marker)))
            (org-copy-subtree 1 nil)
-           (when mk-org-config-file
-             (with-current-buffer (find-file-noselect mk-org-config-file)
-               (let ((section (org-find-exact-headline-in-buffer mk-org-config-section)))
-                 (when section
-                   (goto-char (marker-position section)))
-                 (let* ((org-show-hierarchy-above t)
-                        (org-show-following-heading nil)
-                        (org-show-siblings nil))
-                   (save-excursion
-                     (goto-char (mk-org-yank-below))
-                     (if (condition-case nil (mk-org-entry-define-project) (error nil))
-                         (progn
-                           ;;(print (concat "added: " headline))
-                           (mk-org-reveal)
-                           (setq has-error nil))
+           (when marker
+             (with-current-buffer (marker-buffer marker)
+               (goto-char (marker-position marker))
+               (let* ((org-show-hierarchy-above t)
+                      (org-show-following-heading nil)
+                      (org-show-siblings nil))
+                 (save-excursion
+                   (goto-char (mk-org-yank-below))
+                   (if (condition-case nil (mk-org-entry-define-project) (error nil))
                        (progn
-                         (goto-char 0)
-                         (goto-char (marker-position (org-find-exact-headline-in-buffer headline)))
-                         (let ((beg (point))
-                               (end (org-end-of-subtree)))
-                           (delete-region beg end)))
-                       )))))))
+                         ;;(print (concat "added: " headline))
+                         (mk-org-reveal)
+                         (setq has-error nil))
+                     (progn
+                       (goto-char 0)
+                       (goto-char (marker-position (org-find-exact-headline-in-buffer headline)))
+                       (let ((beg (point))
+                             (end (org-end-of-subtree)))
+                         (delete-region beg end)))
+                     ))))))
          (unless has-error
+           (kill-buffer)))))
+    (:finalize-edit
+     (let ((marker (org-find-exact-headline-in-buffer mk-proj-org-headline)))
+       (when marker
+         (goto-char (marker-position marker))
+         (unless (eq (condition-case nil (mk-org-entry-define-project) (error 'error))
+                     'error)
+           (save-buffer)
            (kill-buffer)))))))
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ;;(setq mk-proj-config-function 'mk-org-config-buffer)
 
@@ -905,33 +1047,34 @@ This is taken almost directly from `org-babel-read'."
 
 (defun mk-org-define-projects ()
   (interactive)
-  (unless mk-org-project-files
-    (error "mk-org: could not find any projects, mk-org-project-files is not set"))
+  (unless mk-org-project-search-files
+    (error "mk-org: could not find any projects, mk-org-project-search-files is not set"))
   (let ((buffer-with-projects nil)
         (pre-define-buffer-list (buffer-list))
         (continue-prevent-save t)
-        (continue-prevent-restore t))
-    (mk-org-map-entries
-     :file (mk-org-files-containing-projects)
-     ;;:match "mk-project"
-     :scope 'project-tree
-     :close-files nil
-     :function (lambda ()
-                 (when (and (not (mk-org-entry-is-link-p))
-                          (or (and (org-get-todo-state) (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords))
-                              (mk-org-entry-is-project-p)))
-                   (mk-org-entry-define-project)
-                   (unless (eq (last buffer-with-projects) (current-buffer))
-                     (add-to-list 'buffer-with-projects (current-buffer))))))
-    (dolist (f (mk-org-files-containing-projects))
-      (when (file-exists-p f)
-        (let ((buf (find-buffer-visiting f)))
-          (when (and buf
-                     (not (buffer-modified-p buf))
-                     (not (some (lambda (b) (eq b buf)) buffer-with-projects))
-                     (not (some (lambda (b) (eq b buf)) pre-define-buffer-list)))
-            (kill-buffer buf)))))))
-
+        (continue-prevent-restore t)
+        (files (mk-org-files-containing-projects)))
+    (when files
+     (mk-org-map-entries
+      :file files
+      ;;:match "mk-project"
+      :scope 'project-tree
+      :close-files nil
+      :function (lambda ()
+                  (when (and (not (mk-org-entry-is-link-p))
+                             (or (and (org-get-todo-state) (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords))
+                                 (mk-org-entry-is-project-p)))
+                    (mk-org-entry-define-project)
+                    (unless (eq (last buffer-with-projects) (current-buffer))
+                      (add-to-list 'buffer-with-projects (current-buffer))))))
+     (dolist (f files)
+       (when (file-exists-p f)
+         (let ((buf (find-buffer-visiting f)))
+           (when (and buf
+                      (not (buffer-modified-p buf))
+                      (not (some (lambda (b) (eq b buf)) buffer-with-projects))
+                      (not (some (lambda (b) (eq b buf)) pre-define-buffer-list)))
+             (kill-buffer buf))))))))
 
 (defun mk-org-undefine-entries ()
   (interactive)
@@ -949,7 +1092,7 @@ This is taken almost directly from `org-babel-read'."
     (setq proj-name mk-proj-name))
   (mk-org-assert-org proj-name)
   (mk-org-map-entries
-   :match (mk-proj-get-config-val 'org-marker proj-name)
+   :match (mk-proj-get-config-val 'org-headline proj-name)
    :scope 'project-headline
    :function (lambda ()
                (org-clock-in))))
