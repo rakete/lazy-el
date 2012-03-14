@@ -93,7 +93,6 @@ a shell command or the name of a function. Optional. Example: make -k.")
 
 (defvar mk-proj-install-cmd nil)
 (defvar mk-proj-run-cmd nil)
-;;(defvar mk-proj-syntaxcheck-cmd nil)
 
 (defvar mk-proj-startup-hook nil
   "Hook function to run after the project is loaded. Optional. Project
@@ -404,8 +403,8 @@ load time. See also `project-menu-remove'."
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  (if (or mk-proj-vcs (mk-proj-get-config-val 'vcs proj-name t))
-      (cdr (assoc (or mk-proj-vcs (mk-proj-get-config-val 'vcs proj-name t)) mk-proj-vcs-path))
+  (if (or (mk-proj-get-config-val 'vcs) (mk-proj-get-config-val 'vcs proj-name t))
+      (cdr (assoc (or (mk-proj-get-config-val 'vcs) (mk-proj-get-config-val 'vcs proj-name t)) mk-proj-vcs-path))
     nil))
 
 (defun mk-proj-has-univ-arg ()
@@ -639,15 +638,20 @@ for the KEY and the first value that is found is returned."
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  (let* ((proj-alist (or config-alist
-                         (mk-proj-find-config proj-name)))
-         (val (if (assoc key proj-alist)
-                  (cadr (assoc key proj-alist))
-                (let ((parent (cadr (assoc 'parent proj-alist))))
-                  (when (and inherit parent)
-                    (mk-proj-get-config-val key parent t)))))
-         (fn (cdr (assoc key mk-proj-var-eval-functions))))
-    (if fn (funcall fn key val proj-name) val)))
+  (if (and mk-proj-name
+           (cadr (assoc 'name (gethash proj-name mk-proj-list)))
+           (string-equal (cadr (assoc 'name (gethash proj-name mk-proj-list)))
+                         mk-proj-name))
+      (eval (intern-soft (concat "mk-proj-" (symbol-name key))))
+    (let* ((proj-alist (or config-alist
+                           (mk-proj-find-config proj-name)))
+           (val (if (assoc key proj-alist)
+                    (cadr (assoc key proj-alist))
+                  (let ((parent (cadr (assoc 'parent proj-alist))))
+                    (when (and inherit parent)
+                      (mk-proj-get-config-val key parent t)))))
+           (fn (cdr (assoc key mk-proj-var-eval-functions))))
+      (if fn (funcall fn key val proj-name) val))))
 
 ;;(mk-proj-get-config-val 'file-list-cache "mk-project:overlay for todos in project buffers" nil)
 
@@ -1462,17 +1466,17 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
             (when v
               (error "Required config value '%s' missing in %s!" (symbol-name v) proj-name)))
         (error "Project %s does not exist!" proj-name)))
-    (when (not (file-directory-p mk-proj-basedir))
-      (error "Base directory %s does not exist!" mk-proj-basedir))
-    (when (and mk-proj-vcs (not (mk-proj-get-vcs-path)))
+    (when (not (file-directory-p (mk-proj-get-config-val 'basedir)))
+      (error "Base directory %s does not exist!" (mk-proj-get-config-val 'basedir)))
+    (when (and (mk-proj-get-config-val 'vcs) (not (mk-proj-get-vcs-path)))
       (error "Invalid VCS setting!"))
     (message "Loading project %s ..." proj-name)
-    (cd mk-proj-basedir)
+    (cd (mk-proj-get-config-val 'basedir))
     (mk-proj-tags-load)
     (mk-proj-fib-init)
     (add-hook 'kill-emacs-hook 'mk-proj-kill-emacs-hook)
-    (when mk-proj-startup-hook
-      (run-hooks 'mk-proj-startup-hook))
+    (when (mk-proj-get-config-val 'startup-hook)
+      (run-hooks '(mk-proj-get-config-val 'startup-hook)))
     (mk-proj-visit-saved-open-files)
     (mk-proj-visit-saved-open-friends)
     (run-hooks 'mk-proj-after-load-hook)
@@ -1498,9 +1502,9 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
 
 (defun mk-proj-kill-emacs-hook ()
   "Ensure we save the open-files-cache info on emacs exit"
-  (when (and mk-proj-name mk-proj-open-files-cache)
+  (when (and mk-proj-name (mk-proj-get-config-val 'open-files-cache))
     (mk-proj-save-open-file-info))
-  (when (and mk-proj-friends mk-proj-open-friends-cache)
+  (when (and (mk-proj-get-config-val 'friends) (mk-proj-get-config-val 'open-friends-cache))
     (mk-proj-save-open-friends-info)))
 
 (defun mk-proj-unload-vars ()
@@ -1532,7 +1536,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
                (y-or-n-p (concat "Close all " mk-proj-name " project files? "))
                (project-close-files)
                (project-close-friends))
-          (when mk-proj-shutdown-hook (run-hooks 'mk-proj-shutdown-hook))
+          (when (mk-proj-get-config-val 'shutdown-hook) (run-hooks '(mk-proj-get-config-val 'shutdown-hook)))
           (run-hooks 'mk-proj-project-unload-hook)
           (run-hooks 'mk-proj-after-unload-hook))
       (error nil)))
@@ -1547,7 +1551,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
   (mk-proj-assert-proj)
   (let ((closed nil)
         (dirty nil)
-        (basedir-len (length mk-proj-basedir)))
+        (basedir-len (length (mk-proj-get-config-val 'basedir))))
     (dolist (b (mk-proj-buffers))
       (cond
        ((or (buffer-modified-p b) (string-equal (buffer-name b) "*scratch*"))
@@ -1606,7 +1610,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
   (unless proj-name
     (mk-proj-assert-proj t)
     (setq proj-name mk-proj-name))
-  (if mk-proj-basedir
+  (if (mk-proj-get-config-val 'basedir)
       (let ((b (get-buffer-create "*mk-proj: project-status*")))
         (with-current-buffer b
           (kill-region (point-min) (point-max))
@@ -1637,26 +1641,26 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
 
 (defun mk-proj-save-open-file-info ()
   "Write the list of `files' to a file"
-  (when mk-proj-open-files-cache
+  (when (mk-proj-get-config-val 'open-files-cache)
     (with-temp-buffer
       (dolist (f (mapcar (lambda (b) (mk-proj-buffer-name b)) (mk-proj-buffers)))
         (when f
-          (unless (string-equal mk-proj-tags-file f)
+          (unless (string-equal (mk-proj-get-config-val 'tags-file) f)
             (insert f "\n"))))
-      (if (file-writable-p mk-proj-open-files-cache)
+      (if (file-writable-p (mk-proj-get-config-val 'open-files-cache))
           (progn
             (write-region (point-min)
                           (point-max)
-                          mk-proj-open-files-cache)
-            (message "Wrote open files to %s" mk-proj-open-files-cache))
-        (message "Cannot write to %s" mk-proj-open-files-cache)))))
+                          (mk-proj-get-config-val 'open-files-cache))
+            (message "Wrote open files to %s" (mk-proj-get-config-val 'open-files-cache)))
+        (message "Cannot write to %s" (mk-proj-get-config-val 'open-files-cache))))))
 
 (defun mk-proj-visit-saved-open-files ()
-  (when mk-proj-open-files-cache
-    (when (file-readable-p mk-proj-open-files-cache)
-      (message "Reading open files from %s" mk-proj-open-files-cache)
+  (when (mk-proj-get-config-val 'open-files-cache)
+    (when (file-readable-p (mk-proj-get-config-val 'open-files-cache))
+      (message "Reading open files from %s" (mk-proj-get-config-val 'open-files-cache))
       (with-temp-buffer
-        (insert-file-contents mk-proj-open-files-cache)
+        (insert-file-contents (mk-proj-get-config-val 'open-files-cache))
         (goto-char (point-min))
         (while (not (eobp))
           (let ((start (point)))
@@ -1673,15 +1677,15 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
 (defun mk-proj-tags-load ()
   "Load TAGS file (if tags-file set)"
   (mk-proj-tags-clear)
-  (setq tags-file-name  mk-proj-tags-file
+  (setq tags-file-name  (mk-proj-get-config-val 'tags-file)
         tags-table-list nil)
-  (when (and mk-proj-tags-file (file-readable-p mk-proj-tags-file))
-    (visit-tags-table mk-proj-tags-file)))
+  (when (and (mk-proj-get-config-val 'tags-file) (file-readable-p (mk-proj-get-config-val 'tags-file)))
+    (visit-tags-table (mk-proj-get-config-val 'tags-file))))
 
 (defun mk-proj-tags-clear ()
   "Clear the TAGS file (if tags-file set)"
-  (when (and mk-proj-tags-file (get-file-buffer mk-proj-tags-file))
-    (mk-proj-maybe-kill-buffer (get-file-buffer mk-proj-tags-file)))
+  (when (and (mk-proj-get-config-val 'tags-file) (get-file-buffer (mk-proj-get-config-val 'tags-file)))
+    (mk-proj-maybe-kill-buffer (get-file-buffer (mk-proj-get-config-val 'tags-file))))
   (setq tags-file-name  nil
         tags-table-list nil))
 
@@ -1692,36 +1696,36 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
   (cond
    ((string= event "finished\n")
     (mk-proj-tags-load)
-    (message "Refreshing TAGS file %s...done" mk-proj-tags-file))
-   (t (message "Refreshing TAGS file %s...failed" mk-proj-tags-file))))
+    (message "Refreshing TAGS file %s...done" (mk-proj-get-config-val 'tags-file)))
+   (t (message "Refreshing TAGS file %s...failed" (mk-proj-get-config-val 'tags-file)))))
 
 (defun project-tags ()
   "Regenerate the project's TAG file. Runs in the background."
   (interactive)
   (mk-proj-assert-proj)
-  (if mk-proj-tags-file
-      (let* ((tags-file-name (file-name-nondirectory mk-proj-tags-file))
+  (if (mk-proj-get-config-val 'tags-file)
+      (let* ((tags-file-name (file-name-nondirectory (mk-proj-get-config-val 'tags-file)))
              ;; If the TAGS file is in the basedir, we can generate
              ;; relative filenames which will allow the TAGS file to
              ;; be relocatable if moved with the source. Otherwise,
              ;; run the command from the TAGS file's directory and
              ;; generate absolute filenames.
-             (relative-tags (string= (file-name-as-directory mk-proj-basedir)
-                                     (file-name-directory mk-proj-tags-file)))
+             (relative-tags (string= (file-name-as-directory (mk-proj-get-config-val 'basedir))
+                                     (file-name-directory (mk-proj-get-config-val 'tags-file))))
              (default-directory (file-name-as-directory
-                                 (file-name-directory mk-proj-tags-file)))
-             (default-find-cmd (concat "find '" (if relative-tags "." mk-proj-basedir)
+                                 (file-name-directory (mk-proj-get-config-val 'tags-file))))
+             (default-find-cmd (concat "find '" (if relative-tags "." (mk-proj-get-config-val 'basedir))
                                        "' -type f "
-                                       (mk-proj-find-cmd-src-args mk-proj-src-patterns)))
-             (etags-shell-cmd (if mk-proj-etags-cmd
-                                  mk-proj-etags-cmd
+                                       (mk-proj-find-cmd-src-args (mk-proj-get-config-val 'src-patterns))))
+             (etags-shell-cmd (if (mk-proj-get-config-val 'etags-cmd)
+                                  (mk-proj-get-config-val 'etags-cmd)
                                 "etags -o"))
              (etags-cmd (concat (or (mk-proj-find-cmd-val 'src) default-find-cmd)
                                 " | " etags-shell-cmd " '" tags-file-name "' - "))
              (proc-name "etags-process"))
         (message "project-tags default-dir %s" default-directory)
         (message "project-tags cmd \"%s\"" etags-cmd)
-        (message "Refreshing TAGS file %s..." mk-proj-tags-file)
+        (message "Refreshing TAGS file %s..." (mk-proj-get-config-val 'tags-file))
         (start-process-shell-command proc-name "*etags*" etags-cmd)
         (set-process-sentinel (get-process proc-name) 'mk-proj-etags-cb))
     (message "mk-proj-tags-file is not set")))
@@ -1772,10 +1776,10 @@ C-u prefix, start from the current directory."
          (default-directory (file-name-as-directory
                              (if (or from-current-dir (mk-proj-has-univ-arg))
                                  default-directory
-                               mk-proj-basedir))))
-    (when mk-proj-ignore-patterns
-      (setq find-cmd (concat find-cmd (mk-proj-find-cmd-ignore-args mk-proj-ignore-patterns))))
-    (when mk-proj-tags-file
+                               (mk-proj-get-config-val 'basedir)))))
+    (when (mk-proj-get-config-val 'ignore-patterns)
+      (setq find-cmd (concat find-cmd (mk-proj-find-cmd-ignore-args (mk-proj-get-config-val 'ignore-patterns)))))
+    (when (mk-proj-get-config-val 'tags-file)
       (setq find-cmd (concat find-cmd " -not -name 'TAGS'")))
     (when (mk-proj-get-vcs-path)
       (setq find-cmd (concat find-cmd " -not -path " (concat "'*/" (mk-proj-get-vcs-path) "/*'"))))
@@ -1799,7 +1803,7 @@ C-u prefix, start from the current directory."
   (concat mk-proj-ack-cmd " "
           mk-proj-ack-default-args " "
           (if (and mk-proj-ack-respect-case-fold case-fold-search) "-i " "")
-          mk-proj-ack-args " "
+          (mk-proj-get-config-val 'ack-args) " "
           regex))
 
 (defun project-ack (&optional phrase from-current-dir)
@@ -1816,7 +1820,7 @@ With C-u prefix, start ack from the current directory."
          (default-directory (file-name-as-directory
                              (if (or from-current-dir (mk-proj-has-univ-arg))
                                  default-directory
-                               mk-proj-basedir))))
+                               (mk-proj-get-config-val 'basedir)))))
     (compilation-start confirmed-cmd 'ack-mode)))
 
 ;; ---------------------------------------------------------------------
@@ -1831,7 +1835,7 @@ With C-u prefix, start ack from the current directory."
    (setq proj-name mk-proj-name))
  (unless cmd
    (setq cmd (mk-proj-get-config-val 'compile-cmd proj-name)))
- (let ((default-directory mk-proj-basedir))
+ (let ((default-directory (mk-proj-get-config-val 'basedir)))
    (cond ((stringp cmd)
           (when (and (null opts) (called-interactively-p))
             (setq opts (read-string (concat "Compile options (" cmd "):"))))
@@ -1849,24 +1853,6 @@ With C-u prefix, start ack from the current directory."
   (mk-proj-assert-proj)
   (when (mk-proj-get-config-val 'compile-cmd)
     (project-make opts (mk-proj-get-config-val 'compile-cmd))))
-
-(defun project-install (&optional opts)
-  (interactive)
-  (mk-proj-assert-proj)
-  (when (mk-proj-get-config-val 'install-cmd)
-    (project-make opts (mk-proj-get-config-val 'install-cmd))))
-
-(defun project-run (&optional opts)
-  (interactive)
-  (mk-proj-assert-proj)
-  (when (mk-proj-get-config-val 'run-cmd)
-    (project-make opts (mk-proj-get-config-val 'run-cmd))))
-
-(defun project-install-and-run (&optional opts1 opts2)
-  (interactive)
-  (mk-proj-assert-proj)
-  (project-install opts1)
-  (project-run opts2))
 
 ;; (defun project-syntaxcheck (&optional opts)
 ;;   (interactive)
@@ -1895,7 +1881,7 @@ With C-u prefix, start ack from the current directory."
   "Open dired in the project's basedir (or jump to the existing dired buffer)"
   (interactive)
   (mk-proj-assert-proj t)
-  (dired mk-proj-basedir))
+  (dired (mk-proj-get-config-val 'basedir)))
 
 ;; ---------------------------------------------------------------------
 ;; Find-file
@@ -2044,7 +2030,7 @@ See also: `project-index', `project-find-file-ido'."
                       (ido-completing-read "Select match (ido): " matches)
                     (completing-read "Select match: " matches))))
         (when file
-          (find-file (concat (file-name-as-directory mk-proj-basedir) file))))))))
+          (find-file (concat (file-name-as-directory (mk-proj-get-config-val 'basedir)) file))))))))
 
 (defun* project-find-file-ido ()
   "Find file in the current project using 'ido'.
@@ -2061,7 +2047,7 @@ selection of the file. See also: `project-index',
   (let ((file (ido-completing-read "Find file in project matching (ido): "
                                    (mk-proj-fib-matches))))
     (when file
-      (find-file (concat (file-name-as-directory mk-proj-basedir) file)))))
+      (find-file (concat (file-name-as-directory (mk-proj-get-config-val 'basedir)) file)))))
 
 (defun project-multi-occur (regex)
   "Search all open project files for 'regex' using `multi-occur'"
@@ -2194,26 +2180,26 @@ non-nil return only buffers that are friendly toward the project."
       buffers))
 
 (defun mk-proj-save-open-friends-info ()
-  (when mk-proj-open-friends-cache
+  (when (mk-proj-get-config-val 'open-friends-cache)
     (with-temp-buffer
       (dolist (f (remove-duplicates (mapcar (lambda (b) (mk-proj-buffer-name b)) (mk-proj-friendly-buffers)) :test #'string-equal))
         (when f
-          (unless (string-equal mk-proj-tags-file f)
+          (unless (string-equal (mk-proj-get-config-val 'tags-file) f)
             (insert f "\n"))))
-      (if (file-writable-p mk-proj-open-friends-cache)
+      (if (file-writable-p (mk-proj-get-config-val 'open-friends-cache))
           (progn
             (write-region (point-min)
                           (point-max)
-                          mk-proj-open-friends-cache)
-            (message "Wrote open friends to %s" mk-proj-open-friends-cache))
-        (message "Cannot write to %s" mk-proj-open-friends-cache)))))
+                          (mk-proj-get-config-val 'open-friends-cache))
+            (message "Wrote open friends to %s" (mk-proj-get-config-val 'open-friends-cache)))
+        (message "Cannot write to %s" (mk-proj-get-config-val 'open-friends-cache))))))
 
 (defun mk-proj-visit-saved-open-friends ()
-  (when mk-proj-open-friends-cache
-    (when (file-readable-p mk-proj-open-friends-cache)
-      (message "Reading open friends from %s" mk-proj-open-friends-cache)
+  (when (mk-proj-get-config-val 'open-friends-cache)
+    (when (file-readable-p (mk-proj-get-config-val 'open-friends-cache))
+      (message "Reading open friends from %s" (mk-proj-get-config-val 'open-friends-cache))
       (with-temp-buffer
-        (insert-file-contents mk-proj-open-friends-cache)
+        (insert-file-contents (mk-proj-get-config-val 'open-friends-cache))
         (goto-char (point-min))
         (while (not (eobp))
           (let ((start (point)))
@@ -2228,7 +2214,7 @@ non-nil return only buffers that are friendly toward the project."
   (mk-proj-assert-proj)
   (let ((closed nil)
         (dirty nil)
-        (basedir-len (length mk-proj-basedir)))
+        (basedir-len (length (mk-proj-get-config-val 'basedir))))
     (dolist (b (mk-proj-friendly-buffers))
       (cond
        ((buffer-modified-p b)
@@ -2269,7 +2255,7 @@ With C-u prefix, act like `project-ack'."
     (let* ((wap (word-at-point))
            (regex (if wap (read-string (concat "Ack project for (default \"" wap "\"): ") nil nil wap)
                     (read-string "Ack project for: ")))
-           (whole-cmd (concat (mk-proj-ack-cmd regex) " " mk-proj-basedir "; "
+           (whole-cmd (concat (mk-proj-ack-cmd regex) " " (mk-proj-get-config-val 'basedir) "; "
                               (let ((s ""))
                                 (dolist (d (mk-proj-friend-basedirs) s)
                                   (setq s (concat s (mk-proj-ack-cmd regex) " " d "; "))))))
@@ -2277,7 +2263,7 @@ With C-u prefix, act like `project-ack'."
            (default-directory (file-name-as-directory
                                (if (mk-proj-has-univ-arg)
                                    default-directory
-                                 mk-proj-basedir))))
+                                 (mk-proj-get-config-val 'basedir)))))
       (compilation-start confirmed-cmd 'ack-mode))))
 
 ;;(defun mk-proj-find-projects-owning-file (file))
@@ -2293,7 +2279,7 @@ With C-u prefix, act like `project-ack'."
   (mk-proj-assert-proj)
   (unless proj-name
     (setq proj-name mk-proj-name))
-  (mk-proj-set-config-val 'friends (append mk-proj-friends `(,(buffer-file-name (current-buffer)))) proj-name))
+  (mk-proj-set-config-val 'friends (append (mk-proj-get-config-val 'friends) `(,(buffer-file-name (current-buffer)))) proj-name))
 
 (defun project-friend-add (&optional friend)
   (interactive "P")
@@ -2310,7 +2296,7 @@ With C-u prefix, act like `project-ack'."
                                                          (mk-proj-names)))))))
     (mk-proj-assert-proj)
     (when (or (and (file-exists-p friend) (not (file-directory-p friend))) (gethash friend mk-proj-list))
-      (mk-proj-set-config-val 'friends (append mk-proj-friends `(,friend)) parent))))
+      (mk-proj-set-config-val 'friends (append (mk-proj-get-config-val 'friends) `(,friend)) parent))))
 
 (provide 'mk-project)
 
