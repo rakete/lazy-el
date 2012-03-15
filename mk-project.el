@@ -1471,8 +1471,8 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
     (mk-proj-tags-load)
     (mk-proj-fib-init)
     (add-hook 'kill-emacs-hook 'mk-proj-kill-emacs-hook)
-    (when (mk-proj-get-config-val 'startup-hook)
-      (run-hooks '(mk-proj-get-config-val 'startup-hook)))
+    (when mk-proj-startup-hook
+      (run-hooks mk-proj-startup-hook))
     (mk-proj-visit-saved-open-files)
     (mk-proj-visit-saved-open-friends)
     (run-hooks 'mk-proj-after-load-hook)
@@ -1535,7 +1535,8 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
                (y-or-n-p (concat "Close all " mk-proj-name " project files? "))
                (project-close-files)
                (project-close-friends))
-          (when (mk-proj-get-config-val 'shutdown-hook) (run-hooks '(mk-proj-get-config-val 'shutdown-hook)))
+          (when mk-proj-shutdown-hook
+            (run-hooks 'mk-proj-shutdown-hook))
           (run-hooks 'mk-proj-project-unload-hook)
           (run-hooks 'mk-proj-after-unload-hook))
       (error nil)))
