@@ -1494,7 +1494,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
     (print name)
     (when (and (cadr (assoc 'name guessed-alist))
                (string-equal name (cadr (assoc 'name guessed-alist)))
-               (not (mk-proj-find-config "compiz")))
+               (not (mk-proj-find-config name)))
       (print "defining")
       (project-def name guessed-alist))
     (mk-proj-load name)))
