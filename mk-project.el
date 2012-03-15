@@ -385,13 +385,13 @@ load time. See also `project-menu-remove'."
                   try-guessing
                   (gethash (cadr (assoc 'name guessed-alist)) mk-proj-list nil)
                   (y-or-n-p (concat "Load project " (cadr (assoc 'name guessed-alist)) "? ")))
-             (mk-proj-load (cadr (assoc 'name guessed-alist)) guessed-alist))
+             (mk-proj-load (cadr (assoc 'name guessed-alist))))
             ((and guessed-alist
                   try-guessing
                   (not (gethash (cadr (assoc 'name guessed-alist)) mk-proj-list nil))
                   (y-or-n-p (concat "Create project " (cadr (assoc 'name guessed-alist)) "? ")))
              (project-def (cadr (assoc 'name guessed-alist)) guessed-alist)
-             (mk-proj-load (cadr (assoc 'name guessed-alist)) guessed-alist))
+             (mk-proj-load (cadr (assoc 'name guessed-alist))))
             (t
              (error "No project is set!"))))))
 
@@ -627,24 +627,21 @@ Examples:
             alist (append alist (remove-if (lambda (x) (some (lambda (y) (eq (first x) (first y))) alist)) child))))
     alist))
 
-(defun mk-proj-get-config-val (key &optional proj-name inherit config-alist)
+(defun mk-proj-get-config-val (key &optional proj-name inherit)
   "Finds the value associated with KEY. A project PROJ
-can optionally be specified. Either in form of a config-alist or
-a name.
+can optionally be specified.
 If the third argument INHERIT is non-nil, all parents will queried
 for the KEY and the first value that is found is returned."
-  (unless proj-name
-    (setq proj-name (cadr (assoc 'name config-alist))))
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
   (if (and mk-proj-name
            (cadr (assoc 'name (gethash proj-name mk-proj-list)))
            (string-equal (cadr (assoc 'name (gethash proj-name mk-proj-list)))
-                         mk-proj-name))
+                         mk-proj-name)
+           (eval (intern-soft (concat "mk-proj-" (symbol-name key)))))
       (eval (intern-soft (concat "mk-proj-" (symbol-name key))))
-    (let* ((proj-alist (or config-alist
-                           (mk-proj-find-config proj-name)))
+    (let* ((proj-alist (mk-proj-find-config proj-name))
            (val (if (assoc key proj-alist)
                     (cadr (assoc key proj-alist))
                   (let ((parent (cadr (assoc 'parent proj-alist))))
@@ -1225,7 +1222,8 @@ See also `project-undef'."
              (kill-buffer)
              (when (and (not (condition-case nil (mk-proj-assert-proj) (error t)))
                         (string-equal (cadr (assoc 'name edited-alist)) mk-proj-name))
-               (mk-proj-load-vars mk-proj-name edited-alist)))))))))
+               (project-def mk-proj-name edited-alist)
+               (mk-proj-load-vars mk-proj-name)))))))))
 
 
 ;; (mk-proj-with-current-project "emacs-config" (project-status))
@@ -1390,7 +1388,7 @@ Replaces the old mk-proj-proj-vars constant."
 ;; (mk-proj-with-current-project "cl-horde3d" (project-status))
 ;; (mk-proj-with-current-project nil (project-status))
 
-(defun mk-proj-load-vars (proj-name &optional config-alist)
+(defun mk-proj-load-vars (proj-name)
   "Set project variables from proj-alist. A project variable is what
 a config variable becomes after loading a project. Essentially
 a global lisp symbol with the same name as the config variable
@@ -1401,8 +1399,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
   (catch 'mk-proj-load-vars
     (labels ((maybe-set-var (var)
                             (let ((proj-var (intern (concat "mk-proj-" (symbol-name var))))
-                                  (val (mk-proj-get-config-val var proj-name t config-alist))
-                                  )
+                                  (val (mk-proj-get-config-val var proj-name t)))
                               (setf (symbol-value proj-var) val))))
       (mk-proj-defaults)
       (let ((required-vars (mk-proj-filter (lambda (s)
@@ -1410,7 +1407,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
                                            mk-proj-required-vars)))
         (setq mk-proj-name proj-name)
         (dolist (v required-vars)
-          (unless (mk-proj-get-config-val v proj-name t config-alist)
+          (unless (mk-proj-get-config-val v proj-name t)
             (mk-proj-defaults)
             (throw 'mk-proj-load-vars v))
           (maybe-set-var v)))
@@ -1451,18 +1448,17 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
             current (mk-proj-config-val 'parent current)))
     ancestry))
 
-(defun mk-proj-load (proj-name &optional proj-alist)
+(defun mk-proj-load (proj-name)
   (interactive)
   (let ((oldname mk-proj-name))
-    (let* ((proj-name (or (cadr (assoc 'name proj-alist)) proj-name))
-           (proj-alist (or proj-alist (mk-proj-find-config proj-name))))
+    (let* ((proj-alist (mk-proj-find-config proj-name)))
       (unless proj-name
         (error "mk-proj-load: proj-name should not be nil"))
       (run-hooks 'mk-proj-before-load-hook)
       (unless (or (string= oldname proj-name) (eq proj-alist nil))
         (project-unload))
       (if proj-alist
-          (let ((v (mk-proj-load-vars proj-name proj-alist)))
+          (let ((v (mk-proj-load-vars proj-name)))
             (when v
               (error "Required config value '%s' missing in %s!" (symbol-name v) proj-name)))
         (error "Project %s does not exist!" proj-name)))
@@ -1494,9 +1490,12 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
                    (if (mk-proj-use-ido)
                        (ido-completing-read "Project Name (ido): " names nil nil nil nil (cadr (assoc 'name guessed-alist)))
                      (completing-read "Project Name: " names)))))
+    (print guessed-alist)
+    (print name)
     (when (and (cadr (assoc 'name guessed-alist))
                (string-equal name (cadr (assoc 'name guessed-alist)))
-               (not (mk-proj-find-config name)))
+               (not (mk-proj-find-config "compiz")))
+      (print "defining")
       (project-def name guessed-alist))
     (mk-proj-load name)))
 
