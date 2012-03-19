@@ -1845,10 +1845,13 @@ With C-u prefix, start ack from the current directory."
    (cond ((stringp cmd)
           (when (and (null opts) (called-interactively-p))
             (setq opts (read-string (concat "Compile options (" cmd "):"))))
+          (cd default-directory)
           (compile (concat cmd " " opts)))
          ((commandp cmd)
+          (cd default-directory)
           (call-interactively cmd))
          ((functionp cmd)
+          (cd default-directory)
           (if opts
               (funcall cmd opts)
             (funcall cmd)))
