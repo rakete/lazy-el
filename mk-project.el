@@ -973,7 +973,11 @@ See also `project-undef'."
                                                      (when (and bsystem
                                                                 (assoc 'build (cadr bsystem)))
                                                        `(100 . ,(cadr (assoc 'build (cadr bsystem)))))
-                                                     ))))
+                                                     ))
+                                                  ((buffer)
+                                                   (when (and (boundp 'compile-command)
+                                                              compile-command)
+                                                     `(200 . ,compile-command)))))
                                   (vcs . (((basedir)
                                            (let ((r nil))
                                              (loop for f in (directory-files basedir)
