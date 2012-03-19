@@ -1471,8 +1471,10 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
     (mk-proj-tags-load)
     (mk-proj-fib-init)
     (add-hook 'kill-emacs-hook 'mk-proj-kill-emacs-hook)
-    (when mk-proj-startup-hook
-      (run-hooks mk-proj-startup-hook))
+    (when (mk-proj-get-config-val 'startup-hook)
+      (if (functionp (mk-proj-get-config-val 'startup-hook))
+          (funcall (mk-proj-get-config-val 'startup-hook))
+        (run-hooks (mk-proj-get-config-val 'startup-hook))))
     (mk-proj-visit-saved-open-files)
     (mk-proj-visit-saved-open-friends)
     (run-hooks 'mk-proj-after-load-hook)
