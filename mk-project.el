@@ -2001,6 +2001,13 @@ relative to the project's basedir."
                 (= (forward-line) 0))))) ; loop test
       (sort files #'string-lessp))))
 
+(defun mk-proj-files (&optional proj-name)
+  (unless proj-name
+    (mk-proj-assert-proj)
+    (setq proj-name mk-proj-name))
+  (mapcar (lambda (f) (expand-file-name (concat (mk-proj-get-config-val 'basedir proj-name t) f)))
+          (mk-proj-fib-matches nil proj-name)))
+
 (defun mk-proj-normalize-drive-letter (file)
   "Convert drive letters to lowercase to be compatible with
 file-relative-name, file-name-as-directory"
