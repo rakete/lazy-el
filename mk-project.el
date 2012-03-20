@@ -2230,7 +2230,7 @@ non-nil return only buffers that are friendly toward the project."
   (let ((closed nil)
         (dirty nil)
         (basedir-len (length (mk-proj-get-config-val 'basedir))))
-    (dolist (b (mk-proj-friendly-buffers))
+    (dolist (b (mk-proj-friendly-buffers t))
       (cond
        ((buffer-modified-p b)
         (push (buffer-name) dirty))
