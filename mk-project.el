@@ -1454,18 +1454,24 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
 
 (defun mk-proj-load (proj-name)
   (interactive)
-  (let ((oldname mk-proj-name))
-    (let* ((proj-alist (mk-proj-find-config proj-name)))
-      (unless proj-name
-        (error "mk-proj-load: proj-name should not be nil"))
-      (run-hooks 'mk-proj-before-load-hook)
-      (unless (or (string= oldname proj-name) (eq proj-alist nil))
-        (project-unload))
-      (if proj-alist
-          (let ((v (mk-proj-load-vars proj-name)))
-            (when v
-              (error "Required config value '%s' missing in %s!" (symbol-name v) proj-name)))
-        (error "Project %s does not exist!" proj-name)))
+  (let* ((oldname mk-proj-name)
+         (proj-alist (mk-proj-find-config proj-name))
+         (quiet (and (cadr (assoc 'parent proj-alist))
+                     (or (string-equal (cadr (assoc 'parent proj-alist))
+                                       mk-proj-name)
+                         (string-equal (cadr (assoc 'parent proj-alist))
+                                       (mk-proj-get-config-val 'parent))))))
+    (unless proj-name
+      (error "mk-proj-load: proj-name should not be nil"))
+    (run-hooks 'mk-proj-before-load-hook)
+    (unless (or (string= oldname proj-name)
+                (eq proj-alist nil))
+      (project-unload quiet))
+    (if proj-alist
+        (let ((v (mk-proj-load-vars proj-name)))
+          (when v
+            (error "Required config value '%s' missing in %s!" (symbol-name v) proj-name)))
+      (error "Project %s does not exist!" proj-name))
     (when (not (file-directory-p (mk-proj-get-config-val 'basedir)))
       (error "Base directory %s does not exist!" (mk-proj-get-config-val 'basedir)))
     (when (and (mk-proj-get-config-val 'vcs) (not (mk-proj-get-vcs-path)))
@@ -1524,7 +1530,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
       (add-to-list 'mk-proj-history last-alist))
     (mk-proj-defaults)))
 
-(defun project-unload (&optional arg)
+(defun project-unload (&optional quiet)
   "Unload the current project's settings after running the shutdown hook."
   (interactive "P")
   (when mk-proj-name
@@ -1537,8 +1543,8 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
           (mk-proj-save-open-file-info)
           (mk-proj-save-open-friends-info)
           (and (or (mk-proj-buffers) (mk-proj-friendly-buffers))
-               (not arg)
-               (y-or-n-p (concat "Close all " mk-proj-name " project files? "))
+               (not quiet)
+               (y-or-n-p (concat "Close all '" mk-proj-name "' project files? "))
                (project-close-files)
                (project-close-friends))
           (when mk-proj-shutdown-hook
