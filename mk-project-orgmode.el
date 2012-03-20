@@ -72,8 +72,18 @@ a single org file is stored in the projects basedir.")
      (add-to-list 'mk-proj-internal-vars 'org-level)
 
      (add-hook 'org-clock-in-hook (lambda ()
-                                    (when (mk-org-entry-is-in-project-p)
+                                    (when (and (mk-org-entry-is-in-project-p)
+                                               (or (not (boundp 'mk-proj-name))
+                                                   (and (boundp 'mk-proj-name)
+                                                        mk-proj-name
+                                                        (not (string-equal mk-proj-name (mk-org-entry-name))))))
+                                      (unless (mk-proj-find-config (mk-org-entry-name))
+                                        (project-def (mk-org-entry-name) (mk-org-entry-alist)))
                                       (mk-proj-load (mk-org-entry-name)))))
+     (add-hook 'org-after-todo-state-change-hook (lambda ()
+                                                   (beginning-of-line)
+                                                   (when (some (lambda (x) (string-equal (org-get-todo-state) x)) org-done-keywords)
+                                                     (mk-org-clock-from-parent-to-todo))))
 
      (mk-proj-define-backend 'org-mode
                              :buffer-fun 'mk-org-config-buffer
@@ -82,6 +92,10 @@ a single org file is stored in the projects basedir.")
                              :test-fun (lambda (ca)
                                          (assoc 'org-file ca)))
 
+     (add-hook 'mk-proj-after-load-hook (lambda ()
+                                          (project-clock-in)))
+     (add-hook 'mk-proj-before-unload-hook (lambda ()
+                                             (project-clock-out)))
      ))
 
 
@@ -250,6 +264,7 @@ will be used internally. You can specify match to be used in that case with:
                                                     (progn (mk-org-assert-org) `(,mk-proj-org-file)))
                                                    (t
                                                     (mk-org-files-containing-projects)))))
+
       (with-current-buffer (or (when (buffer-live-p project-file) project-file)
                                (org-find-base-buffer-visiting project-file)
                                (if (file-exists-p project-file)
@@ -702,7 +717,7 @@ will be used internally. You can specify match to be used in that case with:
    :match (point)
    :scope 'project-single
    :function (lambda ()
-               (when (mk-proj-any (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
+               (when (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
                  (org-show-context)
                  (when (and mk-proj-name
                             (not (mk-org-entry-is-project-p))
@@ -1045,6 +1060,15 @@ This is taken almost directly from `org-babel-read'."
     cell))
 
 
+(defun mk-org-entry-clocked-p ()
+  (save-excursion
+    (save-restriction
+      (org-save-outline-visibility t
+        (show-all)
+        (next-line)
+        (beginning-of-line)
+        (looking-at (concat "\\s-*" org-clock-string))))))
+
 (defun mk-org-define-projects ()
   (interactive)
   (unless mk-org-project-search-files
@@ -1062,7 +1086,14 @@ This is taken almost directly from `org-babel-read'."
       :close-files nil
       :function (lambda ()
                   (when (and (not (mk-org-entry-is-link-p))
-                             (or (and (org-get-todo-state) (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords))
+                             (or (and (org-get-todo-state)
+                                      (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
+                                      (or (mk-org-entry-clocked-p)
+                                          (some (lambda (prop-tuple)
+                                                  (some (lambda (sym) (string-equal (mk-org-symbol-table sym) (cdr prop-tuple)))
+                                                        (append mk-proj-required-vars mk-proj-optional-vars)))
+                                                (org-entry-properties))
+                                          (org-entry-get (point) org-effort-property)))
                                  (mk-org-entry-is-project-p)))
                     (mk-org-entry-define-project)
                     (unless (eq (last buffer-with-projects) (current-buffer))
@@ -1085,16 +1116,52 @@ This is taken almost directly from `org-babel-read'."
                (when (not (mk-org-entry-is-project-p))
                  (project-undef entry-name)))))
 
+(defun mk-org-clock-cut ()
+  (save-excursion
+    (org-save-outline-visibility t
+      (when (looking-at org-complex-heading-regexp)
+        (show-all)
+        (next-line)
+        (when (looking-at (concat "\\s-*" org-clock-string))
+          (kill-region (point-at-bol) (point-at-bol 2)))))))
+
+(defun mk-org-clock-yank ()
+  (save-excursion
+    (org-save-outline-visibility t
+      (when (and (looking-at org-complex-heading-regexp)
+                 (string-match org-clock-string (car kill-ring)))
+        (show-all)
+        (next-line)
+        (while (or (looking-at (concat "\\s-*" org-clock-string))
+                   (looking-at (concat "\\s-*" org-closed-string)))
+          (next-line))
+        (beginning-of-line)
+        (yank)
+        (indent-according-to-mode)))))
+
+(defun mk-org-clock-from-parent-to-todo ()
+  (save-excursion
+    (goto-char (mk-org-entry-parent-point))
+    (when (and org-clock-marker
+               (string-equal (mk-org-entry-headline org-clock-marker)
+                             (mk-org-entry-headline)))
+      (org-clock-out)
+      (mk-org-clock-cut)
+      (org-clock-in)))
+  (mk-org-clock-yank))
+
 (defun project-clock-in (&optional proj-name)
   (interactive)
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
   (mk-org-assert-org proj-name)
+  (print (mk-proj-get-config-val 'org-headline proj-name))
   (mk-org-map-entries
-   :match (mk-proj-get-config-val 'org-headline proj-name)
+   :match `(headline ,(mk-proj-get-config-val 'org-headline proj-name))
    :scope 'project-headline
    :function (lambda ()
+               (print (thing-at-point 'line))
                (org-clock-in))))
 
 (defun project-clock-out (&optional proj-name)
