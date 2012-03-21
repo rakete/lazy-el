@@ -93,9 +93,11 @@ a single org file is stored in the projects basedir.")
                                          (assoc 'org-file ca)))
 
      (add-hook 'mk-proj-after-load-hook (lambda ()
-                                          (project-clock-in)))
+                                          (when (mk-proj-get-config-val 'org-file)
+                                            (project-clock-in))))
      (add-hook 'mk-proj-before-unload-hook (lambda ()
-                                             (project-clock-out)))
+                                             (when (mk-proj-get-config-val 'org-file)
+                                               (project-clock-out))))
      ))
 
 
@@ -152,30 +154,31 @@ an associated org file.
 
 Optionally PROJ-NAME can be specified to test a specific project other
 than the current one."
-  ;; 6. guessed exists, not org -> convert and load guessed
-  ;; 7. guessed does not exist -> define, convert and load guessed
   (let ((guessed-alist nil))
     (cond
      ;; 1. project loaded, org -> nothing
      ((and (not (condition-case nil (mk-proj-assert-proj) (error t)))
            (mk-proj-get-config-val 'org-file mk-proj-name)))
      ;; 2. project loaded, not org -> convert and load mk-proj-name
-     ((and (not (condition-case nil (mk-proj-assert-proj) (error t)))
+     ((and try-guessing
+           (not (condition-case nil (mk-proj-assert-proj) (error t)))
            (not (mk-proj-get-config-val 'org-file mk-proj-name))
-           (y-or-n-p (concat "2. Convert and load " mk-proj-name "? ")))
+           (y-or-n-p (concat "2. Create .org file for " mk-proj-name "? ")))
       (mk-org-config-save mk-proj-name (mk-proj-find-config mk-proj-name t))
       (mk-proj-load mk-proj-name))
      ;; 3. project not loaded, proj-name and org -> load proj-name
-     ((and (condition-case nil (mk-proj-assert-proj) (error t))
+     ((and try-guessing
+           (condition-case nil (mk-proj-assert-proj) (error t))
            proj-name
            (mk-proj-get-config-val 'org-file proj-name)
            (y-or-n-p (concat "3. Load " proj-name "? ")))
       (mk-proj-load proj-name))
      ;; 4. project not loaded, proj-name not org -> convert and load proj-name
-     ((and (condition-case nil (mk-proj-assert-proj) (error t))
+     ((and try-guessing
+           (condition-case nil (mk-proj-assert-proj) (error t))
            proj-name
            (not (mk-proj-get-config-val 'org-file proj-name))
-           (y-or-n-p (concat "4. Convert and load " proj-name "? ")))
+           (y-or-n-p (concat "4. Create .org file for " proj-name "? ")))
       (mk-org-config-save mk-proj-name (mk-proj-find-config proj-name t))
       (mk-proj-load proj-name))
      ;; 5. guessed exists, org -> load guessed
@@ -187,7 +190,7 @@ than the current one."
      ;; 6. try-guessing t -> create, convert and load guessed
      ((and try-guessing
            guessed-alist
-           (y-or-n-p (concat "6. Create and load " (cadr (assoc 'name guessed-alist)) "? ")))
+           (y-or-n-p (concat "6. Create .org file for *" (cadr (assoc 'name guessed-alist)) "? ")))
       (mk-org-save-config-save (cadr (assoc 'name guessed-alist)) guessed-alist))
      (t
       (error (format "mk-org: Project %s has no associated org file!" mk-proj-name))))))
