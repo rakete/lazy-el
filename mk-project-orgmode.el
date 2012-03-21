@@ -544,10 +544,13 @@ will be used internally. You can specify match to be used in that case with:
           (let* ((headline-raw (org-match-string-no-properties 4)))
             (cond ((string-match org-bracket-link-regexp headline-raw)
                    (match-string 2 headline-raw))
-                  ((string-match "^\\(.*\\)\s+\\[\\([0-9][0-9]%\\)\\]$" headline-raw)
+                  ((string-match "^\\([^\\[]+\\)\s+\\[\\([0-9]%\\|[0-9][0-9]%\\)\\]$" headline-raw)
                    (match-string 1 headline-raw))
                   (t
                    headline-raw)))))))
+
+;; (when (string-match "^\\([^\\[]+\\)\s+\\[\\([0-9]%\\|[0-9][0-9]%\\)\\]$" "foobar")
+;;   (print (match-string 2 "foobar [19%]")))
 
 (defun mk-org-entry-is-link-p (&optional marker)
   (interactive)
