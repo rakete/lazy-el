@@ -739,6 +739,7 @@ will be used internally. You can specify match to be used in that case with:
 (defun project-org-buffer (&optional proj-name)
   "Open current projects org tree as indirect buffer."
   (interactive)
+  (mk-org-assert-org proj-name t)
   (display-buffer (mk-org-get-project-buffer proj-name)))
 
 
