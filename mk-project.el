@@ -317,6 +317,8 @@ It is not impossible for an incubator path to be guessed as project basedir thou
 If you'll guess while in a buffer with a file from an incubator root open, that
 incubator root could be guessed as basedir.")
 
+(defvar mk-proj-common-project-subdir-names '("src" "include" "demo[?s]" "example[?s]" "doc[?s]" "build" "tool[?s]" "test[?s]" "misc"))
+
 (defvar mk-proj-src-pattern-table '(("h" ".*\\.c" ".*\\.cpp" ".*\\.cc")
                                     ("c" ".*\\.h")
                                     ("cpp" ".*\\.hh" ".*\\.h")
@@ -576,14 +578,15 @@ Examples:
 ;; (mk-proj-path-equal "/foo/bar" "/foo/bar/blah")
 ;; (mk-proj-path-equal "/foo/bar" "/foo/blah/bar")
 
-(defun* mk-proj-search-path (re path &optional ignore-paths)
+(defun* mk-proj-search-path (re path &optional stop-paths ignore-paths)
   (let ((xs (reverse (split-string path "/" t))))
     (while (and (cdr xs)
-                (loop for ig in ignore-paths
+                (loop for ig in stop-paths
                       if (mk-proj-path-equal ig (apply 'concat (mapcar (lambda (s) (concat "/" s)) (reverse xs))))
                       return nil
                       finally return t))
-      (when (directory-files (apply 'concat (mapcar (lambda (s) (concat "/" s)) (reverse xs))) nil re)
+      (when (and (directory-files (apply 'concat (mapcar (lambda (s) (concat "/" s)) (reverse xs))) nil re)
+                 (eq (some (lambda (re) (string-match re (car xs))) ignore-paths) nil))
         (return-from "mk-proj-search-path" (apply 'concat (mapcar (lambda (s) (concat "/" s)) (reverse xs)))))
       (setq xs (cdr xs)))))
 
@@ -907,7 +910,7 @@ See also `project-undef'."
                                                (let ((path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths))))
                                                  (when path
                                                    (let ((found-paths (sort (loop for re in (mk-proj-buildsystem-patterns)
-                                                                                  collect (mk-proj-search-path re path mk-proj-incubator-paths))
+                                                                                  collect (mk-proj-search-path re path mk-proj-incubator-paths mk-proj-common-project-subdir-names))
                                                                             (lambda (a b) (> (length a) (length b))))))
                                                      (when (car found-paths)
                                                        `(200 . ,(car found-paths)))))))
@@ -916,7 +919,7 @@ See also `project-undef'."
                                                (let ((path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths))))
                                                  (when path
                                                    (let ((found-paths (sort (loop for re in (mapcar 'regexp-quote (mapcar 'cdr mk-proj-vcs-path))
-                                                                                  collect (mk-proj-search-path re path mk-proj-incubator-paths))
+                                                                                  collect (mk-proj-search-path re path mk-proj-incubator-paths mk-proj-common-project-subdir-names))
                                                                             (lambda (a b) (> (length a) (length b))))))
                                                      (when (car found-paths)
                                                        `(300 . ,(car  found-paths)))))))
@@ -1527,6 +1530,10 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
                (string-equal name (cadr (assoc 'name guessed-alist)))
                (not (mk-proj-find-config name)))
       (print "defining")
+      (project-def name guessed-alist))
+    (when (not (mk-proj-find-config name))
+      (print "defining")
+      (add-to-list 'guessed-alist `(name ,name))
       (project-def name guessed-alist))
     (mk-proj-load name)))
 
