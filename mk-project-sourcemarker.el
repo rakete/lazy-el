@@ -55,8 +55,9 @@
                                           (assoc :timestamp (gethash (buffer-file-name b) continue-db nil)))
                                   collect `(,(read (cdr (assoc :timestamp (gethash (buffer-file-name b) continue-db nil)))) . ,b))
                             (lambda (a b) (> (car a) (car b)))))))
-    (when buffer
-      (display-buffer buffer))))
+    (if buffer
+        (display-buffer buffer)
+      (display-buffer (car (mk-proj-buffers))))))
 
 (defun sourcemarker-visit ()
   "Restore project sourcemarker and go there."
