@@ -495,29 +495,24 @@ will be used internally. You can specify match to be used in that case with:
        parent-point
      (save-excursion
        (org-back-to-heading t)
-       (let ((p nil)
-             (n (org-entry-get (point) (mk-org-symbol-table 'name) t))
+       (let ((parent-point nil)
+             (parent-name (org-entry-get (point) (mk-org-symbol-table 'name) t))
              (cont nil)
              (stop nil)
-             (project-line (mk-org-entry-is-project-p)))
-         (if project-line
+             (is-project-line (mk-org-entry-is-project-p)))
+         (if is-project-line
              (setq cont (org-up-heading-safe)
-                   n (org-entry-get (point) (mk-org-symbol-table 'name) t))
+                   parent-name (org-entry-get (point) (mk-org-symbol-table 'name) t))
            (setq cont t))
-         (when (and n cont)
-           (while (and (cond (stop
-                              nil)
-                             ((bobp)
-                              (setq stop t))
-                             ;; (arg
-                             ;;  (org-entry-get (point) (mk-org-symbol-table 'name) t))
-                             (t
-                              (string-equal (or (org-entry-get (point) (mk-org-symbol-table 'name) t) "nil") n))))
-             (setq p (point))
-             (unless stop
-               (org-up-heading-safe)
-               (setq project-line (mk-org-entry-is-project-p)))))
-         p)))))
+         (when (and parent-name cont)
+           (while (and (not stop)
+                       (string-equal (or (org-entry-get (point) (mk-org-symbol-table 'name) t)
+                                         "nil")
+                                     parent-name))
+             (setq parent-point (point))
+             (unless (condition-case nil (org-up-heading-all 1) (error nil))
+               (setq stop t))))
+         parent-point)))))
 
 (defun mk-org-entry-nearest-active (&optional marker)
   (interactive)
@@ -743,37 +738,48 @@ will be used internally. You can specify match to be used in that case with:
   (display-buffer (mk-org-get-project-buffer proj-name)))
 
 
-(defun mk-org-yank-below (&optional arg adjust-subtree)
-  (interactive "P")
-  (let (p)
-    (save-excursion
-      (save-restriction
-        (org-save-outline-visibility t
-          (when (looking-at org-complex-heading-regexp)
-            (show-all)
-            (let ((level (org-outline-level))
-                  (auto-adjust (or (org-entry-get (point) (cdr (assoc 'name (mk-org-symbol-table))))
-                                   'todo)))
-              (outline-next-heading)
-              (while (and (> (org-outline-level) level)
-                          (not (eobp)))
-                (outline-next-heading)
-                (when (eq auto-adjust 'todo)
-                  (setq auto-adjust nil)))
-              (outline-previous-heading)
-              (org-end-of-subtree)
-              (newline)
-              (let ((org-yank-folded-subtrees t)
-                    (org-yank-adjusted-subtrees nil))
-                (org-yank))
-              (if (or adjust-subtree auto-adjust)
-                  (progn
-                    (outline-previous-heading)
-                    (org-shiftmetaright))
-                (outline-previous-heading))
-              (setq p (point)))))))
-    p))
+;; (defun mk-org-yank-below (&optional arg adjust-subtree)
+;;   (interactive "P")
+;;   (let (p)
+;;     (save-excursion
+;;       (save-restriction
+;;         (org-save-outline-visibility t
+;;           (when (looking-at org-complex-heading-regexp)
+;;             (show-all)
+;;             (let ((level (org-outline-level))
+;;                   (auto-adjust (or (org-entry-get (point) (cdr (assoc 'name (mk-org-symbol-table))))
+;;                                    'todo)))
+;;               (outline-next-heading)
+;;               (while (and (> (org-outline-level) level)
+;;                           (not (eobp)))
+;;                 (outline-next-heading)
+;;                 (when (eq auto-adjust 'todo)
+;;                   (setq auto-adjust nil)))
+;;               (outline-previous-heading)
+;;               (org-end-of-subtree)
+;;               (newline)
+;;               (let ((org-yank-folded-subtrees t)
+;;                     (org-yank-adjusted-subtrees nil))
+;;                 (org-yank))
+;;               (if (or adjust-subtree auto-adjust)
+;;                   (progn
+;;                     (outline-previous-heading)
+;;                     (org-shiftmetaright))
+;;                 (outline-previous-heading))
+;;               (setq p (point)))))))
+;;     p))
 
+(defun mk-org-paste-below (&optional arg)
+  (interactive "P")
+  (save-excursion
+    (save-restriction
+      (org-save-outline-visibility t
+        (when (looking-at org-complex-heading-regexp)
+          (show-all)
+          (let ((level (org-outline-level)))
+            (org-end-of-subtree)
+            (org-paste-subtree (+ level 1))))
+        (point)))))
 
 (defvar mk-org-add-todo-mode-map (make-sparse-keymap))
 
@@ -806,7 +812,7 @@ will be used internally. You can specify match to be used in that case with:
                      (when parent (goto-char parent))
                    (when active (goto-char active)))
                  (save-excursion
-                   (goto-char (mk-org-yank-below arg))
+                   (goto-char (mk-org-paste-below arg))
                    (mk-org-reveal)
                    (mk-org-entry-define-project)
                    (when parent (goto-char parent))
@@ -1007,7 +1013,7 @@ See also `mk-org-entry-nearest-active'."
                       (org-show-following-heading nil)
                       (org-show-siblings nil))
                  (save-excursion
-                   (goto-char (mk-org-yank-below))
+                   (goto-char (mk-org-paste-below))
                    (if (condition-case nil (mk-org-entry-define-project) (error nil))
                        (progn
                          ;;(print (concat "added: " headline))
