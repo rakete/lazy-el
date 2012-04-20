@@ -18,7 +18,6 @@
 ;; Boston, MA 02111-1307, USA.
 
 (require 'mk-project)
-(require 'mk-project-sourcemarker)
 
 (require 'org-install)
 (require 'org-protocol)
@@ -836,7 +835,8 @@ See also `mk-org-entry-nearest-active'."
   (interactive "P")
   (mk-org-assert-org)
   (let* ((proj-b (current-buffer))
-         (sm (continue-sourcemarker-create))
+         (sm (when (boundp 'continue-sourcemarker-create)
+               (continue-sourcemarker-create)))
          (buf (get-buffer-create "*mk-proj: add todo*"))
          (window (display-buffer buf)))
     (select-window window)
@@ -846,7 +846,10 @@ See also `mk-org-entry-nearest-active'."
     (with-current-buffer buf
       (set (make-local-variable 'local-prefix-arg) arg)
       (org-insert-heading)
-      (when (and (or (mk-proj-buffer-p proj-b) (mk-proj-friendly-buffer-p proj-b)) (buffer-file-name proj-b))
+      (when (and sm
+                 (or (mk-proj-buffer-p proj-b)
+                     (mk-proj-friendly-buffer-p proj-b))
+                 (buffer-file-name proj-b))
         (org-set-property "MKP_SOURCEMARKER" (concat "'" (prin1-to-string sm)))))))
 
 
