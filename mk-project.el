@@ -510,8 +510,8 @@ contain a similar key."
 
 (defun mk-proj-buildsystem-patterns ()
   (mapcar 'regexp-quote
-          (concatl (loop for bs in mk-proj-buildsystems
-                         collect (cadr (assoc 'files (cadr bs)))))))
+          (mk-proj-flatten (loop for bs in mk-proj-buildsystems
+                                 collect (cadr (assoc 'files (cadr bs)))))))
 
 (defun mk-proj-path-complement (path1 path2)
   "This will return the part of the two paths PATH1 and PATH2 that is _not_ equal.
