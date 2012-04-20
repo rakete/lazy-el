@@ -1891,9 +1891,11 @@ With C-u prefix, start ack from the current directory."
 
 (defun project-compile (&optional opts)
   (interactive)
-  (mk-proj-assert-proj)
-  (when (mk-proj-get-config-val 'compile-cmd)
-    (project-make opts (mk-proj-get-config-val 'compile-cmd))))
+  (if (condition-case nil (mk-proj-assert-proj) (error t))
+      (call-interactively 'compile)
+    (if (mk-proj-get-config-val 'compile-cmd)
+        (project-make opts (mk-proj-get-config-val 'compile-cmd))
+      (call-interactively 'compile))))
 
 ;; (defun project-syntaxcheck (&optional opts)
 ;;   (interactive)
