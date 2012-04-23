@@ -1044,19 +1044,21 @@ See also `project-undef'."
                             ;;(message (concat (format-time-string "%H:%M:%S" (current-time)) " " (prin1-to-string sym)))
                             (let ((scores '()))
                               (dolist (flist (cdr (assoc sym mk-proj-guess-functions)) (best-result scores))
-                                (let ((args (first flist))
-                                      (expr (second flist)))
-                                  (dolist (arg args)
-                                    ;; check if neccessary symbols are set, this sets a symbol after guessing it so
-                                    ;; we do not have to guess something twice
-                                    (unless (not (eq (symbol-value arg) 'undefined))
-                                      ;;(message "setting symbol %S" arg)
-                                      (setf (symbol-value arg) (guess-symbol arg))
-                                      ))
-                                  (let ((r (eval expr)))
-                                    (when r (add-to-list 'scores r)))
-                                  ;;(print scores)
-                                  )))))
+                                (condition-case nil
+                                    (let ((args (first flist))
+                                          (expr (second flist)))
+                                      (dolist (arg args)
+                                        ;; check if neccessary symbols are set, this sets a symbol after guessing it so
+                                        ;; we do not have to guess something twice
+                                        (unless (not (eq (symbol-value arg) 'undefined))
+                                          ;;(message "setting symbol %S" arg)
+                                          (setf (symbol-value arg) (guess-symbol arg))
+                                          ))
+                                      (let ((r (eval expr)))
+                                        (when r (add-to-list 'scores r)))
+                                      ;;(print scores)
+                                      )
+                                  (error nil))))))
          ;;(message (concat (format-time-string "%H:%M:%S" (current-time)) " start"))
          (dolist (var (append mk-proj-required-vars mk-proj-optional-vars))
            ;; for each var check if it is already set, if not use guess-symbol to guess it
