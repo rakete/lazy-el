@@ -1602,7 +1602,8 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
           (run-hooks 'mk-proj-after-unload-hook))
       (error nil)))
   (mk-proj-unload-vars)
-  (when (buffer-file-name (current-buffer))
+  (when (and (buffer-file-name (current-buffer))
+             (file-exists-p (buffer-file-name (current-buffer))))
     (cd (mk-proj-dirname (buffer-file-name (current-buffer)))))
   (message "Project settings have been cleared"))
 
