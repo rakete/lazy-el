@@ -1503,8 +1503,9 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
          (quiet (and (cadr (assoc 'parent proj-alist))
                      (or (string-equal (cadr (assoc 'parent proj-alist))
                                        mk-proj-name)
-                         (string-equal (cadr (assoc 'parent proj-alist))
-                                       (mk-proj-get-config-val 'parent))))))
+                         (and (not (condition-case nil (mk-proj-assert-proj) (error t)))
+                              (string-equal (cadr (assoc 'parent proj-alist))
+                                            (mk-proj-get-config-val 'parent)))))))
     (unless proj-name
       (error "mk-proj-load: proj-name should not be nil"))
     (run-hooks 'mk-proj-before-load-hook)
