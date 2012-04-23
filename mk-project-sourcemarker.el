@@ -57,7 +57,8 @@
                             (lambda (a b) (> (car a) (car b)))))))
     (if buffer
         (display-buffer buffer)
-      (display-buffer (car (mk-proj-buffers))))))
+      (when (car (mk-proj-buffers))
+        (display-buffer (car (mk-proj-buffers)))))))
 
 (defun sourcemarker-visit ()
   "Restore project sourcemarker and go there."
