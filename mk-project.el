@@ -1717,7 +1717,9 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
             (while (not (eolp)) (forward-char)) ; goto end of line
             (let ((line (buffer-substring start (point))))
               (message "Attempting to open %s" line)
-              (find-file-noselect line t)))
+              (if (file-exists-p line)
+                  (find-file-noselect line t)
+                (kill-line))))
           (forward-line))))))
 
 ;; ---------------------------------------------------------------------
