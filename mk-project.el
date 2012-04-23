@@ -692,6 +692,8 @@ for the KEY and the first value that is found is returned."
     (when current-alist
       (add-to-list 'new-alist `(,key ,value))
       (unless (equal new-alist current-alist)
+        (puthash proj-name new-alist mk-proj-list)
+        (mk-proj-load-vars proj-name)
         (mk-proj-backend-funcall (mk-proj-detect-backend proj-name)
                                  'save proj-name new-alist)))))
 
