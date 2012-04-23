@@ -1158,14 +1158,15 @@ This is taken almost directly from `org-babel-read'."
 
 (defun mk-org-clock-from-parent-to-todo ()
   (save-excursion
-    (goto-char (mk-org-entry-parent-point))
-    (when (and org-clock-marker
-               (string-equal (mk-org-entry-headline org-clock-marker)
-                             (mk-org-entry-headline)))
-      (org-clock-out)
-      (mk-org-clock-cut)
-      (org-clock-in)))
-  (mk-org-clock-yank))
+    (when (mk-org-entry-parent-point)
+      (goto-char (mk-org-entry-parent-point))
+      (when (and org-clock-marker
+                 (string-equal (mk-org-entry-headline org-clock-marker)
+                               (mk-org-entry-headline)))
+        (org-clock-out)
+        (mk-org-clock-cut)
+        (org-clock-in)))
+    (mk-org-clock-yank)))
 
 (defun project-clock-in (&optional proj-name)
   (interactive)
