@@ -1517,8 +1517,8 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
           (when v
             (error "Required config value '%s' missing in %s!" (symbol-name v) proj-name)))
       (error "Project %s does not exist!" proj-name))
-    (when (not (file-directory-p (mk-proj-get-config-val 'basedir)))
-      (error "Base directory %s does not exist!" (mk-proj-get-config-val 'basedir)))
+    (while (not (file-directory-p (mk-proj-get-config-val 'basedir)))
+      (mk-proj-set-config-val 'basedir (read-string "Missing base directory? : " (mk-proj-get-config-val 'basedir))))
     (when (and (mk-proj-get-config-val 'vcs) (not (mk-proj-get-vcs-path)))
       (error "Invalid VCS setting!"))
     (message "Loading project %s ..." proj-name)
