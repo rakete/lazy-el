@@ -320,11 +320,19 @@ incubator root could be guessed as basedir.")
 (defvar mk-proj-common-project-subdir-names '("src" "include" "demo[?s]" "example[?s]" "doc[?s]" "build" "tool[?s]" "test[?s]" "misc"))
 
 (defvar mk-proj-src-pattern-table '(("h" ".*\\.c" ".*\\.cpp" ".*\\.cc")
+                                    ("hpp" ".*\\.c" ".*\\.cpp" ".*\\.cc")
+                                    ("hh" ".*\\.c" ".*\\.cpp" ".*\\.cc")
                                     ("c" ".*\\.h")
-                                    ("cpp" ".*\\.hh" ".*\\.h")
-                                    ("cc" ".*\\.hh" ".*\\.h")
-                                    ("hs" ".*\\.lhs")
-                                    ("php" ".*\\.html")))
+                                    ("cpp" ".*\\.h" ".*\\.hpp" ".*\\.hh")
+                                    ("cc" ".*\\.h" ".*\\.hpp" ".*\\.hh")
+                                    ("hs" ".*\\.lhs" ".*\\.cabal")
+                                    ("php" ".*\\.html")
+                                    ("js" ".*\\.html")
+                                    ("el")
+                                    ("lisp")
+                                    ("clojure" ".*\\.clj")
+                                    ("clj" ".*\\.clojure")
+                                    ))
 
 
 ;; ---------------------------------------------------------------------
