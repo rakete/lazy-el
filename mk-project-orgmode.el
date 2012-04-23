@@ -190,7 +190,8 @@ than the current one."
      ((and try-guessing
            guessed-alist
            (y-or-n-p (concat "6. Create .org file for guessed project *" (cadr (assoc 'name guessed-alist)) "? ")))
-      (mk-org-save-config-save (cadr (assoc 'name guessed-alist)) guessed-alist))
+      (mk-org-config-save (cadr (assoc 'name guessed-alist)) guessed-alist)
+      (mk-proj-load (cadr (assoc 'name guessed-alist))))
      (t
       (error (format "mk-org: Project %s has no associated org file!" mk-proj-name))))))
 
