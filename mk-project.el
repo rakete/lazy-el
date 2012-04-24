@@ -2034,28 +2034,27 @@ With C-u prefix, start ack from the current directory."
 (defun mk-proj-fib-matches (&optional regex proj-name)
   "Return list of files in *file-index* matching regex.
 
-If regex is nil, return all files. Returned file paths are
-relative to the project's basedir."
-  (let ((files '()))
-    (unless (get-buffer (mk-proj-fib-name proj-name))
-      (mk-proj-fib-init proj-name))
-    (with-current-buffer (mk-proj-fib-name proj-name)
-      (goto-char (point-min))
-      (while
-          (progn
-            (let ((raw-file (mk-proj-normalize-drive-letter
-                             (buffer-substring
-                              (line-beginning-position) (line-end-position)))))
-              (when (> (length raw-file) 0)
-                ;; file names in buffer can be absolute or relative to basedir
-                (let ((file (if (file-name-absolute-p raw-file)
-                                (file-relative-name raw-file (mk-proj-get-config-val 'basedir proj-name))
-                              raw-file)))
-                  (if regex
-                      (when (string-match regex file) (add-to-list 'files file))
-                    (add-to-list 'files file)))
-                (= (forward-line) 0))))) ; loop test
-      (sort files #'string-lessp))))
+REGEX can be a list or a single regex.
+If it is nil, return all files.
+
+Returned file paths are relative to the project's basedir."
+  (unless (get-buffer (mk-proj-fib-name proj-name))
+    (mk-proj-fib-init proj-name))
+  (with-current-buffer (mk-proj-fib-name proj-name)
+    (let ((basedir (mk-proj-get-config-val 'basedir proj-name))
+          (current-filename nil))
+      (sort (loop for line in (split-string (buffer-string) "\n" t)
+                  if (> (length line) 0)
+                  do (setq current-filename (if (file-name-absolute-p line)
+                                                (file-relative-name line (mk-proj-get-config-val 'basedir proj-name))
+                                              line))
+                  if (or (not regex)
+                         (and (stringp regex)
+                              (string-match regex current-filename))
+                         (and (listp regex)
+                              (some (lambda (re) (string-match re current-filename)) regex)))
+                  collect current-filename)
+            #'string-lessp))))
 
 (defun mk-proj-files (&optional proj-name)
   (unless proj-name

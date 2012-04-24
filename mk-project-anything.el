@@ -99,7 +99,7 @@ The behaviour of this command is modified with
                         (mapcar (lambda (s)
                                   (replace-regexp-in-string "/\\./" "/" (concat (file-name-as-directory mk-proj-basedir) s)))
                                 (if mk-proj-patterns-are-regex
-                                    (flatten (mapcar 'mk-proj-fib-matches mk-proj-src-patterns))
+                                    (mk-proj-fib-matches mk-proj-src-patterns)
                                   (mk-proj-fib-matches nil))) (error nil))))
     (match anything-c-match-on-file-name
            anything-c-match-on-directory-name)
