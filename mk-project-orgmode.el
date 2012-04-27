@@ -981,12 +981,18 @@ See also `mk-org-entry-nearest-active'."
     (:create
      (let* ((buf (get-buffer-create "*mk-proj: new project*"))
             (window (display-buffer buf))
-            (config-alist (or config-alist (mk-proj-guess-alist))))
+            (config-alist (or config-alist (mk-proj-guess-alist)))
+            (headline (and (boundp 'org-complex-heading-regexp)
+                           (looking-at org-complex-heading-regexp)
+                           (mk-org-entry-headline))))
        (select-window window)
        (set-window-dedicated-p window t)
        (org-mode)
        (buffer-disable-undo)
-       (mk-org-config-insert (or proj-name (cadr (assoc 'name config-alist)) "NewProject") config-alist t)
+       (mk-org-config-insert (or proj-name
+                                 headline
+                                 (cadr (assoc 'name config-alist))
+                                 "NewProject") config-alist t)
        (goto-char 0)
        (end-of-line)
        (mk-proj-backend-create-project-mode 'org-mode)

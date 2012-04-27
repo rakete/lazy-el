@@ -1325,8 +1325,15 @@ See also `mk-proj-config-save-location'")
 
 (defun* project-create ()
   (interactive)
-  (mk-proj-backend-funcall (mk-proj-detect-backend)
-                           'buffer :create))
+  (if (and (boundp 'mk-org-default-todo-keyword)
+           (boundp 'org-complex-heading-regexp)
+           (save-excursion
+             (org-back-to-heading)
+             (looking-at org-complex-heading-regexp)))
+      (mk-proj-backend-funcall 'org-mode
+                               'buffer :create)
+    (mk-proj-backend-funcall (mk-proj-detect-backend)
+                             'buffer :create)))
 
 (defun project-edit (&optional proj-name)
   (interactive)
