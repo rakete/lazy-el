@@ -1566,9 +1566,12 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
 
 (defun mk-proj-kill-emacs-hook ()
   "Ensure we save the open-files-cache info on emacs exit"
-  (when (and mk-proj-name (mk-proj-get-config-val 'open-files-cache))
+  (when (and mk-proj-name
+             (mk-proj-get-config-val 'open-files-cache))
     (mk-proj-save-open-file-info))
-  (when (and (mk-proj-get-config-val 'friends) (mk-proj-get-config-val 'open-friends-cache))
+  (when (and mk-proj-name
+             (mk-proj-get-config-val 'friends)
+             (mk-proj-get-config-val 'open-friends-cache))
     (mk-proj-save-open-friends-info)))
 
 (defun mk-proj-unload-vars ()
