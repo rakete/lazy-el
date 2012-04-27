@@ -182,7 +182,7 @@ value is not used if a custom find command is set in
                                 basedir)
   "Project config vars that are required in every project.
 
-See also `mk-proj-optional-vars' `mk-proj-var-eval-functions' `mk-proj-load-vars'")
+See also `mk-proj-optional-vars' `mk-proj-var-before-get-functions' `mk-proj-load-vars'")
 
 (defvar mk-proj-optional-vars '(parent ;; parent needs to come first!
                                 src-patterns
@@ -206,7 +206,7 @@ See also `mk-proj-optional-vars' `mk-proj-var-eval-functions' `mk-proj-load-vars
                                 open-friends-cache)
   "Project config vars that are optional.
 
-See also `mk-proj-required-vars' `mk-proj-var-eval-functions' `mk-proj-load-vars'")
+See also `mk-proj-required-vars' `mk-proj-var-before-get-functions' `mk-proj-load-vars'")
 
 (defvar mk-proj-internal-vars '()
   "Project config vars that are ignored when saving the project config.")
@@ -220,21 +220,20 @@ See also `mk-proj-required-vars' `mk-proj-var-eval-functions' `mk-proj-load-vars
       (expand-file-name val)
     (mk-proj-get-cache-path var proj-name)))
 
-(defvar mk-proj-var-eval-functions '((basedir . mk-proj-var-expand)
-                                     (tags-file . mk-proj-var-get-cache-path)
-                                     (file-list-cache . mk-proj-var-get-cache-path)
-                                     (open-files-cache . mk-proj-var-get-cache-path)
-                                     (open-friends-cache . mk-proj-var-get-cache-path))
+(defvar mk-proj-var-before-get-functions '((basedir . mk-proj-var-expand)
+                                           (tags-file . mk-proj-var-get-cache-path)
+                                           (file-list-cache . mk-proj-var-get-cache-path)
+                                           (open-files-cache . mk-proj-var-get-cache-path)
+                                           (open-friends-cache . mk-proj-var-get-cache-path))
   "Config vars from `mk-proj-required-vars' and `mk-proj-optional-vars' (except 'name')
 can be associated with a function in this association list, which will be
 applied to the value of the var right after it is taken from the config-alist.
 
-That means when loading a project, or when querying the configuration with
-`mk-proj-get-config-val', the var symbol is to look up a function in this list
-and, if present, that function is then applied to the var symbol and var value pair
-and its result returned as var value.
+That means when querying the configuration with `mk-proj-get-config-val', the var
+symbol is used to look up a function in this list and, if present, that function is then
+applied to the var symbol and var value pair and its result used as new var value.
 
-See also `mk-proj-load-vars',`mk-proj-get-config-val'.")
+See also `mk-proj-get-config-val'.")
 
 (defvar mk-proj-var-ask-functions '((name . (lambda ()
                                               (read-string "Name: " super)))
@@ -669,15 +668,17 @@ for the KEY and the first value that is found is returned."
            (eval (intern-soft (concat "mk-proj-" (symbol-name key)))))
       (eval (intern-soft (concat "mk-proj-" (symbol-name key))))
     (let* ((proj-alist (mk-proj-find-config proj-name))
-           (val (if (assoc key proj-alist)
-                    (cadr (assoc key proj-alist))
-                  (let ((parent (cadr (assoc 'parent proj-alist))))
-                    (when (and inherit parent)
-                      (mk-proj-get-config-val key parent t)))))
-           (fn (cdr (assoc key mk-proj-var-eval-functions))))
-      (if fn (funcall fn key val proj-name) val))))
+           (fn (cdr (assoc key mk-proj-var-before-get-functions)))
+           (val  (or (when fn
+                       (funcall fn key (cadr (assoc key proj-alist)) proj-name proj-alist))
+                     (and (assoc key proj-alist)
+                          (cadr (assoc key proj-alist)))
+                     (let ((parent (cadr (assoc 'parent proj-alist))))
+                       (when (and inherit parent)
+                         (mk-proj-get-config-val key parent t))))))
+      (if fn (funcall fn key val proj-name proj-alist) val))))
 
-;;(mk-proj-get-config-val 'file-list-cache "mk-project:overlay for todos in project buffers" nil)
+;;(mk-proj-get-config-val 'file-list-cache "pcl" nil)
 
 (defalias 'mk-proj-config-val 'mk-proj-get-config-val
   "Alias for `mk-proj-get-config-val' to ensure backward compatibility.")
@@ -704,33 +705,29 @@ for the KEY and the first value that is found is returned."
 
 (defun* mk-proj-eval-alist (proj-name &optional config-alist)
   (interactive)
-  ;; I changed the behaviour of this function to evaluate the config values (when they look like something
-  ;; that could be evaluated)
-  ;; thats rather nasty because now lists must be quoted or else project definition will fail
-  ;; on the other hand it enables my org-mode integration to have its property values evaluated
-  ;; EDIT: I think I made it backwards compatible through a condition-case, lets see if anyone complains...
-  (let* ((evaluated-config-alist (let ((evaluated-config-alist `((name ,proj-name))))
-                                   (dolist (cv config-alist evaluated-config-alist)
-                                     (let* ((key (car cv))
-                                            ;; super behaves like a keyword that can be used within a configuration
-                                            ;; to refer to the parents value
-                                            ;; I haven't tested this, it is a experimental feature
-                                            (super (when (cadr (assoc 'parent config-alist))
-                                                     (mk-proj-get-config-val key (cadr (assoc 'parent config-alist)) t)))
-                                            (lisp (car (cdr cv)))
-                                            (value (condition-case nil (eval lisp) (error lisp))))
-                                       (unless (eq key 'name)
-                                         (add-to-list 'evaluated-config-alist `(,key ,value)))))))
-         (result-alist evaluated-config-alist))
+  (let* ((evaluated-config-alist `((name ,proj-name)))
+         (result-alist (dolist (cv config-alist evaluated-config-alist)
+                         (let* ((key (car cv))
+                                ;; super behaves like a keyword that can be used within a configuration
+                                ;; to refer to the parents value
+                                ;; I haven't tested this, it is a experimental feature
+                                (super (when (cadr (assoc 'parent config-alist))
+                                         (mk-proj-get-config-val key (cadr (assoc 'parent config-alist)) t)))
+                                (lisp (car (cdr cv)))
+                                (value (condition-case nil (eval lisp) (error lisp))))
+                           (unless (eq key 'name)
+                             (add-to-list 'evaluated-config-alist `(,key ,value)))))))
     (when (gethash proj-name mk-proj-list)
+      (message "union with %s" proj-name)
       (setq result-alist (mk-proj-alist-union (gethash proj-name mk-proj-list) result-alist)))
     (when (cadr (assoc 'parent result-alist))
+      (message "%s inherits from %s" proj-name (cadr (assoc 'parent result-alist)))
       (setq result-alist (mk-proj-alist-union (gethash (cadr (assoc 'parent result-alist)) mk-proj-list)
                                               result-alist)))
     (loop for req-var in mk-proj-required-vars
           if (or (and (assoc req-var result-alist)
                       (not (cadr (assoc req-var result-alist)))))
-          do (progn (message "Project \"%s\" contains errors" proj-name)
+          do (progn (error "Project \"%s\" contains errors" proj-name)
                     (return-from "mk-proj-eval-alist" nil)))
     result-alist))
 

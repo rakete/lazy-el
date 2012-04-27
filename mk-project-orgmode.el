@@ -363,7 +363,7 @@ will be used internally. You can specify match to be used in that case with:
                                               (funcall f-closure)
                                               (while (and (progn
                                                             (outline-next-heading)
-                                                            (> (org-outline-level) parent-level))
+                                                            (> (org-outline-level) entry-level))
                                                           (not (eobp)))
                                                 (cond ((and (eq scope 'project-tree)
                                                             (org-entry-get (point) (mk-org-symbol-table 'name)))
@@ -375,15 +375,15 @@ will be used internally. You can specify match to be used in that case with:
                                                               (entry-level (save-excursion
                                                                              (beginning-of-line)
                                                                              (org-outline-level)))
-                                                              (entry-point (point))
-                                                              )
+                                                              (entry-point (point)))
                                                          (setq skip-project-functions (append skip-project-functions
                                                                                               `((lambda ()
                                                                                                   (string-equal (read (or (org-entry-get (point) (mk-org-symbol-table 'name))
                                                                                                                           "nil"))
                                                                                                                 ,(read (or (org-entry-get (point) (mk-org-symbol-table 'name))
                                                                                                                            "nil")))))))
-                                                         (funcall project-recursion)))
+                                                         (funcall project-recursion)
+                                                         (outline-previous-heading)))
                                                       ((and (eq scope 'project-single)
                                                             (org-entry-get (point) (mk-org-symbol-table 'name)))
                                                        (progn
@@ -391,8 +391,7 @@ will be used internally. You can specify match to be used in that case with:
                                                       (t
                                                        (let ((parent-name entry-name)
                                                              (parent-level entry-level)
-                                                             (parent-point entry-point)
-                                                             )
+                                                             (parent-point entry-point))
                                                          (funcall f-closure))))))))
                     (cond ((eq scope 'project-headline)
                            (save-excursion
@@ -881,7 +880,7 @@ See also `mk-org-entry-nearest-active'."
            (save-excursion
              (if (condition-case nil (goto-char (org-find-exact-headline-in-buffer (mk-proj-get-config-val 'org-headline proj-name t))) (error nil))
                  (point-marker)
-               (error "mk-org: could not find a loctationto save project %s" proj-name)))))
+               (error "mk-org: could not find a loctation to save project %s" proj-name)))))
         ;; find file in directory named after project
         ((condition-case nil (directory-files (expand-file-name mk-org-config-save-location)) (error nil))
          (with-current-buffer (find-file-noselect (concat (expand-file-name mk-org-config-save-location) proj-name ".org"))
