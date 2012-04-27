@@ -1103,8 +1103,7 @@ See also `project-undef'."
                               (unless (assoc 'name already-defined-result)
                                 (add-to-list 'already-defined-result `(name ,(car pattern-projects))))
                               already-defined-result))
-             result))
-         )))))
+             result)))))))
 
 
 
@@ -1254,7 +1253,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
     (:finalize-create
      (let ((result nil))
        (while (not (setq result (condition-case nil (eval (read (buffer-string))) (error nil)))))
-       (mk-proj-config-save result)
+       (mk-proj-config-save (cadr (assoc 'name result)) result)
        (kill-buffer (buffer-name))))
     (:finalize-edit
      (let ((marker (mk-proj-find-save-location-marker)))

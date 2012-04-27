@@ -1013,7 +1013,7 @@ See also `mk-org-entry-nearest-active'."
          (beginning-of-buffer)
          (outline-next-heading)
          (let ((headline (mk-org-entry-headline))
-               (marker (mk-org-find-save-location-marker)))
+               (marker (mk-org-find-save-location-marker (mk-org-entry-name))))
            (org-copy-subtree 1 nil)
            (when marker
              (with-current-buffer (marker-buffer marker)
@@ -1022,19 +1022,16 @@ See also `mk-org-entry-nearest-active'."
                       (org-show-following-heading nil)
                       (org-show-siblings nil))
                  (save-excursion
-                   (goto-char (mk-org-paste-below))
-                   (if (condition-case nil (mk-org-entry-define-project) (error nil))
-                       (progn
-                         ;;(print (concat "added: " headline))
-                         (mk-org-reveal)
-                         (setq has-error nil))
-                     (progn
-                       (goto-char 0)
-                       (goto-char (marker-position (org-find-exact-headline-in-buffer headline)))
-                       (let ((beg (point))
-                             (end (org-end-of-subtree)))
-                         (delete-region beg end)))
-                     ))))))
+                   (org-back-to-heading t)
+                   (let ((beg (point-at-bol))
+                         (end (org-end-of-subtree)))
+                     (delete-region beg end))))
+               (org-yank)
+               (when (condition-case nil (mk-org-entry-define-project) (error nil))
+                 (progn
+                   (print (concat "added: " headline))
+                   (mk-org-reveal)
+                   (setq has-error nil))))))
          (unless has-error
            (kill-buffer)))))
     (:finalize-edit
