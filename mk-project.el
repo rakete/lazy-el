@@ -1472,7 +1472,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
   (let ((directory (concat mk-global-cache-root
                            (cond ((mk-proj-get-config-val 'parent proj-name)
                                   (let ((a (concat "/" (mk-proj-join "/" (mk-proj-ancestry proj-name)))))
-                                    (if (mk-proj-get-config-val 'basedir proj-name) a (concat a "/"))))
+                                    (concat a "/")))
                                  (t
                                   (concat "/" proj-name "/")))))
         (file (concat (symbol-name symbol))))
@@ -1480,7 +1480,8 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
     (let ((r (concat directory file)))
       (cond ((file-exists-p r)
              r)
-            ((and (mk-proj-get-config-val 'parent proj-name) (file-exists-p (mk-proj-get-config-val 'parent proj-name)))
+            ((and (mk-proj-get-config-val 'parent proj-name)
+                  (file-exists-p (mk-proj-get-config-val symbol (mk-proj-get-config-val 'parent proj-name))))
              (progn
                (copy-file (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent proj-name))
                           r)
