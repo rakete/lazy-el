@@ -1673,9 +1673,9 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
   "View project's variables."
   (interactive)
   (unless proj-name
-    (mk-proj-assert-proj t)
+    (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  (if (mk-proj-get-config-val 'basedir)
+  (if (mk-proj-get-config-val 'basedir proj-name)
       (let ((b (get-buffer-create "*mk-proj: project-status*")))
         (with-current-buffer b
           (kill-region (point-min) (point-max))
@@ -2348,7 +2348,7 @@ With C-u prefix, act like `project-ack'."
 
 (defun project-friend-this (&optional proj-name)
   (interactive "P")
-  (mk-proj-assert-proj t)
+  (mk-proj-assert-proj)
   (setq proj-name (cond ((and (listp proj-name) (numberp (car proj-name)))
                     (mk-proj-get-config-val 'parent))
                    ((stringp proj-name)
