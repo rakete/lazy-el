@@ -197,18 +197,13 @@ than the current one."
 
 (defun mk-org-forward-same-level ()
   (interactive)
-  (let ((p (save-excursion
+  (let ((l (save-excursion
              (beginning-of-line)
-             (point))))
-    (condition-case nil (outline-forward-same-level 1) (error nil))
-    (when (= (point) p)
-      (let ((l (save-excursion
-                 (beginning-of-line)
-                 (org-outline-level))))
-        (outline-next-heading)
-        (while (and (> (org-outline-level) l)
-                    (not (eobp)))
-          (outline-next-heading))))))
+             (org-outline-level))))
+    (outline-next-heading)
+    (while (and (> (org-outline-level) l)
+                (not (eobp)))
+      (outline-next-heading))))
 
 
 
@@ -386,13 +381,15 @@ will be used internally. You can specify match to be used in that case with:
                                                          (outline-previous-heading)))
                                                       ((and (eq scope 'project-single)
                                                             (org-entry-get (point) (mk-org-symbol-table 'name)))
-                                                       (progn
-                                                         (mk-org-forward-same-level)))
+                                                       (mk-org-forward-same-level)
+                                                       )
                                                       (t
                                                        (let ((parent-name entry-name)
                                                              (parent-level entry-level)
                                                              (parent-point entry-point))
-                                                         (funcall f-closure))))))))
+                                                         (funcall f-closure)
+                                                         ))))
+                                              )))
                     (cond ((eq scope 'project-headline)
                            (save-excursion
                              (org-back-to-heading t)
@@ -412,7 +409,9 @@ will be used internally. You can specify match to be used in that case with:
 (defun test-mk-org-map-entries ()
   (interactive)
   (mk-org-map-entries
-   :file (mk-org-files-containing-projects)
+   :file (current-buffer)
+   :match (point)
+   :scope 'project-single
    :function (lambda ()
                (message (format "%s -> %s" (read (prin1-to-string parent-name)) entry-name))
                )))
@@ -715,12 +714,13 @@ will be used internally. You can specify match to be used in that case with:
   (mk-org-map-entries
    :file (current-buffer)
    :match (point)
-   :scope 'project-single
+   :scope 'project-tree
    :function (lambda ()
-               (when (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
+               (when (or (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
+                         (mk-org-entry-is-project-p))
                  (org-show-context)
                  (when (and mk-proj-name
-                            (not (mk-org-entry-is-project-p))
+                            ;;(not (mk-org-entry-is-project-p))
                             (string-equal (mk-org-entry-name) mk-proj-name))
                    (org-show-entry))
                  ))))
