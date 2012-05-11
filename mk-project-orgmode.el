@@ -489,27 +489,24 @@ will be used internally. You can specify match to be used in that case with:
   (interactive)
   (with-or-without-marker marker
    (if (and (boundp 'parent-point)
+            (boundp 'entry-point)
             (eq (point) entry-point))
        parent-point
      (save-excursion
        (org-back-to-heading t)
-       (let ((parent-point nil)
+       (let ((parent-point (point))
              (parent-name (org-entry-get (point) (mk-org-symbol-table 'name) t))
              (cont nil)
-             (stop nil)
-             (is-project-line (mk-org-entry-is-project-p)))
-         (if is-project-line
-             (setq cont (org-up-heading-safe)
-                   parent-name (org-entry-get (point) (mk-org-symbol-table 'name) t))
-           (setq cont t))
+             (is-project (mk-org-entry-is-project-p)))
+         (setq cont (org-up-heading-safe))
+         (when is-project
+             (setq parent-name (org-entry-get (point) (mk-org-symbol-table 'name) t)))
          (when (and parent-name cont)
-           (while (and (not stop)
-                       (string-equal (or (org-entry-get (point) (mk-org-symbol-table 'name) t)
-                                         "nil")
-                                     parent-name))
-             (setq parent-point (point))
-             (unless (condition-case nil (org-up-heading-all 1) (error nil))
-               (setq stop t))))
+           (while (and cont
+                       (setq parent-point (point))
+                       (not (string-equal (org-entry-get (point) (mk-org-symbol-table 'name))
+                                          parent-name)))
+             (setq cont (org-up-heading-safe))))
          parent-point)))))
 
 (defun mk-org-entry-nearest-active (&optional marker)
