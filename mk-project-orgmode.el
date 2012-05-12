@@ -494,7 +494,7 @@ will be used internally. You can specify match to be used in that case with:
        parent-point
      (save-excursion
        (org-back-to-heading t)
-       (let ((parent-point (point))
+       (let ((parent-point nil)
              (parent-name (org-entry-get (point) (mk-org-symbol-table 'name) t))
              (cont nil)
              (is-project (mk-org-entry-is-project-p)))
