@@ -1037,6 +1037,9 @@ See also `mk-org-entry-nearest-active'."
          (goto-char (marker-position marker))
          (unless (eq (condition-case nil (mk-org-entry-define-project) (error 'error))
                      'error)
+           (when (and (not (condition-case nil (mk-proj-assert-proj) (error t)))
+                      (string-equal (mk-org-entry-name) mk-proj-name))
+             (mk-proj-load-vars (mk-org-entry-name)))
            (save-buffer)
            (kill-buffer)))))))
 
