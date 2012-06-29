@@ -2350,36 +2350,6 @@ With C-u prefix, act like `project-ack'."
 
 ;;(defun mk-proj-find-projects-owning-file (file))
 
-(defun project-friend-this (&optional proj-name)
-  (interactive "P")
-  (mk-proj-assert-proj)
-  (setq proj-name (cond ((and (listp proj-name) (numberp (car proj-name)))
-                    (mk-proj-get-config-val 'parent))
-                   ((stringp proj-name)
-                    proj-name)
-                   (t nil)))
-  (mk-proj-assert-proj)
-  (unless proj-name
-    (setq proj-name mk-proj-name))
-  (mk-proj-set-config-val 'friends (append (mk-proj-get-config-val 'friends) `(,(buffer-file-name (current-buffer)))) proj-name))
-
-(defun project-friend-add (&optional friend)
-  (interactive "P")
-  (mk-proj-assert-proj t)
-  (let ((parent nil))
-    (when (and (listp friend) (numberp (car friend)))
-      (setq parent (mk-proj-get-config-val 'parent)
-            friend nil))
-    (unless friend
-      (setq friend (expand-file-name
-                    (concat "~/"
-                            (ido-completing-read "Friend: "
-                                                 (append (ido-file-name-all-completions "~")
-                                                         (mk-proj-names)))))))
-    (mk-proj-assert-proj)
-    (when (or (and (file-exists-p friend) (not (file-directory-p friend))) (gethash friend mk-proj-list))
-      (mk-proj-set-config-val 'friends (append (mk-proj-get-config-val 'friends) `(,friend)) parent))))
-
 (provide 'mk-project)
 
 
