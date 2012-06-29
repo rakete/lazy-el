@@ -39,9 +39,6 @@ that has lots of other tasks as children but is not a complete project itself.
 So far this is only used when creating project-todos, to put the todo under
 the active subtree, instead of the parent subtree.")
 
-(defvar mk-org-default-todo-keyword "TODO"
-  "Not used yet. I wanted to have a default todo that gets set when adding a project-todo.")
-
 (defvar mk-proj-org-file nil
   "The current projects .org file.")
 
@@ -608,11 +605,6 @@ will be used internally. You can specify match to be used in that case with:
              (proj-parent (mk-org-entry-parent-name)))
          (when proj-parent
            (add-to-list 'entry-config `(parent ,proj-parent)))
-         ;;(message "%s -> %s : %s : %d" (mk-org-entry-name) (or (mk-org-entry-parent-name) t) (assoc 'org-file entry-config) (marker-position (cadr (assoc 'org-marker entry-config))))
-         ;;(project-def (mk-org-entry-name) entry-config (or (mk-org-entry-parent-name) t))
-         ;; (when (and mk-proj-name (string-equal (mk-org-entry-name) mk-proj-name))
-         ;;   (message (format "org-project: loading %s" (mk-org-entry-name)))
-         ;;   (mk-proj-load (mk-org-entry-name)))
          entry-config)))))
 
 (defun mk-org-entry-define-project (&optional marker)
