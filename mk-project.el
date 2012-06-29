@@ -37,10 +37,16 @@
 (require 'thingatpt)
 (require 'cl)
 
-(defvar mk-proj-version "1.5.1"
-  "As tagged at http://github.com/mattkeller/mk-project/tree/master")
+(defvar mk-proj-version "1.6.0")
 
-(defvar mk-global-cache-root "~/.mk-project")
+(defvar mk-global-cache-root "~/.mk-project"
+  "Root path under which to create files that contain project metadata like open
+files, open friends etc. These are automatically created for a project under a
+directory created under this path. Makes the open-files-cache, file-list-cache,
+open-friends-cache directives optional.
+
+See also `mk-proj-open-files-cache', `mk-proj-open-friends-cache',
+`mk-proj-file-list-cache'")
 
 ;; ---------------------------------------------------------------------
 ;; Project Variables
@@ -303,12 +309,11 @@ See also `mk-proj-get-config-val'.")
                                (cabal ((files ("Setup.lhs"))
                                        (build "runhaskell Setup.lhs build $MK_BUILD_OPTS")))
                                (python ((files ("setup.py"))
-                                        (build "python setup.py build $MK_BUILD_OPTS")))
-                               (byte-compile-sh ((files ("byte-compile.sh"))
-                                                 (build "byte-compile.sh $MK_BUILD_OPTS")))))
+                                        (build "python setup.py build $MK_BUILD_OPTS"))))
+  "Used when guessing a project root or its compile-cmd.")
 
 (defvar mk-proj-incubator-paths `(,(expand-file-name "~"))
-  "An incubator is a location where multiple other projects are kept. These will be
+  "An incubator is a location where multiple projects are kept. These will be
 ignored when guessing a projects basedir thus giving preference to subdirectories
 within it.
 
@@ -316,7 +321,10 @@ It is not impossible for an incubator path to be guessed as project basedir thou
 If you'll guess while in a buffer with a file from an incubator root open, that
 incubator root could be guessed as basedir.")
 
-(defvar mk-proj-common-project-subdir-names '("src" "include" "demo[?s]" "example[?s]" "doc[?s]" "build" "tool[?s]" "test[?s]" "misc"))
+(defvar mk-proj-common-project-subdir-names '("src" "include" "demo[?s]" "example[?s]" "doc[?s]" "build" "tool[?s]" "test[?s]" "misc")
+  "Common subdirectory names found in projects as regular expressions. These
+help guessing a projects basedir. Matching directory names will be ignored
+and their parent directory used as basedir.")
 
 (defvar mk-proj-src-pattern-table '(("h" ".*\\.c" ".*\\.cpp" ".*\\.cc")
                                     ("hpp" ".*\\.c" ".*\\.cpp" ".*\\.cc")
@@ -331,7 +339,9 @@ incubator root could be guessed as basedir.")
                                     ("lisp")
                                     ("clojure" ".*\\.clj")
                                     ("clj" ".*\\.clojure")
-                                    ))
+                                    )
+  "Maps file suffixes to regexps used as source-patterns when guessing a
+project config from the currently opened file in the active buffer.")
 
 (defvar mk-proj-config-save-location nil
   "Where to save project configs in elisp. If this is a filename project
@@ -384,6 +394,16 @@ load time. See also `project-menu-remove'."
 ;; ---------------------------------------------------------------------
 ;; Utils
 ;; ---------------------------------------------------------------------
+
+(defun mk-proj-save-state ()
+  (mk-proj-save-open-file-info)
+  (mk-proj-save-open-friends-info))
+
+(eval-after-load "mk-project"
+  '(progn
+     (add-hook 'emacs-kill-hook (lambda ()
+                                  (mk-proj-save-state)))
+     (run-with-idle-timer 90 t 'mk-proj-save-state)))
 
 (defun mk-proj-zip (&rest lists)
   (let* (;;(lists (append (list a) rest))
@@ -494,7 +514,6 @@ all lists within the list XS.
           (setq xs (cdr xs)))
         ret)
     (list xs)))
-
 
 (defmacro mk-proj-assoc-pop (key alist)
   "Like `assoc', but remove the (KEY . value) pair from the ALIST."

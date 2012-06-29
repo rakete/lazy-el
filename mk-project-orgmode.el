@@ -54,7 +54,8 @@ one org file per project stored in a single directory, can be a filename
 to use a single org file for all projects, for every other non-nil value
 a single org file is stored in the projects basedir.")
 
-(defvar mk-org-config-save-section "Projects")
+(defvar mk-org-config-save-section "Projects"
+  "A headline under which to store project org trees.")
 
 
 (eval-after-load "mk-project-orgmode"
