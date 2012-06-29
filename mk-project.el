@@ -1684,7 +1684,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
         (with-current-buffer b
           (kill-region (point-min) (point-max))
           (dolist (v (append mk-proj-required-vars mk-proj-optional-vars))
-            (insert (format "%-24s = %s\n" (symbol-name v) (mk-proj-config-val v proj-name t)))))
+            (insert (format "%-24s = %s\n" (symbol-name v) (mk-proj-get-config-val v proj-name t)))))
         (when (not (eq b (current-buffer)))
           (set-window-dedicated-p (display-buffer b) t)))
     (message "No project loaded.")))
