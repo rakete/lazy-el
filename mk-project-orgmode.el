@@ -1071,14 +1071,12 @@ This is taken almost directly from `org-babel-read'."
     cell))
 
 
-(defun mk-org-entry-clocked-p ()
+(defun mk-org-entry-last-clock-position ()
   (save-excursion
     (save-restriction
       (org-save-outline-visibility t
         (show-all)
-        (next-line)
-        (beginning-of-line)
-        (looking-at (concat "\\s-*" org-clock-string))))))
+        (re-search-forward org-clock-string (save-excursion (org-end-of-subtree)) t)))))
 
 (defun mk-org-define-projects ()
   (interactive)
@@ -1099,7 +1097,7 @@ This is taken almost directly from `org-babel-read'."
                   (when (and (not (mk-org-entry-is-link-p))
                              (or (and (org-get-todo-state)
                                       (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
-                                      (or (mk-org-entry-clocked-p)
+                                      (or (mk-org-entry-last-clock-position)
                                           (some (lambda (prop-tuple)
                                                   (some (lambda (sym) (string-equal (mk-org-symbol-table sym) (cdr prop-tuple)))
                                                         (append mk-proj-required-vars mk-proj-optional-vars)))
@@ -1130,9 +1128,10 @@ This is taken almost directly from `org-babel-read'."
 (defun mk-org-clock-cut ()
   (save-excursion
     (org-save-outline-visibility t
-      (when (looking-at org-complex-heading-regexp)
+      (when (and (looking-at org-complex-heading-regexp)
+                 (mk-org-entry-last-clock-position))
         (show-all)
-        (next-line)
+        (goto-char (mk-org-entry-last-clock-position))
         (when (looking-at (concat "\\s-*" org-clock-string))
           (kill-region (point-at-bol) (point-at-bol 2)))))))
 
@@ -1142,9 +1141,9 @@ This is taken almost directly from `org-babel-read'."
       (when (and (looking-at org-complex-heading-regexp)
                  (string-match org-clock-string (car kill-ring)))
         (show-all)
+        (org-clock-find-position nil)
         (next-line)
-        (while (or (looking-at (concat "\\s-*" org-clock-string))
-                   (looking-at (concat "\\s-*" org-closed-string)))
+        (while (looking-at (concat "\\s-*" org-clock-string))
           (next-line))
         (beginning-of-line)
         (yank)
