@@ -1,6 +1,6 @@
 ;;; mk-project-anything.el --- Anything integration for mk-project
 
-;; Copyright (C) 2008  Matt Keller <mattkeller at gmail dot com>
+;; Copyright (C) 2008  Andreas Raster <lazor at affenbande dot org>
 ;;
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
