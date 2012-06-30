@@ -414,8 +414,6 @@ will be used internally. You can specify match to be used in that case with:
                (message (format "%s -> %s" (read (prin1-to-string parent-name)) entry-name))
                )))
 
-(defun mk-org-entry-map-ancestry (&key function
-                                       (only-projects nil)))
 
 
 
