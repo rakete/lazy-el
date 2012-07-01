@@ -54,7 +54,7 @@
                                 (if mk-proj-patterns-are-regex
                                     (mk-proj-fib-matches mk-proj-src-patterns)
                                   (mk-proj-fib-matches nil))) (error nil))))
-    (candidate-number-limit . 9999)
+    (candidate-number-limit . 100)
     (volatile)
     (keymap . ,helm-generic-files-map)
     (help-message . helm-generic-file-help-message)
@@ -84,8 +84,7 @@
   `((name . "Mk-Project friendly files")
     (candidates . (lambda ()
                     (condition-case nil (mk-proj-fib-friend-matches) (error nil))))
-    (candidate-number-limit . 9999)
-    (volatile)
+    (candidate-number-limit . 100)
     (keymap . ,helm-generic-files-map)
     (help-message . helm-generic-file-help-message)
     (mode-line . helm-generic-file-mode-line-string)
@@ -135,3 +134,5 @@
                    helm-c-source-mk-project-friendly-files)
         :buffer "*helm mk-project*"
         :history 'helm-file-name-history))
+
+(provide 'mk-project-helm)
