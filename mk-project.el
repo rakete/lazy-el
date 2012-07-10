@@ -1114,12 +1114,12 @@ See also `project-undef'."
          ;; find already defined project that fits the guessed project so well that we'll use that instead
          ;; creates list of all projects in same basedir, then selects those matching the same src-patterns
          ;; as the guessed, uses the first of those if multiple match
-         (message (concat (format-time-string "%H:%M:%S" (current-time)) " check defined"))
+         ;;(message (concat (format-time-string "%H:%M:%S" (current-time)) " check defined"))
          (let ((already-defined (or (and (buffer-file-name (current-buffer))
                                          (mk-proj-find-projects-in-directory (mk-proj-dirname (buffer-file-name (current-buffer)))))
                                     (mk-proj-find-projects-in-directory (cadr (assoc 'basedir result)))))
                (pattern-projects nil))
-           (message (concat (format-time-string "%H:%M:%S" (current-time)) " do lookup"))
+           ;;(message (concat (format-time-string "%H:%M:%S" (current-time)) " do lookup"))
            (if already-defined
                (loop for proj-name in already-defined
                      if (setq pattern-projects
