@@ -837,6 +837,14 @@ See also `project-undef'."
 
 ;;(mk-proj-find-projects-owning-buffer (current-buffer))
 
+(defun mk-proj-find-unique-paths (paths)
+  (let ((result '()))
+    (dolist (path paths result)
+      (unless (some (lambda (a) (mk-proj-path-equal path a)) (mk-proj-filter (lambda (p) (not (string-equal p path))) paths))
+        (add-to-list 'result path)))))
+
+;;(mk-proj-find-unique-paths '( "/home/rakete/.emacs.d/" "/home/rakete/testlab" "/home/rakete/Documents" "/home/rakete/.emacs.d/mk-project"))
+
 (defun mk-proj-find-common-path-of-buffers (&optional buffers ignore-paths)
   (let* ((common-path 'undefined)
          (result (dolist (buf
@@ -2356,9 +2364,9 @@ With C-u prefix, act like `project-ack'."
     (let* ((wap (word-at-point))
            (regex (if wap (read-string (concat "Ack project for (default \"" wap "\"): ") nil nil wap)
                     (read-string "Ack project for: ")))
-           (whole-cmd (concat (mk-proj-ack-cmd regex) " " (mk-proj-get-config-val 'basedir) "; "
-                              (let ((s ""))
-                                (dolist (d (mk-proj-friend-basedirs) s)
+           (paths (mk-proj-find-unique-paths (append (list (mk-proj-get-config-val 'basedir)) (mk-proj-friend-basedirs))))
+           (whole-cmd (concat (let ((s ""))
+                                (dolist (d paths s)
                                   (setq s (concat s (mk-proj-ack-cmd regex) " " d "; "))))))
            (confirmed-cmd (read-string "Ack command: " whole-cmd nil whole-cmd))
            (default-directory (file-name-as-directory
