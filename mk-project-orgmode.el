@@ -103,7 +103,7 @@ a single org file is stored in the projects basedir.")
 
 
 (defun mk-org-files-containing-projects ()
-  "Searches all defined projects and returns list of all .org files
+  "Searches all defined projects and returns a list of all .org files
 in which projects have been defined as well as the files specified by
 `mk-org-project-search-files'"
   (let ((org-files '()))
@@ -231,7 +231,7 @@ FILE can be either just a filename, a list of files or a buffer.
 MATCH can be a marker or sourcemarker, a single number representing a point or
 a project name. FUNCTION is called with point on everything MATCH finds.
 
-Furthermore it can be:
+Furthermore MATCH can be:
 a exact headline: '(headline \"A headline\")
 a regular expression: '(re \"expression\")
 a org property: '(property \"NAME\" \"VALUE\")
@@ -242,7 +242,7 @@ all child projects, project-single to map over a single project tree excluding
 child projects and project-headline to map over just the headline(s) of projects.
 
 If scope is nil or one of the `org-map-entries' scope symbols, `org-map-entries'
-will be used internally. You can specify match to be used in that case with:
+will be used internally. You can specify a MATCH to be used in that case with:
 '(org \"tags/property/todo match\")"
   (let ((results '())
         (next-point nil)
