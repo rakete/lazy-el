@@ -1084,7 +1084,7 @@ See also `project-undef'."
                                       (dolist (arg args)
                                         ;; check if neccessary symbols are set, this sets a symbol after guessing it so
                                         ;; we do not have to guess something twice
-                                        (unless (not (eq (symbol-value arg) 'undefined))
+                                        (when (eq (symbol-value arg) 'undefined)
                                           ;;(message "setting symbol %S" arg)
                                           (setf (symbol-value arg) (guess-symbol arg))
                                           ))
