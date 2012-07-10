@@ -1150,15 +1150,17 @@ This is taken almost directly from `org-babel-read'."
 
 (defun mk-org-clock-from-parent-to-todo ()
   (save-excursion
-    (when (mk-org-entry-parent-point)
-      (goto-char (mk-org-entry-parent-point))
-      (when (and org-clock-marker
-                 (string-equal (mk-org-entry-headline org-clock-marker)
-                               (mk-org-entry-headline)))
-        (org-clock-out)
-        (mk-org-clock-cut)
-        (org-clock-in)))
-    (mk-org-clock-yank)))
+    (let ((todo-name (mk-org-entry-name)))
+      (when (mk-org-entry-parent-point)
+        (goto-char (mk-org-entry-parent-point))
+        (when (and org-clock-marker
+                   (string-equal (mk-org-entry-headline org-clock-marker)
+                                 (mk-org-entry-headline))
+                   (y-or-n-p "Move clocked time from %s to %s?" (mk-org-entry-name org-clock-marker) todo-name))
+          (org-clock-out)
+          (mk-org-clock-cut)
+          (org-clock-in)))
+      (mk-org-clock-yank))))
 
 (defun project-clock-in (&optional proj-name)
   (interactive)
