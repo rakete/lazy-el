@@ -1181,8 +1181,9 @@ This is taken almost directly from `org-babel-read'."
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  (mk-org-assert-org proj-name)
-  (org-clock-out))
+  (when (org-clocking-p)
+    (mk-org-assert-org proj-name)
+    (org-clock-out)))
 
 (provide 'mk-project-orgmode)
 
