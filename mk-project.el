@@ -1542,7 +1542,7 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
     (run-hooks 'mk-proj-before-load-hook)
     (unless (or (string= oldname proj-name)
                 (eq proj-alist nil))
-      (project-unload quiet))
+      (project-unload))
     (if proj-alist
         (let ((v (mk-proj-load-vars proj-name)))
           (when v
