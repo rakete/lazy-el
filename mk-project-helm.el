@@ -45,11 +45,16 @@
   "All configured mk-project projects.")
 
 (defun mk-helm-relative-call (fun entry)
-  (message entry)
-  (if (file-name-absolute-p entry)
-      (funcall fun entry)
-    (mk-proj-with-directory (mk-proj-get-config-val 'basedir)
+  (mk-proj-with-directory (mk-proj-get-config-val 'basedir)
+                          (if (file-name-absolute-p entry)
+                              (funcall fun entry)
                             (funcall fun (expand-file-name entry (mk-proj-get-config-val 'basedir))))))
+
+(defun mk-helm-relative-transformer (files)
+  (helm-transform-mapcar
+   (lambda (file)
+     (unless (file-name-absolute-p file)
+      (expand-file-name file (mk-proj-get-config-val 'basedir)))) files))
 
 (defvar helm-c-source-mk-project-files
   `((name . "Mk-Project files")
@@ -81,7 +86,9 @@
     (action-transformer helm-c-transform-file-load-el
                         helm-c-transform-file-browse-url)
     (candidate-transformer helm-c-highlight-files
-                           helm-c-w32-pathname-transformer)
+                           helm-c-w32-pathname-transformer
+                           helm-c-shorten-home-path
+                           mk-helm-relative-transformer)
     (keymap . ,helm-generic-files-map)
     (help-message . helm-generic-file-help-message)
     (mode-line . helm-generic-file-mode-line-string)
@@ -121,6 +128,7 @@
                               (insert (concat line "\n"))) (mk-proj-fib-friend-matches nil friend))))))))
     (candidates-in-buffer)
     (candidate-number-limit . 300)
+    (candidate-transformer helm-c-shorten-home-path)
     (keymap . ,helm-generic-files-map)
     (help-message . helm-generic-file-help-message)
     (mode-line . helm-generic-file-mode-line-string)
