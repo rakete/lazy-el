@@ -431,7 +431,7 @@ load time. See also `project-menu-remove'."
 
 (defun mk-proj-assert-proj (&optional try-guessing)
   (unless mk-proj-name
-    (let ((guessed-alist (mk-proj-guess-alist)))
+    (let ((guessed-alist (when try-guessing (mk-proj-guess-alist t))))
       (cond ((and guessed-alist
                   try-guessing
                   (gethash (cadr (assoc 'name guessed-alist)) mk-proj-list nil)
@@ -1050,22 +1050,22 @@ See also `project-undef'."
                                                    until (setq r (some (lambda (y) (string-equal (cdr y) f)) mk-proj-vcs-path))
                                                    finally return `(10 . ,(car r)))))))))
 
-(defun* mk-proj-guess-alist ()
+(defun* mk-proj-guess-alist (&optional ask-basedir)
   ;; go through mk-proj-guess-functions and collect all symbols that are used
   ;; as arguments, we'll bind those in a closure around the execution
   ;; of the function bodies
-  (let ((args (let (symbols)
-                (dolist (element mk-proj-guess-functions)
-                  (add-to-list 'symbols `(,(car element) 'undefined))
-                  (dolist (token (cdr element))
-                    (dolist (arg (car token))
-                      (add-to-list 'symbols `(,arg 'undefined)))))
-                symbols))
+  (let ((let-args (let (symbols)
+                    (dolist (element mk-proj-guess-functions)
+                      (add-to-list 'symbols `(,(car element) 'undefined))
+                      (dolist (token (cdr element))
+                        (dolist (arg (car token))
+                          (add-to-list 'symbols `(,arg 'undefined)))))
+                    symbols))
         (result '())
         (start-time (current-time)))
-    ;; we define a macro that takes the list of args we constructed from mk-proj-guess-functions
+    ;; we define a macro that takes the list of let-args we constructed from mk-proj-guess-functions
     ;; and makes a let clause out of them, thus binding them in the scope of body
-    (macrolet ((alet (&rest body) `(let ,args ,@body)))
+    (macrolet ((alet (&rest body) `(let ,let-args ,@body)))
       (alet
        (flet ((best-result (rs)
                            (let (bestscore bestresult)
@@ -1100,7 +1100,18 @@ See also `project-undef'."
            ;; possible project symbols, we have to check if a var is bound before setting it
            ;; with setf or returning its value if it is not 'undefined, default is to just
            ;; guess and not set anything
-           (let ((gv (cond ((and (boundp var)
+           (let ((gv (cond ((and ask-basedir
+                                 (boundp var)
+                                 (eq var 'basedir))
+                            (progn
+                              (interactive)
+                              (setf (symbol-value var)
+                                    (let (guessed-dir (guess-symbol var))
+                                      (ido-read-directory-name "Continue with this basedir?: "
+                                                               guessed-dir
+                                                               nil
+                                                               t))))
+                            (and (boundp var)
                                  (not (eq (symbol-value var) 'undefined)))
                             (symbol-value var))
                            ((and (boundp var)
