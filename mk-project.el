@@ -1120,6 +1120,7 @@ See also `project-undef'."
                            (t (guess-symbol var)))))
              (if gv
                  (add-to-list 'result `(,var ,gv))
+               ;; when a required var couldn't be found, abort
                (when (some (apply-partially 'eq var) mk-proj-required-vars)
                  (return-from "mk-proj-guess-alist" nil)))))
          ;; find already defined project that fits the guessed project so well that we'll use that instead
