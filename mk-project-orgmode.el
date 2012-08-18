@@ -1085,7 +1085,8 @@ This is taken almost directly from `org-babel-read'."
         (pre-define-buffer-list (buffer-list))
         (continue-prevent-save t)
         (continue-prevent-restore t)
-        (files (mk-org-files-containing-projects)))
+        (files (mk-org-files-containing-projects))
+        (zeitgeist-prevent-send t))
     (when files
      (mk-org-map-entries
       :file files
