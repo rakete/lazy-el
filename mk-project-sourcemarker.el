@@ -23,7 +23,7 @@
 (defun sourcemarker-setup ()
   (add-to-list 'mk-proj-optional-vars 'sourcemarker)
   (add-to-list 'mk-proj-internal-vars 'sourcemarker)
-  (add-hook 'mk-proj-after-load-hook 'sourcemarker-display-most-recent-buffer)
+  (add-hook 'mk-proj-after-load-hook 'sourcemarker-visit)
   ;;(add-hook 'mk-proj-before-unload-hook 'sourcemarker-set)
   ;; (add-hook 'after-save-hook (lambda ()
   ;;                              (when (and (boundp 'mk-proj-name) mk-proj-name
@@ -55,25 +55,27 @@
                                           (assoc :timestamp (gethash (buffer-file-name b) continue-db nil)))
                                   collect `(,(read (cdr (assoc :timestamp (gethash (buffer-file-name b) continue-db nil)))) . ,b))
                             (lambda (a b) (> (car a) (car b)))))))
-    (if buffer
-        (display-buffer buffer)
-      (when (car (mk-proj-buffers))
-        (display-buffer (car (mk-proj-buffers)))))))
+    (let ((display-buffer-reuse-frames t))
+      (if buffer
+          (display-buffer buffer)
+        (when (car (mk-proj-buffers))
+          (display-buffer (car (mk-proj-buffers))))))))
 
 (defun sourcemarker-visit ()
   "Restore project sourcemarker and go there."
   (interactive)
-  (when mk-proj-sourcemarker
-    (let* ((m (continue-sourcemarker-restore mk-proj-sourcemarker))
-           (buf (find-file-noselect (cdr (assoc :file mk-proj-sourcemarker))))
-           (oldframe (current-frame)))
-      (when m
-        (when (get-buffer-window (get-buffer buf) 'visible)
-          (select-frame (window-frame (get-buffer-window (get-buffer buf) 'visible))))
-        (goto-char m)
-        (display-buffer buf)
-        (with-current-buffer buf
-          (sourcemarker-set))))))
+  (if mk-proj-sourcemarker
+      (let* ((m (continue-sourcemarker-restore mk-proj-sourcemarker))
+             (buf (find-file-noselect (cdr (assoc :file mk-proj-sourcemarker)))))
+        (when m
+          (when (get-buffer-window (get-buffer buf) 'visible)
+            (select-frame (window-frame (get-buffer-window (get-buffer buf) 'visible))))
+          (goto-char m)
+          (let ((display-buffer-reuse-frames t))
+            (display-buffer buf))
+          (with-current-buffer buf
+            (sourcemarker-set))))
+    (sourcemarker-display-most-recent-buffer)))
 
 (defun sourcemarker-set ()
   "Set/update a projects sourcemarker."
