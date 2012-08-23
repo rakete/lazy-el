@@ -1609,7 +1609,8 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
   (when (and mk-proj-name
              (mk-proj-get-config-val 'friends)
              (mk-proj-get-config-val 'open-friends-cache))
-    (mk-proj-save-open-friends-info)))
+    (mk-proj-save-open-friends-info))
+  (project-unload t))
 
 (defun mk-proj-unload-vars ()
   (let ((vars (append mk-proj-required-vars mk-proj-optional-vars))
