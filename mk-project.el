@@ -50,117 +50,10 @@ See also `mk-proj-open-files-cache', `mk-proj-open-friends-cache',
 
 ;; ---------------------------------------------------------------------
 ;; Project Variables
-;;
-;; These variables are set when a project is loaded and nil'd out when
-;; unloaded. These symbols are the same as defined in the 2nd parameter
-;; to project-def except for their "mk-proj-" prefix.
 ;; ---------------------------------------------------------------------
 
 (defvar mk-proj-name nil
   "Name of the current project. Required. First argument to project-def.")
-
-(defvar mk-proj-basedir nil
-  "Base directory of the current project. Required. Value is expanded with
-expand-file-name. Example: ~me/my-proj/.")
-
-(defvar mk-proj-src-patterns nil
-  "List of shell patterns to include in the TAGS file. Optional. Example:
-'(\"*.java\" \"*.jsp\").
-
-This value is not used when `mk-proj-src-find-cmd' is set.")
-
-(defvar mk-proj-ignore-patterns nil
-  "List of shell patterns to avoid searching for with project-find-file and
-project-grep. Optional. Example: '(\"*.class\").
-
-This value is not used in indexing when `mk-proj-index-find-cmd'
-is set -- or in grepping when `mk-proj-grep-find-cmd' is set.")
-
-(defvar mk-proj-ack-args nil
-  "String of arguments to pass to the `ack' command. Optional.
-Example: \"--java\".")
-
-(defvar mk-proj-vcs nil
-  "When set to one of the VCS types in `mk-proj-vcs-path', grep
-and index commands will ignore the VCS's private files (e.g.,
-.CVS/). Example: 'git.
-
-This value is not used in indexing when `mk-proj-index-find-cmd'
-is set -- or in grepping when `mk-proj-grep-find-cmd' is set.")
-
-; TODO: support multiple tags file via tags-table-list
-(defvar mk-proj-tags-file nil
-  "Path to the TAGS file for this project. Optional. Use an absolute path,
-not one relative to basedir. Value is expanded with expand-file-name.")
-
-(defvar mk-proj-compile-cmd nil
-  "Command to build the entire project. Can be either a string specifying
-a shell command or the name of a function. Optional. Example: make -k.")
-
-(defvar mk-proj-install-cmd nil)
-(defvar mk-proj-run-cmd nil)
-
-(defvar mk-proj-startup-hook nil
-  "Hook function to run after the project is loaded. Optional. Project
-variables (e.g. mk-proj-basedir) will be set and can be referenced from this
-function.")
-
-(defvar mk-proj-shutdown-hook nil
-  "Hook function to run after the project is unloaded. Optional.  Project
-variables (e.g. mk-proj-basedir) will still be set and can be referenced
-from this function.")
-
-(defvar mk-proj-file-list-cache nil
-  "Cache *file-index* buffer to this file. Optional. If set, the *file-index*
-buffer will take its initial value from this file and updates to the buffer
-via 'project-index' will save to this file. Value is expanded with
-expand-file-name.")
-
-(defvar mk-proj-open-files-cache nil
-  "Cache the names of open project files in this file. Optional. If set,
-project-load will open all files listed in this file and project-unload will
-write all open project files to this file. Value is expanded with
-expand-file-name.")
-
-(defvar mk-proj-src-find-cmd nil
-  "Specifies a custom \"find\" command to locate all files to be
-included in the TAGS file (see `project-tags'). Optional. The
-value is either a string or a function of one argument that
-returns a string. The argument to the function will be the symbol
-\"'src\".
-
-If non-null (or if the function returns non-null), the custom
-find command will be used and the `mk-proj-src-patterns' and
-`mk-proj-vcs' settings are ignored when finding files to include
-in TAGS.")
-
-(defvar mk-proj-grep-find-cmd nil
-  "Specifies a custom \"find\" command to use as the default when
-running `project-grep'. Optional. The value is either a string or
-a function of one argument that returns a string. The argument to
-the function will be the symbol \"'grep\". The string or returned
-string MUST use find's \"-print0\" argument as the results of
-this command are piped to \"xargs -0 ...\".
-
-If non-null (or if the function returns non-null), the custom
-find command will be used and the `mk-proj-ignore-patterns' and
-`mk-proj-vcs' settings will not be used in the grep command.
-
-The custom find command should use \".\" (current directory) as
-the path that find starts at -- this will allow the C-u argument
-to `project-grep' to run the command from the current buffer's
-directory.")
-
-(defvar mk-proj-index-find-cmd nil
-  "Specifies a custom \"find\" command to use when building an
-listing of all files in the project (to be used by
-`project-find-file'). Optional. The value is either a string or a
-function of one argument that returns a string. The argument to
-the function will be the symbol \"'index\".
-
-If non-null (or if the function returns non-null), the custom
-find command will be used and the `mk-proj-ignore-patterns' and
-`mk-proj-vcs' settings are not used when in the grep command.")
 
 (defun mk-proj-fib-name (&optional proj-name)
   "Buffer name of the file-list cache. This buffer contains a
@@ -188,7 +81,7 @@ value is not used if a custom find command is set in
                                 basedir)
   "Project config vars that are required in every project.
 
-See also `mk-proj-optional-vars' `mk-proj-var-before-get-functions' `mk-proj-load-vars'")
+See also `mk-proj-optional-vars' `mk-proj-var-before-get-functions'")
 
 (defvar mk-proj-optional-vars '(parent ;; parent needs to come first!
                                 src-patterns
@@ -212,7 +105,7 @@ See also `mk-proj-optional-vars' `mk-proj-var-before-get-functions' `mk-proj-loa
                                 open-friends-cache)
   "Project config vars that are optional.
 
-See also `mk-proj-required-vars' `mk-proj-var-before-get-functions' `mk-proj-load-vars'")
+See also `mk-proj-required-vars' `mk-proj-var-before-get-functions'")
 
 (defvar mk-proj-internal-vars '()
   "Project config vars that are ignored when saving the project config.")
@@ -690,22 +583,16 @@ for the KEY and the first value that is found is returned."
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  (if (and mk-proj-name
-           (cadr (assoc 'name (gethash proj-name mk-proj-list)))
-           (string-equal (cadr (assoc 'name (gethash proj-name mk-proj-list)))
-                         mk-proj-name)
-           (eval (intern-soft (concat "mk-proj-" (symbol-name key)))))
-      (eval (intern-soft (concat "mk-proj-" (symbol-name key))))
-    (let* ((proj-alist (mk-proj-find-config proj-name))
-           (fn (cdr (assoc key mk-proj-var-before-get-functions)))
-           (val  (or (when fn
-                       (funcall fn key (cadr (assoc key proj-alist)) proj-name proj-alist))
-                     (and (assoc key proj-alist)
-                          (cadr (assoc key proj-alist)))
-                     (let ((parent (cadr (assoc 'parent proj-alist))))
-                       (when (and inherit parent)
-                         (mk-proj-get-config-val key parent t))))))
-      (if fn (funcall fn key val proj-name proj-alist) val))))
+  (let* ((proj-alist (mk-proj-find-config proj-name))
+         (fn (cdr (assoc key mk-proj-var-before-get-functions)))
+         (val  (or (when fn
+                     (funcall fn key (cadr (assoc key proj-alist)) proj-name proj-alist))
+                   (and (assoc key proj-alist)
+                        (cadr (assoc key proj-alist)))
+                   (let ((parent (cadr (assoc 'parent proj-alist))))
+                     (when (and inherit parent)
+                       (mk-proj-get-config-val key parent t))))))
+    (if fn (funcall fn key val proj-name proj-alist) val)))
 
 ;;(mk-proj-get-config-val 'file-list-cache "pcl" nil)
 
@@ -723,7 +610,6 @@ for the KEY and the first value that is found is returned."
       (add-to-list 'new-alist `(,key ,value))
       (unless (equal new-alist current-alist)
         (puthash proj-name new-alist mk-proj-list)
-        (mk-proj-load-vars proj-name)
         (mk-proj-backend-funcall (mk-proj-detect-backend proj-name)
                                  'save proj-name new-alist)))))
 
@@ -766,7 +652,107 @@ for the KEY and the first value that is found is returned."
 All values within CONFIG-ALIST will be evaluated when they look
 like a lisp expression or symbol. So make sure to quote lists!
 
-See also `project-undef'."
+See also `project-undef'.
+
+basedir:
+Base directory of the current project. Required. Value is expanded with
+expand-file-name. Example: ~me/my-proj/.
+
+src-patterns:
+List of shell patterns to include in the TAGS file. Optional. Example:
+'(\"*.java\" \"*.jsp\").
+
+This value is not used when `mk-proj-src-find-cmd' is set.
+
+ignore-patterns:
+List of shell patterns to avoid searching for with project-find-file and
+project-grep. Optional. Example: '(\"*.class\").
+
+This value is not used in indexing when `mk-proj-index-find-cmd'
+is set -- or in grepping when `mk-proj-grep-find-cmd' is set.
+
+ack-args:
+String of arguments to pass to the `ack' command. Optional.
+Example: \"--java\".
+
+vcs:
+When set to one of the VCS types in `mk-proj-vcs-path', grep
+and index commands will ignore the VCS's private files (e.g.,
+.CVS/). Example: 'git.
+
+This value is not used in indexing when `mk-proj-index-find-cmd'
+is set -- or in grepping when `mk-proj-grep-find-cmd' is set.
+
+tags-file:
+Path to the TAGS file for this project. Optional. Use an absolute path,
+not one relative to basedir. Value is expanded with expand-file-name.
+
+compile-cmd:
+Command to build the entire project. Can be either a string specifying
+a shell command or the name of a function. Optional. Example: make -k.
+
+startup-hook:
+Hook function to run after the project is loaded. Optional. Project
+variables (e.g. mk-proj-basedir) will be set and can be referenced from this
+function.
+
+shutdown-hook:
+Hook function to run after the project is unloaded. Optional.  Project
+variables (e.g. mk-proj-basedir) will still be set and can be referenced
+from this function.
+
+file-list-cache:
+Cache *file-index* buffer to this file. Optional. If set, the *file-index*
+buffer will take its initial value from this file and updates to the buffer
+via 'project-index' will save to this file. Value is expanded with
+expand-file-name.
+
+open-files-cache:
+Cache the names of open project files in this file. Optional. If set,
+project-load will open all files listed in this file and project-unload will
+write all open project files to this file. Value is expanded with
+expand-file-name.
+
+src-find-cmd:
+Specifies a custom \"find\" command to locate all files to be
+included in the TAGS file (see `project-tags'). Optional. The
+value is either a string or a function of one argument that
+returns a string. The argument to the function will be the symbol
+\"'src\".
+
+If non-null (or if the function returns non-null), the custom
+find command will be used and the `mk-proj-src-patterns' and
+`mk-proj-vcs' settings are ignored when finding files to include
+in TAGS.
+
+grep-find-cmd:
+Specifies a custom \"find\" command to use as the default when
+running `project-grep'. Optional. The value is either a string or
+a function of one argument that returns a string. The argument to
+the function will be the symbol \"'grep\". The string or returned
+string MUST use find's \"-print0\" argument as the results of
+this command are piped to \"xargs -0 ...\".
+
+If non-null (or if the function returns non-null), the custom
+find command will be used and the `mk-proj-ignore-patterns' and
+`mk-proj-vcs' settings will not be used in the grep command.
+
+The custom find command should use \".\" (current directory) as
+the path that find starts at -- this will allow the C-u argument
+to `project-grep' to run the command from the current buffer's
+directory.
+
+index-find-cmd:
+Specifies a custom \"find\" command to use when building an
+listing of all files in the project (to be used by
+`project-find-file'). Optional. The value is either a string or a
+function of one argument that returns a string. The argument to
+the function will be the symbol \"'index\".
+
+If non-null (or if the function returns non-null), the custom
+find command will be used and the `mk-proj-ignore-patterns' and
+`mk-proj-vcs' settings are not used when in the grep command."
+  (message proj-name)
   (let ((alist (mk-proj-eval-alist proj-name config-alist)))
     (when alist
       (puthash proj-name alist mk-proj-list)
@@ -1305,8 +1291,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
              (kill-buffer)
              (when (and (not (condition-case nil (mk-proj-assert-proj) (error t)))
                         (string-equal (cadr (assoc 'name edited-alist)) mk-proj-name))
-               (project-def mk-proj-name edited-alist)
-               (mk-proj-load-vars mk-proj-name)))))))))
+               (project-def mk-proj-name edited-alist)))))))))
 
 
 ;; (mk-proj-with-current-project "emacs-config" (project-status))
@@ -1443,66 +1428,15 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   (interactive "sProject: ")
   (remhash proj-name mk-proj-list))
 
-(defun mk-proj-proj-vars ()
-  "This returns a list of all proj-vars as symbols.
-Replaces the old mk-proj-proj-vars constant."
-  (mapcar (lambda (var)
-            (intern (concat "mk-proj-" (symbol-name var))))
-          (append mk-proj-required-vars mk-proj-optional-vars)))
-
-(defun mk-proj-defaults ()
-  "Set all default values for project variables"
-    (dolist (var (mk-proj-proj-vars))
-      (set var nil)))
-
 (defmacro mk-proj-with-current-project (proj-name &rest body)
-  `(let ((saved-name (when (and (boundp 'mk-proj-name)
-                                mk-proj-name)
-                       mk-proj-name))
-         (saved-history mk-proj-history))
-     (when (and saved-name
-                (or (not ,proj-name)
-                    (not (string-equal ,proj-name saved-name))))
-       (mk-proj-unload-vars))
-     (unless (or (not ,proj-name)
-                 (string-equal ,proj-name saved-name))
-       (mk-proj-load-vars ,proj-name))
-     (let ((result (condition-case nil ,@body (error nil))))
-       (when (and saved-name
-                  (or (not ,proj-name)
-                      (not (string-equal ,proj-name saved-name))))
-         (mk-proj-load-vars saved-name)
-         (setq mk-proj-history saved-history))
-       result)))
+  `(let ((mk-proj-name ,proj-name))
+     (condition-case nil ,@body (error nil))))
 
-;; (mk-proj-with-current-project "cl-horde3d" (project-status))
-;; (mk-proj-with-current-project nil (project-status))
-
-(defun mk-proj-load-vars (proj-name)
-  "Set project variables from proj-alist. A project variable is what
-a config variable becomes after loading a project. Essentially
-a global lisp symbol with the same name as the config variable
-prefixed by 'mk-proj-'. For example, the basedir config var becomes
-mk-proj-basedir in global scope.
-
-See also `mk-proj-required-vars' `mk-proj-optional-vars'"
-  (catch 'mk-proj-load-vars
-    (labels ((maybe-set-var (var)
-                            (let ((proj-var (intern (concat "mk-proj-" (symbol-name var))))
-                                  (val (mk-proj-get-config-val var proj-name t)))
-                              (setf (symbol-value proj-var) val))))
-      (mk-proj-defaults)
-      (let ((required-vars (mk-proj-filter (lambda (s)
-                                             (not (string-equal (symbol-name s) "name")))
-                                           mk-proj-required-vars)))
-        (setq mk-proj-name proj-name)
-        (dolist (v required-vars)
-          (unless (mk-proj-get-config-val v proj-name t)
-            (mk-proj-defaults)
-            (throw 'mk-proj-load-vars v))
-          (maybe-set-var v)))
-      (dolist (v mk-proj-optional-vars)
-        (maybe-set-var v)))))
+(defun mk-proj-check-required-vars (proj-name)
+  (catch 'mk-proj-check-required-vars
+    (dolist (v mk-proj-required-vars)
+      (unless (mk-proj-get-config-val v proj-name t)
+        (throw 'mk-proj-check-required-vars v)))))
 
 (defun mk-proj-get-cache-path (symbol &optional proj-name)
   (unless proj-name
@@ -1556,10 +1490,10 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
                 (eq proj-alist nil))
       (project-unload))
     (if proj-alist
-        (let ((v (mk-proj-load-vars proj-name)))
-          (when v
-            (error "Required config value '%s' missing in %s!" (symbol-name v) proj-name)))
+        (let ((v (mk-proj-check-required-vars proj-name)))
+          (when v (error "Required config value '%s' missing in %s!" (symbol-name v) proj-name)))
       (error "Project %s does not exist!" proj-name))
+    (setq mk-proj-name proj-name)
     (while (not (file-directory-p (mk-proj-get-config-val 'basedir)))
       (mk-proj-set-config-val 'basedir (read-string "Missing base directory? : " (mk-proj-get-config-val 'basedir))))
     (when (and (mk-proj-get-config-val 'vcs) (not (mk-proj-get-vcs-path)))
@@ -1612,18 +1546,6 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
     (mk-proj-save-open-friends-info))
   (project-unload t))
 
-(defun mk-proj-unload-vars ()
-  (let ((vars (append mk-proj-required-vars mk-proj-optional-vars))
-        (last-alist '()))
-    (dolist (var vars)
-      (let ((sym (intern-soft (concat "mk-proj-" (symbol-name var)))))
-        (when (and (boundp sym)
-                   (eval sym))
-          (add-to-list 'last-alist `(,sym ,(eval sym))))))
-    (when last-alist
-      (add-to-list 'mk-proj-history last-alist))
-    (mk-proj-defaults)))
-
 (defun project-unload (&optional quiet)
   "Unload the current project's settings after running the shutdown hook."
   (interactive "P")
@@ -1648,7 +1570,8 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
           (run-hooks 'mk-proj-project-unload-hook)
           (run-hooks 'mk-proj-after-unload-hook))
       (error nil)))
-  (mk-proj-unload-vars)
+  (add-to-list 'mk-proj-history mk-proj-name)
+  (setq mk-proj-name nil)
   (when (and (buffer-file-name (current-buffer))
              (file-exists-p (buffer-file-name (current-buffer))))
     (cd (mk-proj-dirname (buffer-file-name (current-buffer)))))
