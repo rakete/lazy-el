@@ -511,11 +511,9 @@ will be used internally. You can specify a MATCH to be used in that case with:
    (if mk-org-active-todo-keyword
        (save-excursion
          (org-back-to-heading t)
-         (if (mk-org-entry-is-project-p)
-             nil
+         (unless (mk-org-entry-is-project-p)
            (while (and (not (string-equal (org-get-todo-state) mk-org-active-todo-keyword))
                        (not (mk-org-entry-is-project-p)))
-
              (org-up-heading-all 1)))
          (point))
      (mk-org-entry-parent-point))))
@@ -725,6 +723,19 @@ will be used internally. You can specify a MATCH to be used in that case with:
   (display-buffer (mk-org-get-project-buffer proj-name)))
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 ;; (defun mk-org-yank-below (&optional arg adjust-subtree)
 ;;   (interactive "P")
 ;;   (let (p)
@@ -809,7 +820,6 @@ will be used internally. You can specify a MATCH to be used in that case with:
 (defun mk-org-add-todo-abort ()
   (interactive)
   (kill-buffer))
-
 
 (defun project-todo (&optional arg)
   "Pop up a buffer where the user can create a new org entry to be added to the current
@@ -1200,4 +1210,3 @@ This is taken almost directly from `org-babel-read'."
     (org-clock-out)))
 
 (provide 'mk-project-orgmode)
-
