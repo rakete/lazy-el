@@ -1859,37 +1859,30 @@ With C-u prefix, start ack from the current directory."
 ;; Compile
 ;; ---------------------------------------------------------------------
 
-(defun project-make (&optional opts cmd proj-name)
- "Run the compile command (string or function) for this project."
- (interactive)
- (unless proj-name
-   (mk-proj-assert-proj t)
-   (setq proj-name mk-proj-name))
- (unless cmd
-   (setq cmd (mk-proj-get-config-val 'compile-cmd proj-name)))
- (let ((default-directory (mk-proj-get-config-val 'basedir)))
-   (cond ((stringp cmd)
-          (when (and (null opts) (called-interactively-p))
-            (setq opts (read-string (concat "Compile options (" cmd "):"))))
-          (cd default-directory)
-          (compile (concat cmd " " opts)))
-         ((commandp cmd)
-          (cd default-directory)
-          (call-interactively cmd))
-         ((functionp cmd)
-          (cd default-directory)
-          (if opts
-              (funcall cmd opts)
-            (funcall cmd)))
-         (t (message "No compile command defined.")))))
-
-(defun project-compile (&optional opts)
+(defun project-compile ()
   (interactive)
-  (if (condition-case nil (mk-proj-assert-proj) (error t))
-      (call-interactively 'compile)
-    (if (mk-proj-get-config-val 'compile-cmd)
-        (project-make opts (mk-proj-get-config-val 'compile-cmd))
-      (call-interactively 'compile))))
+  (mk-proj-assert-proj t)
+  (flet ((internal-compile (&optional cmd)
+                           (let ((saved-compile-command compile-command)
+                                 (compile-command (or cmd compile-command))
+                                 (result-compile-command nil))
+                             (call-interactively 'compile)
+                             (setq result-compile-command compile-command
+                                   compile-command saved-compile-command)
+                             result-compile-command)))
+    (let ((cmd (mk-proj-get-config-val 'compile-cmd mk-proj-name t)))
+      (mk-proj-with-directory (mk-proj-get-config-val 'basedir mk-proj-name t)
+                              (cond ((stringp cmd)
+                                     (let ((new-cmd (internal-compile cmd)))
+                                       (unless (string-equal cmd new-cmd)
+                                         (mk-proj-set-config-val 'compile-cmd new-cmd))))
+                                    ((commandp cmd)
+                                     (call-interactively cmd))
+                                    ((functionp cmd)
+                                     (cd default-directory)
+                                     (funcall cmd))
+                                    (t
+                                     (mk-proj-set-config-val 'compile-cmd (internal-compile))))))))
 
 ;; ---------------------------------------------------------------------
 ;; Dired
@@ -1899,7 +1892,7 @@ With C-u prefix, start ack from the current directory."
   "Open dired in the project's basedir (or jump to the existing dired buffer)"
   (interactive)
   (mk-proj-assert-proj t)
-  (dired (mk-proj-get-config-val 'basedir)))
+  (dired (mk-proj-get-config-val 'basedir t)))
 
 ;; ---------------------------------------------------------------------
 ;; Find-file
