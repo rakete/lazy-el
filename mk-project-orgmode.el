@@ -156,41 +156,47 @@ than the current one."
     (cond
      ;; 1. project loaded, org -> nothing
      ((and (not (condition-case nil (mk-proj-assert-proj) (error t)))
-           (mk-proj-get-config-val 'org-file mk-proj-name)))
+           (mk-proj-get-config-val 'org-file mk-proj-name))
+      nil)
      ;; 2. project loaded, not org -> convert and load mk-proj-name
      ((and try-guessing
            (not (condition-case nil (mk-proj-assert-proj) (error t)))
            (not (mk-proj-get-config-val 'org-file mk-proj-name))
-           (y-or-n-p (concat "2. Create .org file for " mk-proj-name "? ")))
+           (y-or-n-p (concat "Create .org file for " mk-proj-name "? ")))
       (mk-org-config-save mk-proj-name (mk-proj-find-config mk-proj-name t))
-      (mk-proj-load mk-proj-name))
+      (mk-proj-load mk-proj-name)
+      nil)
      ;; 3. project not loaded, proj-name and org -> load proj-name
      ((and try-guessing
            (condition-case nil (mk-proj-assert-proj) (error t))
            proj-name
            (mk-proj-get-config-val 'org-file proj-name)
-           (y-or-n-p (concat "3. Load " proj-name "? ")))
-      (mk-proj-load proj-name))
+           (y-or-n-p (concat "Load " proj-name "? ")))
+      (mk-proj-load proj-name)
+      nil)
      ;; 4. project not loaded, proj-name not org -> convert and load proj-name
      ((and try-guessing
            (condition-case nil (mk-proj-assert-proj) (error t))
            proj-name
            (not (mk-proj-get-config-val 'org-file proj-name))
-           (y-or-n-p (concat "4. Create .org file for " proj-name "? ")))
+           (y-or-n-p (concat "Create .org file for " proj-name "? ")))
       (mk-org-config-save mk-proj-name (mk-proj-find-config proj-name t))
-      (mk-proj-load proj-name))
+      (mk-proj-load proj-name)
+      nil)
      ;; 5. guessed exists, org -> load guessed
      ((and try-guessing
            (setq guessed-alist (mk-proj-guess-alist))
            (assoc 'org-file (mk-proj-find-config (cadr (assoc 'name guessed-alist)) t))
-           (y-or-n-p (concat "5. Load " (cadr (assoc 'name guessed-alist)) "? ")))
-      (mk-proj-load (cadr (assoc 'name guessed-alist))))
+           (y-or-n-p (concat "Load " (cadr (assoc 'name guessed-alist)) "? ")))
+      (mk-proj-load (cadr (assoc 'name guessed-alist)))
+      nil)
      ;; 6. try-guessing t -> create, convert and load guessed
      ((and try-guessing
            guessed-alist
-           (y-or-n-p (concat "6. Create .org file for guessed project *" (cadr (assoc 'name guessed-alist)) "? ")))
+           (y-or-n-p (concat "Create .org file for guessed project *" (cadr (assoc 'name guessed-alist)) "? ")))
       (mk-org-config-save (cadr (assoc 'name guessed-alist)) guessed-alist)
-      (mk-proj-load (cadr (assoc 'name guessed-alist))))
+      (mk-proj-load (cadr (assoc 'name guessed-alist)))
+      nil)
      (t
       (error (format "mk-org: Project %s has no associated org file!" mk-proj-name))))))
 
@@ -250,7 +256,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
         (opened-files nil))
     (dolist (project-file (setq opened-files (cond ((and (markerp match) (marker-buffer match))
                                                     `(,(marker-buffer match)))
-                                                   ((and (boundp 'continue-sourcemarker-p)
+                                                   ((and (functionp 'continue-sourcemarker-p)
                                                          (continue-sourcemarker-p match))
                                                     `(,(marker-buffer (continue-sourcemarker-restore match))))
                                                    ((or (buffer-live-p file) (and (char-or-string-p file) (file-exists-p file)))
@@ -278,7 +284,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
                                    project-file))
                    (re (cond ((and (markerp match) (marker-position match))
                               (marker-position match))
-                             ((and (boundp 'continue-sourcemarker-p)
+                             ((and (functionp 'continue-sourcemarker-p)
                                    (continue-sourcemarker-p match))
                               (marker-position (continue-sourcemarker-restore match)))
                              ((numberp match)
