@@ -27,22 +27,34 @@
 (defvar helm-c-source-mk-project-projects
   '((name . "Mk-Project projects")
     (candidates . (lambda ()
-                    (let ((ps '()))
-                      (maphash (lambda (k p)
-                                 (progn
-                                   ;;(print (assoc 'org-header p))
-                                   (let ((h (cadr (assoc 'org-header p))))
-                                     (if h
-                                         (setq ps (cons `(,h ,k) ps))
-                                       (setq ps (cons k ps))))
-                                   ))
-                               mk-proj-list)
-                      ps)))
-    (action . (lambda (entry)
-                (if (listp entry)
-                    (mk-proj-load (car entry))
-                  (mk-proj-load entry)))))
+                    (sort (mk-proj-filter (lambda (title)
+                                            (not (string-match (concat "^[^:]*:\\(.*\\)$") title)))
+                                          (mk-proj-names))
+                          'string-lessp)))
+    (action ("Load project" . (lambda (entry)
+                                (mk-proj-load (car (helm-marked-candidates)))))
+            ;; evil hack, if I use helm inside helm, the topmost action gets called for every
+            ;; candidate of the 'inside' helm, so this lambda checks if it is called with something
+            ;; that looks like a todo, either loads it or calls another helm instance showing a
+            ;; selection of todos
+            ("Load todo" . (lambda (entry)
+                             (if (string-match (concat "^[^:]*:\\(.*\\)$") entry)
+                                 (mk-proj-load entry)
+                               (let ((todos (when (functionp 'mk-org-project-todos)
+                                              (mk-org-project-todos (car (helm-marked-candidates))))))
+                                 (if todos
+                                     (helm :sources `((name . "Todos")
+                                                      (candidates . ,todos)))
+                                   (message "No todos!"))))))))
   "All configured mk-project projects.")
+
+(defvar helm-c-source-mk-project-todos
+  '((name . "Mk-Project todos")
+    (candidates . (lambda () (when (functionp 'mk-org-project-todos)
+                               (mk-org-project-todos))))
+    (action . (lambda (entry)
+                (mk-proj-load (car (helm-marked-candidates))))))
+  "Current projects todos")
 
 (defun mk-helm-relative-call (fun entry)
   (mk-proj-with-directory (mk-proj-get-config-val 'basedir)
@@ -92,8 +104,7 @@
     (keymap . ,helm-generic-files-map)
     (help-message . helm-generic-file-help-message)
     (mode-line . helm-generic-file-mode-line-string)
-    (match helm-c-match-on-file-name)
-    )
+    (match helm-c-match-on-file-name))
   "All files of the currently active project.")
 
 (defvar helm-c-source-mk-project-open-buffers
@@ -132,8 +143,7 @@
     (keymap . ,helm-generic-files-map)
     (help-message . helm-generic-file-help-message)
     (mode-line . helm-generic-file-mode-line-string)
-    (type . file)
-    )
+    (type . file))
   "All files of projects which are friends of this project.")
 
 (defvar helm-c-source-mk-project-open-friendly-buffers
@@ -169,7 +179,8 @@
 
 (defun helm-mkproject ()
   (interactive)
-  (helm :sources '(helm-c-source-mk-project-open-buffers
+  (helm :sources '(helm-c-source-mk-project-todos
+                   helm-c-source-mk-project-open-buffers
                    helm-c-source-mk-project-open-friendly-buffers
                    helm-c-source-mk-project-open-special-buffers
                    helm-c-source-mk-project-files

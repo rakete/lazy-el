@@ -840,6 +840,22 @@ See also `mk-org-entry-nearest-active'."
                  (buffer-file-name proj-b))
         (org-set-property "MKP_SOURCEMARKER" (concat "'" (prin1-to-string sm)))))))
 
+(defun mk-org-project-todos (&optional proj-name)
+  "Get all todo titles for a PROJ-NAME or the current project."
+  (unless (or proj-name
+              (condition-case nil (mk-org-assert-org) (error t)))
+    (setq proj-name (or (mk-proj-get-config-val 'parent)
+                        mk-proj-name)))
+  (when (and proj-name
+             (mk-proj-find-config proj-name))
+    (let ((todos '()))
+      (maphash (lambda (title alist)
+                 (when (string-match (concat "^" proj-name ":\\(.*\\)$") title)
+                   (add-to-list 'todos title)))
+               mk-proj-list)
+      todos)))
+
+;; (mk-org-project-todos "diplom")
 
 
 
