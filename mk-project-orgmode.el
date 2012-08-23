@@ -32,6 +32,8 @@
   "Todo keywords that mk-org will recognize as tasks. Every org entry that
 does not have any of those keywords as todo will not be visited by `mk-org-map-entries'")
 
+(defvar mk-org-ignore-todos '("DONE"))
+
 (defvar mk-org-active-todo-keyword nil
   "Active keyword is a special keyword that subtrees can have to specify a task
 that has lots of other tasks as children but is not a complete project itself.
@@ -698,8 +700,10 @@ will be used internally. You can specify a MATCH to be used in that case with:
    :match (point)
    :scope 'project-tree
    :function (lambda ()
-               (when (or (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
+               (when (or (and (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
+                              (not (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-ignore-todos)))
                          (mk-org-entry-is-project-p))
+                 (message "Showing entry: %s" (mk-org-entry-name))
                  (org-show-context)
                  (when (and mk-proj-name
                             ;;(not (mk-org-entry-is-project-p))
@@ -1112,7 +1116,8 @@ This is taken almost directly from `org-babel-read'."
       :function (lambda ()
                   (when (and (not (mk-org-entry-is-link-p))
                              (or (and (org-get-todo-state)
-                                      (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords))
+                                      (and (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
+                                           (not (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-ignore-todos))))
                                  (and (or (mk-org-entry-last-clock-position)
                                           (some (lambda (prop-tuple)
                                                   (some (lambda (sym) (string-equal (mk-org-symbol-table sym) (cdr prop-tuple)))
@@ -1120,10 +1125,12 @@ This is taken almost directly from `org-babel-read'."
                                                 (org-entry-properties))
                                           (org-entry-get (point) org-effort-property))
                                       (and (org-get-todo-state)
-                                           (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)))
+                                           (and (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
+                                                (not (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-ignore-todos)))))
                                  (and (mk-org-entry-is-project-p)
                                       (org-get-todo-state)
-                                      (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords))))
+                                      (and (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
+                                           (not (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-ignore-todos))))))
                     (mk-org-entry-define-project)
                     (unless (eq (last buffer-with-projects) (current-buffer))
                       (add-to-list 'buffer-with-projects (current-buffer))))))
