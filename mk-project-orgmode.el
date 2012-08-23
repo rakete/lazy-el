@@ -95,6 +95,7 @@ a single org file is stored in the projects basedir.")
      (add-hook 'mk-proj-before-unload-hook (lambda ()
                                              (when (mk-proj-get-config-val 'org-file)
                                                (project-clock-out))))
+     (add-hook 'mk-proj-after-unload-hook (lambda () (mk-org-kill-project-buffer)))
      ))
 
 
@@ -715,6 +716,10 @@ will be used internally. You can specify a MATCH to be used in that case with:
 (defun mk-org-get-project-buffer (&optional proj-name bufname)
   (or (get-buffer (or bufname (mk-org-project-buffer-name proj-name)))
       (mk-org-create-project-buffer proj-name bufname)))
+
+(defun mk-org-kill-project-buffer (&optional proj-name bufname)
+  (let ((buf (get-buffer (or bufname (mk-org-project-buffer-name proj-name)))))
+    (when buf (kill-buffer buf))))
 
 (defun project-org-buffer (&optional proj-name)
   "Open current projects org tree as indirect buffer."
