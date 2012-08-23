@@ -28,11 +28,11 @@
 (defvar mk-org-project-search-files nil
   "List of .org files that mk-org searches for project definitions.")
 
-(defvar mk-org-todo-keywords '("TODO" "ACTIVE" "PLAN" "BUG" "WAITING")
+(defvar mk-org-todo-keywords '("TODO")
   "Todo keywords that mk-org will recognize as tasks. Every org entry that
 does not have any of those keywords as todo will not be visited by `mk-org-map-entries'")
 
-(defvar mk-org-active-todo-keyword "ACTIVE"
+(defvar mk-org-active-todo-keyword nil
   "Active keyword is a special keyword that subtrees can have to specify a task
 that has lots of other tasks as children but is not a complete project itself.
 
