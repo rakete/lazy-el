@@ -39,15 +39,6 @@ that has lots of other tasks as children but is not a complete project itself.
 So far this is only used when creating project-todos, to put the todo under
 the active subtree, instead of the parent subtree.")
 
-(defvar mk-proj-org-file nil
-  "The current projects .org file.")
-
-(defvar mk-proj-org-headline nil
-  "The current projects org headline." )
-
-(defvar mk-proj-org-level nil
-  "The number of stars in front of the projects headline.")
-
 (defvar mk-org-config-save-location t
   "Where to store project org trees. Can be either a directory name to use
 one org file per project stored in a single directory, can be a filename
@@ -62,12 +53,10 @@ a single org file is stored in the projects basedir.")
   '(progn
      (add-to-list 'mk-proj-optional-vars 'org-file)
      (add-to-list 'mk-proj-optional-vars 'org-headline)
-     (add-to-list 'mk-proj-optional-vars 'org-level)
-
+     
      (add-to-list 'mk-proj-internal-vars 'org-file)
      (add-to-list 'mk-proj-internal-vars 'org-headline)
-     (add-to-list 'mk-proj-internal-vars 'org-level)
-
+     
      (add-hook 'org-clock-in-hook (lambda ()
                                     (when (and (mk-org-entry-is-in-project-p)
                                                (or (not (boundp 'mk-proj-name))
@@ -264,7 +253,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
                                                    ((and file (listp file))
                                                     file)
                                                    ((or (eq file nil) (eq file 'current-file))
-                                                    (progn (mk-org-assert-org) `(,mk-proj-org-file)))
+                                                    (progn (mk-org-assert-org) `(,(mk-proj-get-config-val 'org-file))))
                                                    (t
                                                     (mk-org-files-containing-projects)))))
 
@@ -809,7 +798,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
   (org-copy-subtree 1 t)
   (mk-org-map-entries
    :file (mk-org-get-project-buffer)
-   :match `(headline ,mk-proj-org-headline)
+   :match `(headline ,(mk-proj-get-config-val 'org-headline))
    :scope 'project-headline
    :function (lambda ()
                (let* ((active (mk-org-entry-nearest-active))
@@ -1053,14 +1042,11 @@ See also `mk-org-entry-nearest-active'."
          (unless has-error
            (kill-buffer)))))
     (:finalize-edit
-     (let ((marker (org-find-exact-headline-in-buffer mk-proj-org-headline)))
+     (let ((marker (org-find-exact-headline-in-buffer (mk-proj-get-config-val 'org-headline))))
        (when marker
          (goto-char (marker-position marker))
          (unless (eq (condition-case nil (mk-org-entry-define-project) (error 'error))
                      'error)
-           (when (and (not (condition-case nil (mk-proj-assert-proj) (error t)))
-                      (string-equal (mk-org-entry-name) mk-proj-name))
-             (mk-proj-load-vars (mk-org-entry-name)))
            (save-buffer)
            (kill-buffer)))))))
 
