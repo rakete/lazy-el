@@ -29,10 +29,6 @@
 (require 'anything)
 (require 'anything-config)
 
-(defvar mk-proj-friends nil)
-
-(defvar mk-proj-open-friends-cache nil)
-
 ;; ---------------------------------------------------------------------
 ;; Anything Utilities
 ;; ---------------------------------------------------------------------
@@ -98,7 +94,7 @@ The behaviour of this command is modified with
                     (condition-case nil
                         (mapcar (lambda (s)
                                   (replace-regexp-in-string "/\\./" "/" (concat (file-name-as-directory mk-proj-basedir) s)))
-                                (if mk-proj-patterns-are-regex
+                                (if (mk-proj-get-config-val 'patterns-are-regex)
                                     (mk-proj-fib-matches mk-proj-src-patterns)
                                   (mk-proj-fib-matches nil))) (error nil))))
     (match anything-c-match-on-file-name

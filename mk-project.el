@@ -284,14 +284,14 @@ See also `mk-proj-get-config-val'.")
 (defun mk-proj-cmake-build (&optional opts)
   (interactive)
   (mk-proj-assert-proj)
-  (when (file-exists-p (expand-file-name (concat mk-proj-basedir "/CMakeLists.txt")))
-    (let ((dir (cond ((file-exists-p (expand-file-name (concat mk-proj-basedir "/build")))
-                      (expand-file-name (concat mk-proj-basedir "/build")))
-                     ((file-exists-p (expand-file-name (concat mk-proj-basedir "/cmake")))
-                      (expand-file-name (concat mk-proj-basedir "/cmake")))
-                     ((y-or-n-p (concat "Create " (expand-file-name (concat mk-proj-basedir "/build")) "?"))
-                      (make-directory (expand-file-name (concat mk-proj-basedir "/build")))
-                      (expand-file-name (concat mk-proj-basedir "/build")))
+  (when (file-exists-p (expand-file-name (concat (mk-proj-get-config-val 'basedir) "/CMakeLists.txt")))
+    (let ((dir (cond ((file-exists-p (expand-file-name (concat (mk-proj-get-config-val 'basedir) "/build")))
+                      (expand-file-name (concat (mk-proj-get-config-val 'basedir) "/build")))
+                     ((file-exists-p (expand-file-name (concat (mk-proj-get-config-val 'basedir) "/cmake")))
+                      (expand-file-name (concat (mk-proj-get-config-val 'basedir) "/cmake")))
+                     ((y-or-n-p (concat "Create " (expand-file-name (concat (mk-proj-get-config-val 'basedir) "/build")) "?"))
+                      (make-directory (expand-file-name (concat (mk-proj-get-config-val 'basedir) "/build")))
+                      (expand-file-name (concat (mk-proj-get-config-val 'basedir) "/build")))
                      (t nil))))
       (when dir
         (mk-proj-with-directory
@@ -1642,8 +1642,10 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
                (y-or-n-p (concat "Close all '" mk-proj-name "' project files? "))
                (project-close-files)
                (project-close-friends))
-          (when mk-proj-shutdown-hook
-            (run-hooks 'mk-proj-shutdown-hook))
+          (when (mk-proj-get-config-val 'shutdown-hook)
+            (if (functionp (mk-proj-get-config-val 'shutdown-hook))
+                (funcall (mk-proj-get-config-val 'shutdown-hook))
+              (run-hooks (mk-proj-get-config-val 'shutdown-hook))))
           (run-hooks 'mk-proj-project-unload-hook)
           (run-hooks 'mk-proj-after-unload-hook))
       (error nil)))
@@ -1968,25 +1970,6 @@ With C-u prefix, start ack from the current directory."
     (if (mk-proj-get-config-val 'compile-cmd)
         (project-make opts (mk-proj-get-config-val 'compile-cmd))
       (call-interactively 'compile))))
-
-;; (defun project-syntaxcheck (&optional opts)
-;;   (interactive)
-;;   (mk-proj-assert-proj)
-;;   (project-make opts mk-proj-syntaxcheck-cmd))
-
-;; (defun project-compile (&optional opts)
-;;   "Run the compile command for this project."
-;;   (interactive)
-;;   (mk-proj-assert-proj)
-;;   (project-home)
-;;   (if (stringp mk-proj-compile-cmd)
-;;       (if opts
-;;           (funcall 'mk-proj-compile opts)
-;;         (call-interactively 'mk-proj-compile))
-;;     (if (fboundp mk-proj-compile-cmd)
-;;         (if (commandp mk-proj-compile-cmd)
-;;             (call-interactively mk-proj-compile-cmd)
-;;           (funcall mk-proj-compile-cmd)))))
 
 ;; ---------------------------------------------------------------------
 ;; Dired
@@ -2364,7 +2347,8 @@ If called with prefix arg it will behave just like `project-multi-occur'"
     (dolist (f (mk-proj-find-friendly-projects) basedirs)
       (if (file-exists-p (expand-file-name f))
           (add-to-list 'basedirs f)
-        (add-to-list 'basedirs (mk-proj-config-val 'basedir f))))))
+        (when (and f (mk-proj-config-val 'basedir f))
+          (add-to-list 'basedirs (mk-proj-config-val 'basedir f)))))))
 
 (defun project-ack-with-friends ()
   "Run ack with project's basedir and all friend basedirs as arguments, using the `ack-args' configuration.
