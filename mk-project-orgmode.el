@@ -1189,12 +1189,10 @@ This is taken almost directly from `org-babel-read'."
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
   (mk-org-assert-org proj-name)
-  (print (mk-proj-get-config-val 'org-headline proj-name))
   (mk-org-map-entries
    :match `(headline ,(mk-proj-get-config-val 'org-headline proj-name))
    :scope 'project-headline
    :function (lambda ()
-               (print (thing-at-point 'line))
                (org-clock-in))))
 
 (defun project-clock-out (&optional proj-name)
