@@ -752,10 +752,10 @@ the function will be the symbol \"'index\".
 If non-null (or if the function returns non-null), the custom
 find command will be used and the `mk-proj-ignore-patterns' and
 `mk-proj-vcs' settings are not used when in the grep command."
-  (message proj-name)
   (let ((alist (mk-proj-eval-alist proj-name config-alist)))
     (when alist
       (puthash proj-name alist mk-proj-list)
+      (message "Defined: %s" proj-name)
       alist)))
 
 
@@ -1527,10 +1527,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
     (when (and (cadr (assoc 'name guessed-alist))
                (string-equal name (cadr (assoc 'name guessed-alist)))
                (not (mk-proj-find-config name)))
-      (print "defining")
       (project-def name guessed-alist))
     (when (not (mk-proj-find-config name))
-      (print "defining")
       (add-to-list 'guessed-alist `(name ,name))
       (project-def name guessed-alist))
     (mk-proj-load name)))
