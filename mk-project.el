@@ -1361,7 +1361,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 
 (defun* project-create ()
   (interactive)
-  (if (and (boundp 'mk-org-default-todo-keyword)
+  (if (and (gethash 'org-mode mk-proj-backend-list)
            (boundp 'org-complex-heading-regexp)
            (save-excursion
              (org-back-to-heading)
