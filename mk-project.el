@@ -1590,8 +1590,6 @@ See also `mk-proj-required-vars' `mk-proj-optional-vars'"
                    (if (mk-proj-use-ido)
                        (ido-completing-read "Project Name (ido): " names nil nil nil nil (cadr (assoc 'name guessed-alist)))
                      (completing-read "Project Name: " names)))))
-    (print guessed-alist)
-    (print name)
     (when (and (cadr (assoc 'name guessed-alist))
                (string-equal name (cadr (assoc 'name guessed-alist)))
                (not (mk-proj-find-config name)))
