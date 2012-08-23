@@ -1650,21 +1650,6 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
           (set-window-dedicated-p (display-buffer b) t)))
     (message "No project loaded.")))
 
-(defun mk-proj-proj-names ()
-  "All the projects names."
-  (interactive)
-  (let ((names '()))
-    (maphash (lambda (k p)
-               (progn
-                 (setq names (append names `(,k)))))
-               mk-proj-list)
-    names))
-
-(defun project-names ()
-  (interactive)
-  (loop for s in (mk-proj-proj-names)
-        do (message "%s" s)))
-
 ;; ---------------------------------------------------------------------
 ;; Save/Restore open files
 ;; ---------------------------------------------------------------------
