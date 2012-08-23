@@ -1825,20 +1825,20 @@ C-u prefix, start from the current directory."
 
 (defun project-ack (&optional phrase from-current-dir)
   "Run ack from project's basedir, using the `ack-args' configuration.
-With C-u prefix, start ack from the current directory."
+With C-u prefix act as `project-ack-with-friends'."
   (interactive)
   (mk-proj-assert-proj t)
-  (let* ((wap (word-at-point))
-         (regex (or phrase
-                    (if wap (read-string (concat "Ack project for (default \"" wap "\"): ") nil nil wap)
-                  (read-string "Ack project for: "))))
-         (whole-cmd (mk-proj-ack-cmd regex))
-         (confirmed-cmd (read-string "Ack command: " whole-cmd nil whole-cmd))
-         (default-directory (file-name-as-directory
-                             (if (or from-current-dir (mk-proj-has-univ-arg))
-                                 default-directory
-                               (mk-proj-get-config-val 'basedir)))))
-    (compilation-start confirmed-cmd 'ack-mode)))
+  (if (mk-proj-has-univ-arg)
+      (project-ack-with-friends)
+    (let* ((wap (word-at-point))
+           (regex (or phrase
+                      (if wap (read-string (concat "Ack project for (default \"" wap "\"): ") nil nil wap)
+                        (read-string "Ack project for: "))))
+           (path (mk-proj-get-config-val 'basedir mk-proj-name t))
+           (whole-cmd (concat (mk-proj-ack-cmd regex) " " path))
+           (confirmed-cmd (read-string "Ack command: " whole-cmd nil whole-cmd))
+           (default-directory (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t))))
+      (compilation-start confirmed-cmd 'ack-mode))))
 
 ;; ---------------------------------------------------------------------
 ;; Compile
@@ -2052,12 +2052,16 @@ selection of the file. See also: `project-index',
       (find-file (concat (file-name-as-directory (mk-proj-get-config-val 'basedir)) file)))))
 
 (defun project-multi-occur (regex)
-  "Search all open project files for 'regex' using `multi-occur'"
+  "Search all open project files for 'regex' using `multi-occur'.
+
+Act like `project-multi-occur-with-friends' if called with prefix arg."
   (interactive "sRegex: ")
   (mk-proj-assert-proj t)
-  (multi-occur (mk-proj-filter (lambda (b) (if (buffer-file-name b) b nil))
-                               (mk-proj-buffers))
-               regex))
+  (if (mk-proj-has-univ-arg)
+      (project-multi-occur-with-friends)
+    (multi-occur (mk-proj-filter (lambda (b) (if (buffer-file-name b) b nil))
+                                 (mk-proj-buffers))
+                 regex)))
 
 ;; ---------------------------------------------------------------------
 ;; Menus
@@ -2228,15 +2232,11 @@ non-nil return only buffers that are friendly toward the project."
              (length closed) (length dirty))))
 
 (defun project-multi-occur-with-friends (regex)
-  "Search all open project files (including friends) for 'regex' using `multi-occur'.
-
-If called with prefix arg it will behave just like `project-multi-occur'"
+  "Search all open project files (including friends) for 'regex' using `multi-occur'."
   (interactive "sRegex: ")
   (mk-proj-assert-proj t)
   (multi-occur (mk-proj-filter (lambda (b) (if (buffer-file-name b) b nil))
-                               (if current-prefix-arg
-                                   (mk-proj-buffers)
-                                 (append (mk-proj-buffers) (mk-proj-friendly-buffers))))
+                               (append (mk-proj-buffers) (mk-proj-friendly-buffers)))
                regex))
 
 (defun mk-proj-friend-basedirs ()
@@ -2249,25 +2249,19 @@ If called with prefix arg it will behave just like `project-multi-occur'"
           (add-to-list 'basedirs (mk-proj-config-val 'basedir f)))))))
 
 (defun project-ack-with-friends ()
-  "Run ack with project's basedir and all friend basedirs as arguments, using the `ack-args' configuration.
-With C-u prefix, act like `project-ack'."
+  "Run ack with project's basedir and all friend basedirs as arguments, using the `ack-args' configuration."
   (interactive)
   (mk-proj-assert-proj t)
-  (if current-prefix-arg
-      (project-ack)
-    (let* ((wap (word-at-point))
-           (regex (if wap (read-string (concat "Ack project for (default \"" wap "\"): ") nil nil wap)
-                    (read-string "Ack project for: ")))
-           (paths (mk-proj-find-unique-paths (append (list (mk-proj-get-config-val 'basedir)) (mk-proj-friend-basedirs))))
-           (whole-cmd (concat (let ((s ""))
-                                (dolist (d paths s)
-                                  (setq s (concat s (mk-proj-ack-cmd regex) " " d "; "))))))
-           (confirmed-cmd (read-string "Ack command: " whole-cmd nil whole-cmd))
-           (default-directory (file-name-as-directory
-                               (if (mk-proj-has-univ-arg)
-                                   default-directory
-                                 (mk-proj-get-config-val 'basedir)))))
-      (compilation-start confirmed-cmd 'ack-mode))))
+  (let* ((wap (word-at-point))
+         (regex (if wap (read-string (concat "Ack project for (default \"" wap "\"): ") nil nil wap)
+                  (read-string "Ack project for: ")))
+         (paths (mk-proj-find-unique-paths (append (list (mk-proj-get-config-val 'basedir mk-proj-name t)) (mk-proj-friend-basedirs))))
+         (whole-cmd (concat (let ((s ""))
+                              (dolist (d paths s)
+                                (setq s (concat s (mk-proj-ack-cmd regex) " " d "; "))))))
+         (confirmed-cmd (read-string "Ack command: " whole-cmd nil whole-cmd))
+         (default-directory (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t))))
+    (compilation-start confirmed-cmd 'ack-mode)))
 
 ;;(defun mk-proj-find-projects-owning-file (file))
 
