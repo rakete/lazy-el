@@ -1064,21 +1064,18 @@ find command will be used and the `mk-proj-ignore-patterns' and
                             ;;(message (concat (format-time-string "%H:%M:%S" (current-time)) " " (prin1-to-string sym)))
                             (let ((scores '()))
                               (dolist (flist (cdr (assoc sym mk-proj-guess-functions)) (best-result scores))
-                                (condition-case nil
-                                    (let ((args (first flist))
-                                          (expr (second flist)))
-                                      (dolist (arg args)
-                                        ;; check if neccessary symbols are set, this sets a symbol after guessing it so
-                                        ;; we do not have to guess something twice
-                                        (when (eq (symbol-value arg) 'undefined)
-                                          ;;(message "setting symbol %S" arg)
-                                          (setf (symbol-value arg) (guess-symbol arg))
-                                          ))
-                                      (let ((r (eval expr)))
-                                        (when r (add-to-list 'scores r)))
-                                      ;;(print scores)
-                                      )
-                                  (error nil))))))
+                                (let ((args (first flist))
+                                      (expr (second flist)))
+                                  (dolist (arg args)
+                                    ;; check if neccessary symbols are set, this sets a symbol after guessing it so
+                                    ;; we do not have to guess something twice
+                                    (when (eq (symbol-value arg) 'undefined)
+                                      ;;(message "setting symbol %S" arg)
+                                      (setf (symbol-value arg) (guess-symbol arg))
+                                      ))
+                                  (let ((r (condition-case e (eval expr)
+                                             (error (message "error while guessing %S: %S" sym e)))))
+                                    (when r (add-to-list 'scores r))))))))
          ;;(message (concat (format-time-string "%H:%M:%S" (current-time)) " start"))
          (dolist (var (append mk-proj-required-vars mk-proj-optional-vars))
            ;; for each var check if it is already set, if not use guess-symbol to guess it
@@ -1495,7 +1492,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                               (string-equal (cadr (assoc 'parent proj-alist))
                                             (mk-proj-get-config-val 'parent)))))))
     (unless proj-name
-      (error "mk-proj-load: proj-name should not be nil"))
+      (error "mk-proj-load: proj-name is nil"))
     (run-hooks 'mk-proj-before-load-hook)
     (unless (or (string= oldname proj-name)
                 (eq proj-alist nil))
