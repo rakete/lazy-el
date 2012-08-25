@@ -1033,8 +1033,8 @@ find command will be used and the `mk-proj-ignore-patterns' and
                                   (vcs . (((basedir)
                                            (let ((r nil))
                                              (loop for f in (directory-files basedir)
-                                                   until (setq r (some (lambda (y) (string-equal (cdr y) f)) mk-proj-vcs-path))
-                                                   finally return `(10 . ,(car r)))))))))
+                                                   until (some (lambda (y) (string-equal (cdr y) f)) mk-proj-vcs-path)
+                                                   finally return `(10 . ,f))))))))
 
 (defun* mk-proj-guess-alist (&optional ask-basedir)
   ;; go through mk-proj-guess-functions and collect all symbols that are used
