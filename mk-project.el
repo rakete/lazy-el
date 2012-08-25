@@ -324,7 +324,7 @@ load time. See also `project-menu-remove'."
 
 (defun mk-proj-assert-proj (&optional try-guessing)
   (unless mk-proj-name
-    (let ((guessed-alist (when try-guessing (mk-proj-guess-alist t))))
+    (let ((guessed-alist (when try-guessing (mk-proj-guess-alist t t))))
       (cond ((and guessed-alist
                   try-guessing
                   (gethash (cadr (assoc 'name guessed-alist)) mk-proj-list nil)
@@ -1036,7 +1036,7 @@ find command will be used and the `mk-proj-ignore-patterns' and
                                                    until (some (lambda (y) (string-equal (cdr y) f)) mk-proj-vcs-path)
                                                    finally return `(10 . ,f))))))))
 
-(defun* mk-proj-guess-alist (&optional ask-basedir)
+(defun* mk-proj-guess-alist (&optional ask-basedir ask-name)
   ;; go through mk-proj-guess-functions and collect all symbols that are used
   ;; as arguments, we'll bind those in a closure around the execution
   ;; of the function bodies
@@ -1092,12 +1092,23 @@ find command will be used and the `mk-proj-ignore-patterns' and
                             (progn
                               (interactive)
                               (setf (symbol-value var)
-                                    (let (guessed-dir (guess-symbol var))
-                                      (ido-read-directory-name "Continue with this basedir?: "
+                                    (let ((guessed-dir (guess-symbol var)))
+                                      (ido-read-directory-name (format "Continue with this basedir? (%s): " guessed-dir)
                                                                guessed-dir
                                                                nil
-                                                               t))))
-                            (and (boundp var)
+                                                               t)))))
+                           ((and ask-name
+                                 (boundp var)
+                                 (eq var 'name))
+                            (progn
+                              (interactive)
+                              (setf (symbol-value var)
+                                    (let ((guessed-name (guess-symbol var)))
+                                      (read-input (format "Use this name? (%s): " guessed-name)
+                                                  nil
+                                                  nil
+                                                  guessed-name)))))
+                           ((and (boundp var)
                                  (not (eq (symbol-value var) 'undefined)))
                             (symbol-value var))
                            ((and (boundp var)
