@@ -1626,6 +1626,14 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
         t
       nil)))
 
+(defun mk-proj-file-buffer-p (buf &optional proj-name)
+  (and (buffer-file-name buf)
+       (mk-proj-buffer-p buf proj-name)))
+
+(defun mk-proj-special-buffer-p (buf &optional proj-name)
+  (and (string-match "\*[^\*]\*" (buffer-name buf))
+       (mk-proj-buffer-p buf proj-name)))
+
 (defun mk-proj-buffers (&optional proj-name)
   "Get a list of buffers that reside in this project's basedir"
   (unless proj-name
@@ -1636,11 +1644,19 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
       (when (mk-proj-buffer-p b proj-name) (push b buffers)))
     buffers))
 
-(defun mk-proj-special-buffers ()
-  (mk-proj-assert-proj)
-  (append (remove-if (lambda (buf) (not (string-match "\*[^\*]\*" (buffer-name buf)))) (mk-proj-buffers))
+(defun mk-proj-file-buffers (&optional proj-name)
+  (unless proj-name
+    (mk-proj-assert-proj)
+    (setq proj-name mk-proj-name))
+  (remove-if (lambda (buf) (not (buffer-file-name buf))) (mk-proj-buffers proj-name)))
+
+(defun mk-proj-special-buffers (&optional proj-name)
+  (unless proj-name
+    (mk-proj-assert-proj)
+    (setq proj-name mk-proj-name))
+  (append (remove-if (lambda (buf) (not (string-match "\*[^\*]\*" (buffer-name buf)))) (mk-proj-buffers proj-name))
           (remove-if (lambda (buf) (or (and (symbolp 'mk-org-project-buffer-name)
-                                            (not (string-equal (mk-org-project-buffer-name) (buffer-name buf))))
+                                            (not (string-equal (mk-org-project-buffer-name proj-name) (buffer-name buf))))
                                        (compilation-buffer-p buf)))
                      (buffer-list))))
 
@@ -2177,23 +2193,50 @@ project is not loaded."
                                                 basedir
                                               (concat basedir "/"))))
                        (when (string-match (concat "^" (regexp-quote friend-basedir)) file-name)
-                         ;;(print friend-basedir)
                          (return-from "friend-loop" t))))))))
         t
       nil)))
 
-(defun mk-proj-friendly-buffers (&optional friends-only)
+(defun mk-proj-friendly-file-buffer-p (buf &optional proj-name)
+  (and (buffer-file-name buf)
+       (mk-proj-friendly-buffer-p buf proj-name)))
+
+(defun mk-proj-friendly-special-buffer-p (buf &optional proj-name)
+  (and (string-match "\*[^\*]\*" (buffer-name buf))
+       (mk-proj-friendly-buffer-p buf proj-name)))
+
+(defun mk-proj-friendly-buffers (&optional proj-name friends-only)
   "Return all buffers that belong to the project. When FRIENDS-ONLY is
 non-nil return only buffers that are friendly toward the project."
+  (unless proj-name
+    (mk-proj-assert-proj)
+    (setq proj-name mk-proj-name))
   (let ((buffers nil))
     (dolist (b (buffer-list))
       (when (or (and friends-only
-                     (mk-proj-friendly-buffer-p b)
-                     (not (some (lambda (buf) (eq buf b)) (mk-proj-buffers))))
+                     (mk-proj-friendly-buffer-p b proj-name)
+                     (not (some (lambda (buf) (eq buf b)) (mk-proj-buffers proj-name))))
                 (and (not friends-only)
-                     (mk-proj-friendly-buffer-p b)))
+                     (mk-proj-friendly-buffer-p b proj-name)))
         (push b buffers)))
       buffers))
+
+(defun mk-proj-friendly-file-buffers (&optional proj-name friends-only)
+  (unless proj-name
+    (mk-proj-assert-proj)
+    (setq proj-name mk-proj-name))
+  (remove-if (lambda (buf) (not (buffer-file-name buf))) (mk-proj-friendly-buffers proj-name friends-only)))
+
+(defun mk-proj-friendly-special-buffers (&optional proj-name friends-only)
+  (unless proj-name
+    (mk-proj-assert-proj)
+    (setq proj-name mk-proj-name))
+  (append (remove-if (lambda (buf) (not (string-match "\*[^\*]\*" (buffer-name buf)))) (mk-proj-friendly-buffers proj-name friends-only))
+          (remove-if (lambda (buf) (or (and (symbolp 'mk-org-project-buffer-name)
+                                            (not (string-equal (mk-org-project-buffer-name proj-name) (buffer-name buf))))
+                                       (compilation-buffer-p buf)))
+                     (buffer-list))))
+
 
 (defun mk-proj-save-open-friends-info ()
   (when (mk-proj-get-config-val 'open-friends-cache)
@@ -2231,7 +2274,7 @@ non-nil return only buffers that are friendly toward the project."
   (let ((closed nil)
         (dirty nil)
         (basedir-len (length (mk-proj-get-config-val 'basedir))))
-    (dolist (b (mk-proj-friendly-buffers t))
+    (dolist (b (mk-proj-friendly-buffers nil t))
       (cond
        ((buffer-modified-p b)
         (push (buffer-name) dirty))

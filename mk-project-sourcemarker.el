@@ -21,25 +21,41 @@
 (require 'continue)
 
 (defun mk-sourcemarker-setup ()
-  (add-hook 'mk-proj-after-load-hook 'mk-sourcemarker-display-most-recent-buffer))
+  (add-hook 'mk-proj-after-load-hook 'mk-sourcemarker-display-most-recent-buffer)
+  (add-hook 'mk-proj-before-unload-hook 'mk-sourcemarker-save))
 
 (defun mk-sourcemarker-display-most-recent-buffer ()
+  (mk-proj-assert-proj)
   (let ((buffer (cdar (sort (loop for b in (mk-proj-buffers)
                                   if (and (buffer-file-name b)
                                           (assoc :timestamp (gethash (buffer-file-name b) continue-db nil)))
                                   collect `(,(read (cdr (assoc :timestamp (gethash (buffer-file-name b) continue-db nil)))) . ,b))
                             (lambda (a b) (> (car a) (car b)))))))
     (let ((display-buffer-reuse-frames t))
-      (if buffer
-          (display-buffer buffer)
-        (when (car (mk-proj-buffers))
-          (display-buffer (car (mk-proj-buffers))))))))
+      (unless (or (mk-proj-file-buffer-p (current-buffer))
+                  (mk-proj-friendly-file-buffer-p (current-buffer)))
+        (if buffer
+            (display-buffer buffer)
+          (when (car (mk-proj-file-buffers))
+            (display-buffer (car (mk-proj-file-buffers)))))))))
 
-(defun sourcemarker-create ()
+(defun mk-sourcemarker-create ()
   (interactive)
+  (mk-proj-assert-proj)
   (when (and (buffer-file-name (current-buffer))
              (not (condition-case nil (mk-proj-assert-proj) (error t)))
              (mk-proj-buffer-p (current-buffer)))
     (continue-sourcemarker-create)))
+
+(defun mk-sourcemarker-save ()
+  (interactive)
+  (mk-proj-assert-proj)
+  (dolist (buf (mk-proj-friendly-file-buffers))
+    (when (and (buffer-file-name buf)
+               (not (condition-case nil (mk-proj-assert-proj) (error t)))
+               (mk-proj-buffer-p buf))
+      (with-current-buffer buf
+        (continue-save))))
+  (continue-write-db))
 
 (provide 'mk-project-sourcemarker)
