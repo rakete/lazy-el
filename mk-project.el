@@ -1592,7 +1592,9 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
         (basedir-len (length (mk-proj-get-config-val 'basedir))))
     (dolist (b (mk-proj-buffers))
       (cond
-       ((or (buffer-modified-p b) (string-equal (buffer-name b) "*scratch*"))
+       ((string-equal (buffer-name b) "*scratch*")
+        nil)
+       ((buffer-modified-p b)
         (push (buffer-name b) dirty))
        (t
         (push (buffer-name b) closed)
