@@ -2018,6 +2018,20 @@ Returned file paths are relative to the project's basedir."
   (mapcar (lambda (f) (expand-file-name (concat (mk-proj-get-config-val 'basedir proj-name t) f)))
           (mk-proj-fib-matches nil proj-name)))
 
+(defun mk-proj-friendly-files (&optional proj-name friends-only)
+  (unless proj-name
+    (mk-proj-assert-proj)
+    (setq proj-name mk-proj-name))
+  (let ((friendly-files (mapcan (lambda (friend)
+                                  (if (file-exists-p (mk-proj-with-directory (mk-proj-get-config-val 'basedir proj-name)
+                                                                             (expand-file-name friend)))
+                                      (list friend)
+                                    (mk-proj-files friend)))
+                                (mk-proj-get-config-val 'friends proj-name))))
+    (if friends-only
+        friendly-files
+      (append (mk-proj-files) friendly-files))))
+
 (defun mk-proj-normalize-drive-letter (file)
   "Convert drive letters to lowercase to be compatible with
 file-relative-name, file-name-as-directory"
