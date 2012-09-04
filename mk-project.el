@@ -1676,7 +1676,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
         (with-current-buffer b
           (kill-region (point-min) (point-max))
           (dolist (v (append mk-proj-required-vars mk-proj-optional-vars))
-            (insert (format "%-24s = %s\n" (symbol-name v) (mk-proj-get-config-val v proj-name t)))))
+            (insert (format "%-32s = %s\n" (symbol-name v) (mk-proj-get-config-val v proj-name t)))))
         (when (not (eq b (current-buffer)))
           (set-window-dedicated-p (display-buffer b) t)))
     (message "No project loaded.")))
