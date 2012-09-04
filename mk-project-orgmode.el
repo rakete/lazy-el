@@ -1198,10 +1198,12 @@ This is taken almost directly from `org-babel-read'."
     (setq proj-name mk-proj-name))
   (mk-org-assert-org proj-name)
   (mk-org-map-entries
+   :file (mk-proj-get-config-val 'org-file proj-name)
    :match `(headline ,(mk-proj-get-config-val 'org-headline proj-name))
    :scope 'project-headline
    :function (lambda ()
-               (org-clock-in))))
+               (org-clock-in)
+               )))
 
 (defun project-clock-out (&optional proj-name)
   (interactive)
