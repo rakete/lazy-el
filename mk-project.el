@@ -1593,7 +1593,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   (mk-proj-assert-proj)
   (let ((closed nil)
         (dirty nil)
-        (basedir-len (length (mk-proj-get-config-val 'basedir))))
+        (basedir-len (length (mk-proj-get-config-val 'basedir)))
+        (zeitgeist-prevent-send t))
     (dolist (b (mk-proj-buffers))
       (cond
        ((string-equal (buffer-name b) "*scratch*")
@@ -1701,21 +1702,22 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
         (message "Cannot write to %s" (mk-proj-get-config-val 'open-files-cache))))))
 
 (defun mk-proj-visit-saved-open-files ()
-  (when (mk-proj-get-config-val 'open-files-cache)
-    (when (file-readable-p (mk-proj-get-config-val 'open-files-cache))
-      (message "Reading open files from %s" (mk-proj-get-config-val 'open-files-cache))
-      (with-temp-buffer
-        (insert-file-contents (mk-proj-get-config-val 'open-files-cache))
-        (goto-char (point-min))
-        (while (not (eobp))
-          (let ((start (point)))
-            (while (not (eolp)) (forward-char)) ; goto end of line
-            (let ((line (buffer-substring start (point))))
-              (message "Attempting to open %s" line)
-              (if (file-exists-p line)
-                  (find-file-noselect line t)
-                (kill-line))))
-          (forward-line))))))
+  (let ((zeitgeist-prevent-send t))
+    (when (mk-proj-get-config-val 'open-files-cache)
+      (when (file-readable-p (mk-proj-get-config-val 'open-files-cache))
+        (message "Reading open files from %s" (mk-proj-get-config-val 'open-files-cache))
+        (with-temp-buffer
+          (insert-file-contents (mk-proj-get-config-val 'open-files-cache))
+          (goto-char (point-min))
+          (while (not (eobp))
+            (let ((start (point)))
+              (while (not (eolp)) (forward-char)) ; goto end of line
+              (let ((line (buffer-substring start (point))))
+                (message "Attempting to open %s" line)
+                (if (file-exists-p line)
+                    (find-file-noselect line t)
+                  (kill-line))))
+            (forward-line)))))))
 
 ;; ---------------------------------------------------------------------
 ;; Etags
@@ -2272,26 +2274,28 @@ non-nil return only buffers that are friendly toward the project."
         (message "Cannot write to %s" (mk-proj-get-config-val 'open-friends-cache))))))
 
 (defun mk-proj-visit-saved-open-friends ()
-  (when (mk-proj-get-config-val 'open-friends-cache)
-    (when (file-readable-p (mk-proj-get-config-val 'open-friends-cache))
-      (message "Reading open friends from %s" (mk-proj-get-config-val 'open-friends-cache))
-      (with-temp-buffer
-        (insert-file-contents (mk-proj-get-config-val 'open-friends-cache))
-        (goto-char (point-min))
-        (while (not (eobp))
-          (let ((start (point)))
-            (while (not (eolp)) (forward-char)) ; goto end of line
-            (let ((line (buffer-substring start (point))))
-              (message "Attempting to open %s" line)
-              (find-file-noselect line t)))
-          (forward-line))))))
+  (let ((zeitgeist-prevent-send t))
+    (when (mk-proj-get-config-val 'open-friends-cache)
+      (when (file-readable-p (mk-proj-get-config-val 'open-friends-cache))
+        (message "Reading open friends from %s" (mk-proj-get-config-val 'open-friends-cache))
+        (with-temp-buffer
+          (insert-file-contents (mk-proj-get-config-val 'open-friends-cache))
+          (goto-char (point-min))
+          (while (not (eobp))
+            (let ((start (point)))
+              (while (not (eolp)) (forward-char)) ; goto end of line
+              (let ((line (buffer-substring start (point))))
+                (message "Attempting to open %s" line)
+                (find-file-noselect line t)))
+            (forward-line)))))))
 
 (defun project-close-friends ()
   (interactive)
   (mk-proj-assert-proj)
   (let ((closed nil)
         (dirty nil)
-        (basedir-len (length (mk-proj-get-config-val 'basedir))))
+        (basedir-len (length (mk-proj-get-config-val 'basedir)))
+        (zeitgeist-prevent-send t))
     (dolist (b (mk-proj-friendly-buffers nil t))
       (cond
        ((buffer-modified-p b)
