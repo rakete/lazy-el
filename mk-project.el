@@ -1219,9 +1219,12 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   (save-excursion
     (insert (concat "(project-def \"" proj-name "\" '("))
     (loop for k in (append mk-proj-required-vars mk-proj-optional-vars)
-          if (not (or (eq k 'name)
-                      (or (some (lambda (j) (eq k j)) mk-proj-internal-vars)
-                          insert-internal)))
+          if (and (not (eq k 'name))
+                  (or (not (some (lambda (j) (eq k j)) mk-proj-internal-vars))
+                      insert-internal)
+                  (or (not (cdr (assoc k mk-proj-var-before-get-functions)))
+                      (not (string-equal (funcall (cdr (assoc k mk-proj-var-before-get-functions)) k nil) (mk-proj-get-config-val k proj-name)))
+                      insert-internal))
           do (when (or insert-undefined
                        (assoc k config-alist))
                (insert (concat "(" (symbol-name k) " " (prin1-to-string (cadr (assoc k config-alist))) ")"))
