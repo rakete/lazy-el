@@ -2186,7 +2186,8 @@ project is not loaded."
     (setq proj-name mk-proj-name))
   (let ((resulting-matches '()))
     (dolist (friend (mk-proj-get-config-val 'friends proj-name) resulting-matches)
-      (if (file-exists-p (expand-file-name friend))
+      (if (file-exists-p (mk-proj-with-directory (mk-proj-get-config-val 'basedir proj-name)
+                                                 (expand-file-name friend)))
           (if regex
               (when (string-match regex friend) (add-to-list 'resulting-matches (expand-file-name friend)))
             (add-to-list 'resulting-matches (expand-file-name friend)))
