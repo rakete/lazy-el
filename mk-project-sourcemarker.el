@@ -20,17 +20,99 @@
 (require 'mk-project)
 (require 'continue)
 
-(defun mk-sourcemarker-setup ()
-  (add-hook 'mk-proj-after-load-hook 'mk-sourcemarker-display-most-recent-buffer)
-  (add-hook 'mk-proj-before-unload-hook 'mk-sourcemarker-save))
+(defvar mk-sourcemarker-per-project-db t)
+
+(eval-after-load "mk-project-sourcemarker"
+  '(progn
+     (add-to-list 'mk-proj-optional-vars 'sourcemarker-db-path)
+     (add-to-list 'mk-proj-optional-vars 'sourcemarker-db-symbol)
+
+     (add-to-list 'mk-proj-var-before-get-functions
+                  '(sourcemarker-db-path . (lambda (var val &optional proj-name config-alist)
+                                             (if mk-sourcemarker-per-project-db
+                                                 (mk-proj-var-get-cache-path 'sourcemarker-db val)
+                                               (or (and val (expand-file-name val))
+                                                   continue-db-path)))))
+     (add-to-list 'mk-proj-var-before-get-functions
+                  '(sourcemarker-db-symbol . (lambda (var val &optional proj-name config-alist)
+                                               (let ((proj-name (or proj-name
+                                                                    (and (boundp 'mk-proj-name)
+                                                                         mk-proj-name))))
+                                                 (cond (val val)
+                                                       ((and proj-name mk-sourcemarker-per-project-db)
+                                                        (concat proj-name "-sourcemarker-db"))
+                                                       (t continue-db-symbol))))))
+
+     (remove-hook 'find-file-hook 'continue-restore)
+     (add-hook 'find-file-hook 'mk-sourcemarker-restore)
+
+     (remove-hook 'after-save-hook 'continue-save)
+     (add-hook 'after-save-hook 'mk-sourcemarker-save)
+     (run-with-idle-timer 120 t 'mk-sourcemarker-write-project-db)
+
+     (add-hook 'mk-proj-before-files-load-hook 'mk-sourcemarker-load-project-db)
+     (add-hook 'mk-proj-after-load-hook 'mk-sourcemarker-display-most-recent-buffer)
+     (add-hook 'mk-proj-before-files-unload-hook 'mk-sourcemarker-write-project-db)))
+
+(defmacro mk-sourcemarker-with-project-db (&rest body)
+  `(if mk-sourcemarker-per-project-db
+       (let ((global-db-symbol continue-db-symbol)
+             (global-db-path continue-db-path)
+             (continue-db-path (mk-proj-get-config-val 'sourcemarker-db-path))
+             (continue-db-symbol (mk-proj-get-config-val 'sourcemarker-db-symbol)))
+         (condition-case nil
+             (symbol-value (intern continue-db-symbol))
+           (error (progn
+                    (setf (symbol-value (intern continue-db-symbol))
+                          (make-hash-table :test 'equal)))))
+         ,@body)
+     ,@body))
+
+(defun mk-sourcemarker-load-project-db ()
+  (interactive)
+  (mk-proj-assert-proj)
+  (mk-sourcemarker-with-project-db
+   (continue-load-db)))
+
+(defun mk-sourcemarker-write-project-db ()
+  (interactive)
+  (mk-proj-assert-proj)
+  (mk-sourcemarker-with-project-db
+   (continue-write-db)))
+
+(defun mk-sourcemarker-restore ()
+  (interactive)
+  (if (or (condition-case nil (mk-proj-assert-proj) (error t))
+          (not (mk-proj-buffer-p (current-buffer)))
+          (not (mk-sourcemarker-with-project-db (gethash (buffer-file-name (current-buffer)) (symbol-value (intern continue-db-symbol))))))
+      (continue-restore)
+    (mk-sourcemarker-with-project-db
+     (continue-restore))))
+
+(defun mk-sourcemarker-save ()
+  (interactive)
+  (if (or (condition-case nil (mk-proj-assert-proj) (error t))
+          (not (mk-proj-buffer-p (current-buffer))))
+      (continue-save)
+    (mk-sourcemarker-with-project-db
+     (continue-save))))
 
 (defun mk-sourcemarker-display-most-recent-buffer ()
   (mk-proj-assert-proj)
-  (let ((buffer (cdar (sort (loop for b in (mk-proj-buffers)
-                                  if (and (buffer-file-name b)
-                                          (assoc :timestamp (gethash (buffer-file-name b) continue-db nil)))
-                                  collect `(,(read (cdr (assoc :timestamp (gethash (buffer-file-name b) continue-db nil)))) . ,b))
-                            (lambda (a b) (> (car a) (car b)))))))
+  (let ((buffer (let ((results '()))
+                   (dolist (buf (mk-proj-buffers) (cdar (sort results (lambda (a b) (> (car a) (car b))))))
+                     (when (buffer-file-name buf)
+                       (mk-sourcemarker-with-project-db
+                        (let* ((filename (buffer-file-name buf))
+                               (sm (if (or (not (mk-proj-buffer-p (find-buffer-visiting filename)))
+                                           (not (mk-sourcemarker-with-project-db
+                                                 (gethash filename (symbol-value (intern continue-db-symbol))))))
+                                       (gethash filename (symbol-value (intern-soft global-db-symbol)) nil)
+                                     (gethash filename (symbol-value (intern-soft continue-db-symbol)) nil)))
+                               (timestamp (and sm (read (cdr (assoc :timestamp sm))))))
+                          (when timestamp
+                            (add-to-list 'results
+                                         `(,timestamp . ,buf))))))))))
     (let ((display-buffer-reuse-frames t))
       (unless (or (mk-proj-file-buffer-p (current-buffer))
                   (mk-proj-friendly-file-buffer-p (current-buffer)))
@@ -39,23 +121,14 @@
           (when (car (mk-proj-file-buffers))
             (display-buffer (car (mk-proj-file-buffers)))))))))
 
-(defun mk-sourcemarker-create ()
-  (interactive)
-  (mk-proj-assert-proj)
-  (when (and (buffer-file-name (current-buffer))
-             (not (condition-case nil (mk-proj-assert-proj) (error t)))
-             (mk-proj-buffer-p (current-buffer)))
-    (continue-sourcemarker-create)))
+;;(mk-sourcemarker-display-most-recent-buffer)
 
-(defun mk-sourcemarker-save ()
-  (interactive)
-  (mk-proj-assert-proj)
-  (dolist (buf (mk-proj-friendly-file-buffers))
-    (when (and (buffer-file-name buf)
-               (not (condition-case nil (mk-proj-assert-proj) (error t)))
-               (mk-proj-buffer-p buf))
-      (with-current-buffer buf
-        (continue-save))))
-  (continue-write-db))
+;; (defun mk-sourcemarker-create ()
+;;   (interactive)
+;;   (mk-proj-assert-proj)
+;;   (when (and (buffer-file-name (current-buffer))
+;;              (not (condition-case nil (mk-proj-assert-proj) (error t)))
+;;              (mk-proj-buffer-p (current-buffer)))
+;;     (continue-sourcemarker-create)))
 
 (provide 'mk-project-sourcemarker)

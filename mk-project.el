@@ -167,9 +167,11 @@ See also `mk-proj-get-config-val'.")
                                     (patterns-are-regex . (lambda () t))))
 
 (defvar mk-proj-before-load-hook '())
+(defvar mk-proj-before-files-load-hook '())
 (defvar mk-proj-after-load-hook '())
 
 (defvar mk-proj-before-unload-hook '())
+(defvar mk-proj-before-files-unload-hook '())
 (defvar mk-proj-after-unload-hook '())
 
 (defvar mk-proj-history '())
@@ -1515,6 +1517,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
       (if (functionp (mk-proj-get-config-val 'startup-hook))
           (funcall (mk-proj-get-config-val 'startup-hook))
         (run-hooks (mk-proj-get-config-val 'startup-hook))))
+    (run-hooks 'mk-proj-before-files-load-hook)
     (mk-proj-visit-saved-open-files)
     (mk-proj-visit-saved-open-friends)
     (run-hooks 'mk-proj-after-load-hook)
@@ -1564,6 +1567,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
           (mk-proj-maybe-kill-buffer (mk-proj-fib-name))
           (mk-proj-save-open-file-info)
           (mk-proj-save-open-friends-info)
+          (run-hooks 'mk-proj-before-files-unload-hook)
           (and (or (mk-proj-buffers) (mk-proj-friendly-buffers))
                (not quiet)
                (y-or-n-p (concat "Close all '" mk-proj-name "' project files? "))
