@@ -2160,10 +2160,6 @@ project is not loaded."
 ;; Friends
 ;; ---------------------------------------------------------------------
 
-(defvar mk-proj-friends nil)
-
-(defvar mk-proj-open-friends-cache nil)
-
 (defun mk-proj-find-friendly-projects (&optional proj-name)
   (unless proj-name
     (mk-proj-assert-proj)
