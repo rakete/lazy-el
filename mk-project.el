@@ -2001,7 +2001,7 @@ With C-u prefix act as `project-ack-with-friends'."
       (message "project-index cmd: \"%s\"" find-cmd)
       (message "Refreshing %s buffer..." (mk-proj-fib-name proj-name))
       (start-process-shell-command proc-name (mk-proj-fib-name proj-name) find-cmd)
-      (set-process-sentinel (get-process proc-name) 'mk-proj-fib-cb)
+      (set-process-sentinel (get-process proc-name) `(lambda (p e) (mk-proj-fib-cb p e ,proj-name)))
       )))
 
 (defun mk-proj-fib-matches (&optional regex proj-name)
