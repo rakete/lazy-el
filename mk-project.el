@@ -648,7 +648,7 @@ for the KEY and the first value that is found is returned."
                     (return-from "mk-proj-eval-alist" nil)))
     result-alist))
 
-(defun* project-def (proj-name &optional config-alist)
+(defun* project-def (&optional proj-name config-alist)
   "Associate the settings in CONFIG-ALIST with project PROJ-NAME.
 
 All values within CONFIG-ALIST will be evaluated when they look
@@ -754,11 +754,17 @@ the function will be the symbol \"'index\".
 If non-null (or if the function returns non-null), the custom
 find command will be used and the `mk-proj-ignore-patterns' and
 `mk-proj-vcs' settings are not used when in the grep command."
-  (let ((alist (mk-proj-eval-alist proj-name config-alist)))
-    (when alist
-      (puthash proj-name alist mk-proj-list)
-      (message "Defined: %s" proj-name)
-      alist)))
+  (interactive)
+  (cond ((stringp proj-name)
+         (let ((alist (mk-proj-eval-alist proj-name config-alist)))
+           (when alist
+             (puthash proj-name alist mk-proj-list)
+             (message "Defined: %s" proj-name)
+             alist)))
+        ((and (functionp 'mk-org-entry-define-project)
+              (org-mode-p)
+              (looking-at org-complex-heading-regexp)
+              (mk-org-entry-define-project)))))
 
 
 
