@@ -52,7 +52,8 @@
 
      (add-hook 'mk-proj-before-files-load-hook 'mk-sourcemarker-load-project-db)
      (add-hook 'mk-proj-after-load-hook 'mk-sourcemarker-display-most-recent-buffer)
-     (add-hook 'mk-proj-before-files-unload-hook 'mk-sourcemarker-write-project-db)))
+     (add-hook 'mk-proj-before-files-unload-hook 'mk-sourcemarker-save-all)
+     ))
 
 (defmacro mk-sourcemarker-with-project-db (&rest body)
   `(if mk-sourcemarker-per-project-db
