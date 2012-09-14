@@ -1692,7 +1692,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   "Write the list of `files' to a file"
   (when (mk-proj-get-config-val 'open-files-cache)
     (with-temp-buffer
-      (dolist (f (mapcar (lambda (b) (mk-proj-buffer-name b)) (mk-proj-buffers)))
+      (dolist (f (remove-duplicates (mapcar (lambda (b) (mk-proj-buffer-name b)) (mk-proj-buffers)) :test 'string-equal))
         (when f
           (unless (string-equal (mk-proj-get-config-val 'tags-file) f)
             (insert f "\n"))))
