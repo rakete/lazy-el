@@ -72,8 +72,10 @@
 (defun mk-sourcemarker-load-project-db ()
   (interactive)
   (mk-proj-assert-proj)
-  (mk-sourcemarker-with-project-db
-   (continue-load-db)))
+  (unless (intern-soft (mk-proj-get-config-val 'sourcemarker-db-symbol))
+    (mk-sourcemarker-with-project-db
+     (message "loading project db: %s" continue-db-symbol)
+     (continue-load-db))))
 
 (defun mk-sourcemarker-write-project-db ()
   (interactive)
