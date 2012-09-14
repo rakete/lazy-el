@@ -83,36 +83,64 @@
 (defun mk-sourcemarker-restore ()
   (interactive)
   (if (or (condition-case nil (mk-proj-assert-proj) (error t))
-          (not (mk-proj-buffer-p (current-buffer)))
+          (not (or (mk-proj-buffer-p (current-buffer))
+                   (mk-proj-friendly-buffer-p (current-buffer))))
           (not (mk-sourcemarker-with-project-db (gethash (buffer-file-name (current-buffer)) (symbol-value (intern continue-db-symbol))))))
       (continue-restore)
     (mk-sourcemarker-with-project-db
      (continue-restore))))
 
-(defun mk-sourcemarker-save ()
+(defun mk-sourcemarker-save (&optional keep-timestamp)
   (interactive)
   (if (or (condition-case nil (mk-proj-assert-proj) (error t))
-          (not (mk-proj-buffer-p (current-buffer))))
+          (not (or (mk-proj-buffer-p (current-buffer))
+                   (mk-proj-friendly-buffer-p (current-buffer)))))
       (continue-save)
     (mk-sourcemarker-with-project-db
-     (continue-save))))
+       (continue-save))))
+
+(defun mk-sourcemarker-save-all ()
+  (interactive)
+  (let* ((results '())
+         (sorted-buffers (dolist (buf (append (mk-proj-buffers) (mk-proj-friendly-buffers))
+                                      (sort results (lambda (a b) (< (car a) (car b)))))
+                           (when (buffer-file-name buf)
+                             (when (eq buf (current-buffer))
+                               (mk-sourcemarker-save))
+                             (mk-sourcemarker-with-project-db
+                              (let* ((filename (buffer-file-name buf))
+                                     (sm (if (mk-sourcemarker-with-project-db
+                                              (gethash filename (symbol-value (intern continue-db-symbol))))
+                                             (mk-sourcemarker-with-project-db
+                                              (gethash filename (symbol-value (intern-soft continue-db-symbol)) nil))
+                                           (gethash filename (symbol-value (intern-soft continue-db-symbol)) nil)))
+                                     (timestamp (and sm (read (cdr (assoc :timestamp sm))))))
+                                (if timestamp
+                                    (add-to-list 'results `(,timestamp . ,buf))
+                                  (add-to-list 'results `(-1 . ,buf)))))))))
+    (print sorted-buffers)
+    (dolist (tuple sorted-buffers)
+      (with-current-buffer (cdr tuple)
+        (mk-sourcemarker-save)))
+    (mk-sourcemarker-write-project-db)))
 
 (defun mk-sourcemarker-display-most-recent-buffer ()
   (mk-proj-assert-proj)
-  (let ((buffer (let ((results '()))
-                   (dolist (buf (mk-proj-buffers) (cdar (sort results (lambda (a b) (> (car a) (car b))))))
-                     (when (buffer-file-name buf)
-                       (mk-sourcemarker-with-project-db
-                        (let* ((filename (buffer-file-name buf))
-                               (sm (if (or (not (mk-proj-buffer-p (find-buffer-visiting filename)))
-                                           (not (mk-sourcemarker-with-project-db
-                                                 (gethash filename (symbol-value (intern continue-db-symbol))))))
-                                       (gethash filename (symbol-value (intern-soft global-db-symbol)) nil)
-                                     (gethash filename (symbol-value (intern-soft continue-db-symbol)) nil)))
-                               (timestamp (and sm (read (cdr (assoc :timestamp sm))))))
-                          (when timestamp
-                            (add-to-list 'results
-                                         `(,timestamp . ,buf))))))))))
+  (let* ((results '())
+         (buffer (dolist (buf (append (mk-proj-buffers) (mk-proj-friendly-buffers)) (cdar (sort results (lambda (a b) (> (car a) (car b))))))
+                   (when (buffer-file-name buf)
+                     (mk-sourcemarker-with-project-db
+                      (let* ((filename (buffer-file-name buf))
+                             (sm (if (or (not (or (mk-proj-buffer-p (find-buffer-visiting filename))
+                                                  (mk-proj-friendly-buffer-p (find-buffer-visiting filename))))
+                                         (not (mk-sourcemarker-with-project-db
+                                               (gethash filename (symbol-value (intern continue-db-symbol))))))
+                                     (gethash filename (symbol-value (intern-soft global-db-symbol)) nil)
+                                   (gethash filename (symbol-value (intern-soft continue-db-symbol)) nil)))
+                             (timestamp (and sm (read (cdr (assoc :timestamp sm))))))
+                        (when timestamp
+                          (add-to-list 'results
+                                       `(,timestamp . ,buf)))))))))
     (let ((display-buffer-reuse-frames t))
       (unless (or (mk-proj-file-buffer-p (current-buffer))
                   (mk-proj-friendly-file-buffer-p (current-buffer)))

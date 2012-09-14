@@ -2204,24 +2204,25 @@ project is not loaded."
     ))
 
 (defun mk-proj-friendly-buffer-p (buf &optional proj-name)
-  "Check if BUF belongs to the project or is friendly towards it."
-  (let ((file-name (mk-proj-buffer-name buf)))
-    (if (and file-name
-             (block "friend-loop"
-               (dolist (f (mk-proj-find-friendly-projects proj-name))
-                 (if (file-exists-p (expand-file-name f))
-                     (when (string-equal f file-name)
-                       (return-from "friend-loop" t))
-                   (when (mk-proj-find-config f)
-                     (let* ((friend-config (mk-proj-find-config f t))
-                            (basedir (expand-file-name (car (cdr (assoc 'basedir friend-config)))))
-                            (friend-basedir (if (string-equal (substring basedir -1) "/")
-                                                basedir
-                                              (concat basedir "/"))))
-                       (when (string-match (concat "^" (regexp-quote friend-basedir)) file-name)
-                         (return-from "friend-loop" t))))))))
-        t
-      nil)))
+  "Check if BUF is a friend of PROJ-NAME."
+  (unless (mk-proj-buffer-p buf)
+    (let ((file-name (mk-proj-buffer-name buf)))
+      (if (and file-name
+               (block "friend-loop"
+                 (dolist (f (mk-proj-find-friendly-projects proj-name))
+                   (if (file-exists-p (expand-file-name f))
+                       (when (string-equal f file-name)
+                         (return-from "friend-loop" t))
+                     (when (mk-proj-find-config f)
+                       (let* ((friend-config (mk-proj-find-config f t))
+                              (basedir (expand-file-name (car (cdr (assoc 'basedir friend-config)))))
+                              (friend-basedir (if (string-equal (substring basedir -1) "/")
+                                                  basedir
+                                                (concat basedir "/"))))
+                         (when (string-match (concat "^" (regexp-quote friend-basedir)) file-name)
+                           (return-from "friend-loop" t))))))))
+          t
+        nil))))
 
 (defun mk-proj-friendly-file-buffer-p (buf &optional proj-name)
   (and (buffer-file-name buf)
@@ -2231,33 +2232,28 @@ project is not loaded."
   (and (string-match "\*[^\*]\*" (buffer-name buf))
        (mk-proj-friendly-buffer-p buf proj-name)))
 
-(defun mk-proj-friendly-buffers (&optional proj-name friends-only)
-  "Return all buffers that belong to the project. When FRIENDS-ONLY is
-non-nil return only buffers that are friendly toward the project."
+(defun mk-proj-friendly-buffers (&optional proj-name)
+  "Return all buffers that are friendly to the project"
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
   (let ((buffers nil))
     (dolist (b (buffer-list))
-      (when (or (and friends-only
-                     (mk-proj-friendly-buffer-p b proj-name)
-                     (not (some (lambda (buf) (eq buf b)) (mk-proj-buffers proj-name))))
-                (and (not friends-only)
-                     (mk-proj-friendly-buffer-p b proj-name)))
+      (when (mk-proj-friendly-buffer-p b proj-name)
         (push b buffers)))
       buffers))
 
-(defun mk-proj-friendly-file-buffers (&optional proj-name friends-only)
+(defun mk-proj-friendly-file-buffers (&optional proj-name)
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  (remove-if (lambda (buf) (not (buffer-file-name buf))) (mk-proj-friendly-buffers proj-name friends-only)))
+  (remove-if (lambda (buf) (not (buffer-file-name buf))) (mk-proj-friendly-buffers proj-name)))
 
 (defun mk-proj-friendly-special-buffers (&optional proj-name friends-only)
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  (append (remove-if (lambda (buf) (not (string-match "\*[^\*]\*" (buffer-name buf)))) (mk-proj-friendly-buffers proj-name friends-only))
+  (append (remove-if (lambda (buf) (not (string-match "\*[^\*]\*" (buffer-name buf)))) (mk-proj-friendly-buffers proj-name))
           (remove-if (lambda (buf) (or (and (symbolp 'mk-org-project-buffer-name)
                                             (not (string-equal (mk-org-project-buffer-name proj-name) (buffer-name buf))))
                                        (compilation-buffer-p buf)))
@@ -2302,7 +2298,7 @@ non-nil return only buffers that are friendly toward the project."
         (dirty nil)
         (basedir-len (length (mk-proj-get-config-val 'basedir)))
         (zeitgeist-prevent-send t))
-    (dolist (b (mk-proj-friendly-buffers nil t))
+    (dolist (b (mk-proj-friendly-buffers nil))
       (cond
        ((buffer-modified-p b)
         (push (buffer-name) dirty))
