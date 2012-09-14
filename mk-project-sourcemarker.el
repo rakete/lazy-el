@@ -1,4 +1,4 @@
-;;; mk-project-sourcemarker.el ---  Org-Mode integration for mk-project
+;;; mk-project-sourcemarker.el ---  Sourcemarker for mk-project.
 
 ;; Copyright (C) 2011  Andreas Raster <lazor at affenbande dot org>
 ;;
