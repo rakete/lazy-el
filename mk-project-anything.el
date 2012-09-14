@@ -126,7 +126,7 @@ The behaviour of this command is modified with
 (defvar anything-c-source-mk-project-open-friendly-buffers
   '((name . "Mk-Project friendly buffers")
     (candidates . (lambda () (mapcar 'buffer-name (condition-case nil
-                                                      (mk-proj-friendly-buffers nil t)
+                                                      (mk-proj-friendly-buffers nil)
                                                     (error nil)))))
     (type . buffer)
     (candidate-transformer anything-c-skip-current-buffer

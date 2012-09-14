@@ -149,7 +149,7 @@
 (defvar helm-c-source-mk-project-open-friendly-buffers
   `((name . "Mk-Project friendly buffers")
     (candidates . (lambda () (mapcar 'buffer-name (condition-case nil
-                                                      (mk-proj-friendly-buffers nil t)
+                                                      (mk-proj-friendly-buffers nil)
                                                     (error nil)))))
     (type . buffer)
     (match helm-c-buffer-match-major-mode)
