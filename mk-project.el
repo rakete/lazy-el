@@ -1731,15 +1731,19 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   (mk-proj-tags-clear)
   (setq tags-file-name  (mk-proj-get-config-val 'tags-file)
         tags-table-list nil)
-  (when (and (mk-proj-get-config-val 'tags-file) (file-readable-p (mk-proj-get-config-val 'tags-file)))
-    (visit-tags-table (mk-proj-get-config-val 'tags-file))))
+  (when (and (mk-proj-get-config-val 'tags-file)
+             (file-readable-p (mk-proj-get-config-val 'tags-file)))
+    (let ((zeitgeist-prevent-send t))
+      (visit-tags-table (mk-proj-get-config-val 'tags-file)))))
 
 (defun mk-proj-tags-clear ()
   "Clear the TAGS file (if tags-file set)"
-  (when (and (mk-proj-get-config-val 'tags-file) (get-file-buffer (mk-proj-get-config-val 'tags-file)))
-    (mk-proj-maybe-kill-buffer (get-file-buffer (mk-proj-get-config-val 'tags-file))))
-  (setq tags-file-name  nil
-        tags-table-list nil))
+  (let ((zeitgeist-prevent-send t))
+    (when (and (mk-proj-get-config-val 'tags-file)
+               (get-file-buffer (mk-proj-get-config-val 'tags-file)))
+      (mk-proj-maybe-kill-buffer (get-file-buffer (mk-proj-get-config-val 'tags-file))))
+    (setq tags-file-name  nil
+          tags-table-list nil)))
 
 (defun mk-proj-etags-cb (process event)
   "Visit tags table when the etags process finishes."
@@ -1922,11 +1926,12 @@ With C-u prefix act as `project-ack-with-friends'."
   "Either load the *file-index* buffer from the file cache, or create it afresh."
   (if (and (mk-proj-get-config-val 'file-list-cache proj-name t)
            (file-readable-p (mk-proj-get-config-val 'file-list-cache proj-name t)))
-      (with-current-buffer (find-file-noselect (mk-proj-get-config-val 'file-list-cache proj-name t))
+      (let ((zeitgeist-prevent-send t))
+        (with-current-buffer (find-file-noselect (mk-proj-get-config-val 'file-list-cache proj-name t))
           (with-current-buffer (rename-buffer (mk-proj-fib-name proj-name))
             (setq buffer-read-only t)
             (set-buffer-modified-p nil)
-            (message (concat "Loading " (mk-proj-fib-name proj-name) " from %s") (mk-proj-get-config-val 'file-list-cache proj-name t))))
+            (message (concat "Loading " (mk-proj-fib-name proj-name) " from %s") (mk-proj-get-config-val 'file-list-cache proj-name t)))))
     (project-index proj-name)))
 
 ;;(mk-proj-fib-init nil)
@@ -1952,11 +1957,12 @@ With C-u prefix act as `project-ack-with-friends'."
   ;;(print proj-name)
   (cond
    ((string= event "finished\n")
-    (with-current-buffer (get-buffer (mk-proj-fib-name proj-name))
-      (setq buffer-read-only t)
-      (when (mk-proj-get-config-val 'file-list-cache proj-name t)
-        (write-file (mk-proj-get-config-val 'file-list-cache proj-name t))
-        (rename-buffer (mk-proj-fib-name proj-name))))
+    (let ((zeitgeist-prevent-send t))
+      (with-current-buffer (get-buffer (mk-proj-fib-name proj-name))
+        (setq buffer-read-only t)
+        (when (mk-proj-get-config-val 'file-list-cache proj-name t)
+          (write-file (mk-proj-get-config-val 'file-list-cache proj-name t))
+          (rename-buffer (mk-proj-fib-name proj-name)))))
     (message "Refreshing %s buffer...done" (mk-proj-fib-name proj-name)))
    (t
     (mk-proj-fib-clear proj-name)
@@ -2260,18 +2266,18 @@ non-nil return only buffers that are friendly toward the project."
 
 (defun mk-proj-save-open-friends-info ()
   (when (mk-proj-get-config-val 'open-friends-cache)
-    (with-temp-buffer
-      (dolist (f (remove-duplicates (mapcar (lambda (b) (mk-proj-buffer-name b)) (mk-proj-friendly-buffers)) :test #'string-equal))
-        (when f
-          (unless (string-equal (mk-proj-get-config-val 'tags-file) f)
-            (insert f "\n"))))
-      (if (file-writable-p (mk-proj-get-config-val 'open-friends-cache))
-          (progn
+    (let ((zeitgeist-prevent-send t))
+      (with-temp-buffer
+        (dolist (f (remove-duplicates (mapcar (lambda (b) (mk-proj-buffer-name b)) (mk-proj-friendly-buffers)) :test #'string-equal))
+          (when f
+            (unless (string-equal (mk-proj-get-config-val 'tags-file) f)
+              (insert f "\n"))))
+        (if (file-writable-p (mk-proj-get-config-val 'open-friends-cache))
             (write-region (point-min)
                           (point-max)
                           (mk-proj-get-config-val 'open-friends-cache))
-            (message "Wrote open friends to %s" (mk-proj-get-config-val 'open-friends-cache)))
-        (message "Cannot write to %s" (mk-proj-get-config-val 'open-friends-cache))))))
+          (message "Wrote open friends to %s" (mk-proj-get-config-val 'open-friends-cache))
+          (message "Cannot write to %s" (mk-proj-get-config-val 'open-friends-cache)))))))
 
 (defun mk-proj-visit-saved-open-friends ()
   (let ((zeitgeist-prevent-send t))
