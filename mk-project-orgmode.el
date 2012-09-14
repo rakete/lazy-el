@@ -55,10 +55,10 @@ a single org file is stored in the projects basedir.")
   '(progn
      (add-to-list 'mk-proj-optional-vars 'org-file)
      (add-to-list 'mk-proj-optional-vars 'org-headline)
-     
+
      (add-to-list 'mk-proj-internal-vars 'org-file)
      (add-to-list 'mk-proj-internal-vars 'org-headline)
-     
+
      (add-hook 'org-clock-in-hook (lambda ()
                                     (when (and (mk-org-entry-is-in-project-p)
                                                (or (not (boundp 'mk-proj-name))
@@ -258,7 +258,6 @@ will be used internally. You can specify a MATCH to be used in that case with:
                                                     (progn (mk-org-assert-org) `(,(mk-proj-get-config-val 'org-file))))
                                                    (t
                                                     (mk-org-files-containing-projects)))))
-
       (with-current-buffer (or (when (buffer-live-p project-file) project-file)
                                (org-find-base-buffer-visiting project-file)
                                (if (file-exists-p project-file)

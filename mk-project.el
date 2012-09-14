@@ -1961,7 +1961,6 @@ With C-u prefix act as `project-ack-with-friends'."
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  ;;(print proj-name)
   (cond
    ((string= event "finished\n")
     (let ((zeitgeist-prevent-send t))
