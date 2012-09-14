@@ -1467,7 +1467,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
       (cond ((file-exists-p r)
              r)
             ((and (mk-proj-get-config-val 'parent proj-name)
-                  (file-exists-p (mk-proj-get-config-val symbol (mk-proj-get-config-val 'parent proj-name))))
+                  (file-exists-p (or (mk-proj-get-config-val symbol (mk-proj-get-config-val 'parent proj-name))
+                                     (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent proj-name)))))
              (progn
                (copy-file (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent proj-name))
                           r)
