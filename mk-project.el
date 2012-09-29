@@ -1635,6 +1635,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   (let ((file-name (mk-proj-buffer-name buf)))
     (if (and file-name
              (file-exists-p file-name)
+             (mk-proj-get-config-val 'basedir proj-name t)
              (string-match (concat "^" (regexp-quote (mk-proj-get-config-val 'basedir proj-name t))) file-name)
              (loop for pattern in (mk-proj-get-config-val 'src-patterns proj-name t)
                    until (string-match (regexp-quote pattern) file-name)
