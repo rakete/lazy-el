@@ -942,7 +942,21 @@ find command will be used and the `mk-proj-ignore-patterns' and
                                                (let ((found-path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths mode))))
                                                  (when (and found-path
                                                             (not (string-equal (expand-file-name "~") found-path)))
-                                                   `(100 . ,found-path))))
+                                                   `(50 . ,found-path))))
+                                              ;; find directory that is not a common project subdir
+                                              ((buffer)
+                                               (let* ((path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths)))
+                                                      (splitted-path (split-string path "/")))
+                                                 (while (and path
+                                                             splitted-path
+                                                             (not (some (lambda (incubator-path) (mk-proj-path-equal incubator-path path))
+                                                                        mk-proj-incubator-paths))
+                                                             (some (lambda (dir) (string-equal dir (car (last splitted-path))))
+                                                                   mk-proj-common-project-subdir-names))
+                                                   (setq splitted-path (butlast splitted-path)
+                                                         path (reduce (lambda (a b) (concat a "/" b)) splitted-path)))
+                                                 (when path
+                                                   `(100 . ,path))))
                                               ;; find basedir by searching for buildsystem patterns
                                               ((buffer)
                                                (let ((path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths))))
