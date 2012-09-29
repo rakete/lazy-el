@@ -71,7 +71,7 @@
 (defvar helm-c-source-mk-project-files
   `((name . "Mk-Project files")
     (init . (lambda ()
-              (with-current-buffer (helm-candidate-buffer 'project-files)
+              (with-current-buffer (helm-candidate-buffer 'global)
                 (unless (get-buffer (mk-proj-fib-name))
                   (mk-proj-fib-init))
                 (insert-buffer (mk-proj-fib-name)))))
@@ -124,7 +124,7 @@
 (defvar helm-c-source-mk-project-friendly-files
   `((name . "Mk-Project friendly files")
     (init . (lambda ()
-              (with-current-buffer (helm-candidate-buffer 'friendly-files)
+              (with-current-buffer (helm-candidate-buffer 'global)
                 (dolist (friend (mk-proj-get-config-val 'friends))
                   (if (file-exists-p (expand-file-name friend))
                       (insert (concat (expand-file-name friend) "\n"))
