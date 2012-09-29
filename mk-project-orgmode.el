@@ -86,7 +86,7 @@ a single org file is stored in the projects basedir.")
      (add-hook 'mk-proj-before-unload-hook (lambda ()
                                              (when (mk-proj-get-config-val 'org-file)
                                                (project-clock-out))))
-     (add-hook 'mk-proj-after-unload-hook (lambda () (mk-org-kill-project-buffer)))
+     ;;(add-hook 'mk-proj-after-unload-hook 'mk-org-kill-project-buffer)
      ))
 
 
