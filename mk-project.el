@@ -1607,7 +1607,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
         (dirty nil)
         (basedir-len (length (mk-proj-get-config-val 'basedir)))
         (zeitgeist-prevent-send t))
-    (dolist (b (mk-proj-buffers))
+    (dolist (b (append (mk-proj-file-buffers) (mk-proj-dired-buffers)))
       (cond
        ((string-equal (buffer-name b) "*scratch*")
         nil)
@@ -1651,6 +1651,11 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   (and (string-match "\*[^\*]\*" (buffer-name buf))
        (mk-proj-buffer-p buf proj-name)))
 
+(defun mk-proj-dired-buffer-p (buf &optional proj-name)
+  (and (with-current-buffer buf
+         (eq major-mode 'dired-mode))
+       (mk-proj-buffer-p buf proj-name)))
+
 (defun mk-proj-buffers (&optional proj-name)
   "Get a list of buffers that reside in this project's basedir"
   (unless proj-name
@@ -1676,6 +1681,12 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                                             (not (string-equal (mk-org-project-buffer-name proj-name) (buffer-name buf))))
                                        (compilation-buffer-p buf)))
                      (buffer-list))))
+
+(defun mk-proj-dired-buffers (&optional proj-name)
+  (unless proj-name
+    (mk-proj-assert-proj)
+    (setq proj-name mk-proj-name))
+  (remove-if (lambda (buf) (not (mk-proj-dired-buffer-p buf))) (mk-proj-buffers proj-name)))
 
 (defun project-status (&optional proj-name)
   "View project's variables."
@@ -2240,6 +2251,12 @@ project is not loaded."
   (and (string-match "\*[^\*]\*" (buffer-name buf))
        (mk-proj-friendly-buffer-p buf proj-name)))
 
+(defun mk-proj-friendly-dired-buffer-p (buf &optional proj-name)
+  (and (with-current-buffer buf
+         (eq major-mode 'dired-mode))
+       (mk-proj-friendly-buffer-p buf proj-name)))
+
+
 (defun mk-proj-friendly-buffers (&optional proj-name)
   "Return all buffers that are friendly to the project"
   (unless proj-name
@@ -2267,6 +2284,11 @@ project is not loaded."
                                        (compilation-buffer-p buf)))
                      (buffer-list))))
 
+(defun mk-proj-friendly-dired-buffers (&optional proj-name)
+  (unless proj-name
+    (mk-proj-assert-proj)
+    (setq proj-name mk-proj-name))
+  (remove-if (lambda (buf) (not (mk-proj-friendly-dired-buffer-p buf))) (mk-proj-friendly-buffers proj-name)))
 
 (defun mk-proj-save-open-friends-info ()
   (when (mk-proj-get-config-val 'open-friends-cache)
@@ -2306,7 +2328,7 @@ project is not loaded."
         (dirty nil)
         (basedir-len (length (mk-proj-get-config-val 'basedir)))
         (zeitgeist-prevent-send t))
-    (dolist (b (mk-proj-friendly-buffers nil))
+    (dolist (b (append (mk-proj-friendly-buffers) (mk-proj-friendly-dired-buffers)))
       (cond
        ((buffer-modified-p b)
         (push (buffer-name) dirty))
