@@ -30,7 +30,9 @@
      (add-to-list 'mk-proj-var-before-get-functions
                   '(sourcemarker-db-path . (lambda (var val &optional proj-name config-alist)
                                              (if mk-sourcemarker-per-project-db
-                                                 (mk-proj-var-get-cache-path 'sourcemarker-db val)
+                                                 (if val
+                                                     (expand-file-name val)
+                                                   (mk-proj-get-cache-path 'sourcemarker-db nil 'copy))
                                                (or (and val (expand-file-name val))
                                                    continue-db-path)))))
      (add-to-list 'mk-proj-var-before-get-functions

@@ -114,16 +114,26 @@ See also `mk-proj-required-vars' `mk-proj-var-before-get-functions'")
   (when (stringp val)
     (expand-file-name val)))
 
-(defun mk-proj-var-get-cache-path (var val &optional proj-name config-alist)
+(defun mk-proj-var-get-tags-file (var val &optional proj-name config-alist)
+  (if val
+      (expand-file-name val)
+    (mk-proj-get-cache-path var proj-name 'copy)))
+
+(defun mk-proj-var-get-open-file-cache (var val &optional proj-name config-alist)
   (if val
       (expand-file-name val)
     (mk-proj-get-cache-path var proj-name)))
 
+(defun mk-proj-var-get-file-list-cache (var val &optional proj-name config-alist)
+  (if val
+      (expand-file-name val)
+    (mk-proj-get-cache-path var proj-name t)))
+
 (defvar mk-proj-var-before-get-functions '((basedir . mk-proj-var-expand)
-                                           (tags-file . mk-proj-var-get-cache-path)
-                                           (file-list-cache . mk-proj-var-get-cache-path)
-                                           (open-files-cache . mk-proj-var-get-cache-path)
-                                           (open-friends-cache . mk-proj-var-get-cache-path))
+                                           (tags-file . mk-proj-var-get-tags-file)
+                                           (file-list-cache . mk-proj-var-get-file-list-cache)
+                                           (open-files-cache . mk-proj-var-get-open-file-cache)
+                                           (open-friends-cache . mk-proj-var-get-open-file-cache))
   "Config vars from `mk-proj-required-vars' and `mk-proj-optional-vars' (except 'name')
 can be associated with a function in this association list, which will be
 applied to the value of the var right after it is taken from the config-alist.
@@ -517,7 +527,7 @@ Examples:
                       return nil
                       finally return t))
       (when (and (directory-files (apply 'concat (mapcar (lambda (s) (concat "/" s)) (reverse xs))) nil re)
-                 (eq (some (lambda (re) (string-match re (car xs))) ignore-paths) nil))
+                 (not (some (lambda (re) (string-match re (car xs))) ignore-paths)))
         (return-from "mk-proj-search-path" (apply 'concat (mapcar (lambda (s) (concat "/" s)) (reverse xs)))))
       (setq xs (cdr xs)))))
 
@@ -1471,7 +1481,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
       (unless (mk-proj-get-config-val v proj-name t)
         (throw 'mk-proj-check-required-vars v)))))
 
-(defun mk-proj-get-cache-path (symbol &optional proj-name)
+(defun mk-proj-get-cache-path (symbol &optional proj-name inherit)
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
@@ -1488,13 +1498,20 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
              r)
             ((and (mk-proj-get-config-val 'parent proj-name)
                   (file-exists-p (or (mk-proj-get-config-val symbol (mk-proj-get-config-val 'parent proj-name))
-                                     (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent proj-name)))))
+                                     (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent proj-name))))
+                  (or (eq inherit 'copy)))
              (progn
-               (copy-file (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent proj-name))
-                          r)
+               (copy-file (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent proj-name) t) r)
                r))
-            (t
-             r)))))
+            ((and (mk-proj-get-config-val 'parent proj-name)
+                  (file-exists-p (or (mk-proj-get-config-val symbol (mk-proj-get-config-val 'parent proj-name))
+                                     (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent proj-name))))
+                  (eq inherit t))
+             (or (mk-proj-get-config-val symbol (mk-proj-get-config-val 'parent proj-name))
+                 (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent proj-name))))
+            (t r)))))
+
+;;(mk-proj-get-cache-path 'file-list-cache mk-proj-name t)
 
 (defun mk-proj-ancestry (&optional proj-name)
   (let* ((current (or proj-name
