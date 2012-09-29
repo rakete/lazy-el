@@ -1530,6 +1530,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
     (run-hooks 'mk-proj-before-files-load-hook)
     (mk-proj-visit-saved-open-files)
     (mk-proj-visit-saved-open-friends)
+    (modify-frame-parameters (selected-frame) (list (cons 'name proj-name)))
     (run-hooks 'mk-proj-after-load-hook)
     (message "Loading project %s done" proj-name)))
 
@@ -1595,6 +1596,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   (when (and (buffer-file-name (current-buffer))
              (file-exists-p (buffer-file-name (current-buffer))))
     (cd (mk-proj-dirname (buffer-file-name (current-buffer)))))
+  (modify-frame-parameters (selected-frame) (list (cons 'name "Emacs")))
   (message "Project settings have been cleared"))
 
 (defun project-close-files ()
