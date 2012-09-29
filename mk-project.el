@@ -2073,9 +2073,7 @@ Returned file paths are relative to the project's basedir."
                                       (list friend)
                                     (mk-proj-files friend)))
                                 (mk-proj-get-config-val 'friends proj-name))))
-    (if friends-only
-        friendly-files
-      (append (mk-proj-files) friendly-files))))
+    friendly-files))
 
 (defun mk-proj-normalize-drive-letter (file)
   "Convert drive letters to lowercase to be compatible with
