@@ -2026,17 +2026,17 @@ With C-u prefix act as `project-ack-with-friends'."
     (setq proj-name mk-proj-name))
   (when (mk-proj-get-config-val 'file-list-cache proj-name t)
     (mk-proj-fib-clear proj-name)
-    (cd (mk-proj-get-config-val 'basedir proj-name t))
+    (cd (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t)))
     (let* ((default-directory (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t)))
            (start-dir (if mk-proj-file-index-relative-paths
                           "."
-                        (mk-proj-get-config-val 'basedir proj-name t)))
+                        (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t))))
            (find-cmd (concat "find '" start-dir "' -type f "
-                             (mk-proj-find-cmd-src-args (mk-proj-get-config-val 'src-patterns) proj-name)
-                             (mk-proj-find-cmd-ignore-args (mk-proj-get-config-val 'ignore-patterns) proj-name)))
+                             (mk-proj-find-cmd-src-args (mk-proj-get-config-val 'src-patterns proj-name t) proj-name)
+                             (mk-proj-find-cmd-ignore-args (mk-proj-get-config-val 'ignore-patterns proj-name t) proj-name)))
            (proc-name "index-process"))
-      (when (mk-proj-get-vcs-path)
-        (setq find-cmd (concat find-cmd " -not -path " (concat "'*/" (mk-proj-get-vcs-path) "/*'"))))
+      (when (mk-proj-get-vcs-path proj-name)
+        (setq find-cmd (concat find-cmd " -not -path " (concat "'*/" (mk-proj-get-vcs-path proj-name) "/*'"))))
       (setq find-cmd (or (mk-proj-find-cmd-val 'index proj-name) find-cmd))
       (with-current-buffer (get-buffer-create (mk-proj-fib-name proj-name))
         (buffer-disable-undo) ;; this is a large change we don't need to undo
