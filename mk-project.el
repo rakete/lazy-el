@@ -1636,7 +1636,6 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   (mk-proj-assert-proj)
   (let ((closed nil)
         (dirty nil)
-        (basedir-len (length (mk-proj-get-config-val 'basedir)))
         (zeitgeist-prevent-send t))
     (dolist (b (append (mk-proj-file-buffers) (mk-proj-dired-buffers)))
       (cond
@@ -2356,7 +2355,6 @@ project is not loaded."
   (mk-proj-assert-proj)
   (let ((closed nil)
         (dirty nil)
-        (basedir-len (length (mk-proj-get-config-val 'basedir)))
         (zeitgeist-prevent-send t))
     (dolist (b (append (mk-proj-friendly-buffers) (mk-proj-friendly-dired-buffers)))
       (cond
