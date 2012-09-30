@@ -1550,7 +1550,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
     (when (and (mk-proj-get-config-val 'vcs) (not (mk-proj-get-vcs-path)))
       (error "Invalid VCS setting!"))
     (message "Loading project %s ..." proj-name)
-    (cd (mk-proj-get-config-val 'basedir))
+    (cd (file-name-as-directory (mk-proj-get-config-val 'basedir)))
     (mk-proj-tags-load)
     (mk-proj-fib-init)
     (add-hook 'kill-emacs-hook 'mk-proj-kill-emacs-hook)
@@ -1666,7 +1666,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
     (if (and file-name
              (file-exists-p file-name)
              (mk-proj-get-config-val 'basedir proj-name t)
-             (string-match (concat "^" (regexp-quote (mk-proj-get-config-val 'basedir proj-name t))) file-name)
+             (string-match (concat "^" (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t)))) file-name)
              (loop for pattern in (mk-proj-get-config-val 'src-patterns proj-name t)
                    until (string-match (regexp-quote pattern) file-name)
                    return t
@@ -1819,9 +1819,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
              ;; generate absolute filenames.
              (relative-tags (string= (file-name-as-directory (mk-proj-get-config-val 'basedir))
                                      (file-name-directory (mk-proj-get-config-val 'tags-file))))
-             (default-directory (file-name-as-directory
-                                 (file-name-directory (mk-proj-get-config-val 'tags-file))))
-             (default-find-cmd (concat "find '" (if relative-tags "." (mk-proj-get-config-val 'basedir))
+             (default-directory (file-name-as-directory (file-name-directory (mk-proj-get-config-val 'tags-file))))
+             (default-find-cmd (concat "find '" (if relative-tags "." (file-name-as-directory (mk-proj-get-config-val 'basedir)))
                                        "' -type f "
                                        (mk-proj-find-cmd-src-args (mk-proj-get-config-val 'src-patterns))))
              (etags-shell-cmd (if (mk-proj-get-config-val 'etags-cmd)
@@ -1924,7 +1923,7 @@ With C-u prefix act as `project-ack-with-friends'."
            (regex (or phrase
                       (if wap (read-string (concat "Ack project for (default \"" wap "\"): ") nil nil wap)
                         (read-string "Ack project for: "))))
-           (path (mk-proj-get-config-val 'basedir mk-proj-name t))
+           (path (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t)))
            (whole-cmd (concat (mk-proj-ack-cmd regex) " " path))
            (confirmed-cmd (read-string "Ack command: " whole-cmd nil whole-cmd))
            (default-directory (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t))))
@@ -2057,12 +2056,12 @@ Returned file paths are relative to the project's basedir."
   (unless (get-buffer (mk-proj-fib-name proj-name))
     (mk-proj-fib-init proj-name))
   (with-current-buffer (mk-proj-fib-name proj-name)
-    (let ((basedir (mk-proj-get-config-val 'basedir proj-name))
+    (let ((basedir (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name)))
           (current-filename nil))
       (sort (loop for line in (split-string (buffer-string) "\n" t)
                   if (> (length line) 0)
                   do (setq current-filename (if (file-name-absolute-p line)
-                                                (file-relative-name line (mk-proj-get-config-val 'basedir proj-name))
+                                                (file-relative-name line (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name)))
                                               line))
                   if (or (not regex)
                          (and (stringp regex)
@@ -2076,7 +2075,7 @@ Returned file paths are relative to the project's basedir."
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  (mapcar (lambda (f) (expand-file-name (concat (mk-proj-get-config-val 'basedir proj-name t) f)))
+  (mapcar (lambda (f) (expand-file-name (concat (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t)) f)))
           (mk-proj-fib-matches nil proj-name)))
 
 (defun mk-proj-friendly-files (&optional proj-name friends-only)
@@ -2246,7 +2245,7 @@ project is not loaded."
             (add-to-list 'resulting-matches (expand-file-name friend)))
         (setq resulting-matches (append resulting-matches
                                         (mapcar (lambda (f)
-                                                  (expand-file-name (concat (mk-proj-get-config-val 'basedir friend) "/" f)))
+                                                  (expand-file-name (concat (file-name-as-directory (mk-proj-get-config-val 'basedir friend)) f)))
                                                 (mk-proj-fib-matches regex friend))))))
     ;;(remove-duplicates resulting-matches :test #'string-equal)
     ))
