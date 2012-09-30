@@ -166,7 +166,7 @@
                                                   (mk-proj-friendly-buffer-p (find-buffer-visiting filename))))
                                          (not (mk-sourcemarker-with-project-db
                                                (gethash filename (symbol-value (intern continue-db-symbol))))))
-                                     (gethash filename (symbol-value (intern-soft global-db-symbol)) nil)
+                                     nil ;;(gethash filename (symbol-value (intern-soft global-db-symbol)) nil)
                                    (gethash filename (symbol-value (intern-soft continue-db-symbol)) nil)))
                              (timestamp (and sm (read (cdr (assoc :timestamp sm))))))
                         (when timestamp
