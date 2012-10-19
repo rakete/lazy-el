@@ -648,8 +648,12 @@ will be used internally. You can specify a MATCH to be used in that case with:
          entry-config)))))
 
 (defun mk-org-entry-define-project (&optional marker)
-  (project-def (mk-org-entry-name marker)
-               (mk-org-entry-alist marker)))
+  (let* ((proj-name (mk-org-entry-name marker))
+         (alist (mk-proj-eval-alist proj-name (mk-org-entry-alist marker))))
+    (when alist
+      (puthash proj-name alist mk-proj-list)
+      (message "Defined: %s" proj-name)
+      alist)))
 
 (defun mk-org-entry-undefine-project (&optional marker)
   (interactive)
