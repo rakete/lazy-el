@@ -54,6 +54,7 @@
      (run-with-idle-timer 120 t 'mk-sourcemarker-write-project-db)
 
      (add-hook 'mk-proj-before-files-load-hook (lambda ()
+                                                 (remove-hook 'find-file-hook 'mk-sourcemarker-restore)
                                                  (dolist (proj-name (append (list mk-proj-name) (mk-proj-get-config-val 'friends)))
                                                    (dolist (buf (append (mk-proj-file-buffers proj-name)))
                                                      (when buf
@@ -63,6 +64,7 @@
                                                  ))
      (add-hook 'mk-proj-after-load-hook (lambda ()
                                           (mk-sourcemarker-restore-all)
+                                          (add-hook 'find-file-hook 'mk-sourcemarker-restore)
                                           (mk-sourcemarker-display-most-recent-buffer)))
 
      (add-hook 'mk-proj-before-files-unload-hook (lambda ()
