@@ -75,16 +75,17 @@
      ))
 
 (defmacro mk-sourcemarker-with-project-db (&rest body)
-  `(if mk-sourcemarker-per-project-db
+  `(if (and mk-sourcemarker-per-project-db
+            (mk-proj-get-config-val 'sourcemarker-db-path)
+            (mk-proj-get-config-val 'sourcemarker-db-symbol))
        (let ((global-db-symbol continue-db-symbol)
              (global-db-path continue-db-path)
              (continue-db-path (mk-proj-get-config-val 'sourcemarker-db-path))
              (continue-db-symbol (mk-proj-get-config-val 'sourcemarker-db-symbol)))
          (condition-case nil
              (symbol-value (intern continue-db-symbol))
-           (error (progn
-                    (setf (symbol-value (intern continue-db-symbol))
-                          (make-hash-table :test 'equal)))))
+           (error (setf (symbol-value (intern continue-db-symbol))
+                        (make-hash-table :test 'equal))))
          ,@body)
      ,@body))
 
