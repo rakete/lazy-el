@@ -72,6 +72,19 @@ a single org file is stored in the projects basedir.")
                                                    (beginning-of-line)
                                                    (when (some (lambda (x) (string-equal (org-get-todo-state) x)) org-done-keywords)
                                                      (mk-org-clock-from-parent-to-todo))))
+     (add-hook 'org-after-todo-state-change-hook (lambda ()
+                                                   (beginning-of-line)
+                                                   (when (and (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
+                                                              (mk-org-entry-is-in-project-p))
+                                                     (mk-org-entry-define-project))))
+     (add-hook 'org-after-todo-state-change-hook (lambda ()
+                                                   (beginning-of-line)
+                                                   (let ((proj-name (mk-org-entry-name)))
+                                                     (when (and proj-name
+                                                                (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
+                                                                (mk-org-entry-is-in-project-p)
+                                                                (not (file-exists-p (mk-proj-get-config-val 'sourcemarker-db-path proj-name))))
+                                                       (mk-proj-with-current-project proj-name (mk-sourcemarker-save-all))))))
 
      (mk-proj-define-backend 'org-mode
                              :buffer-fun 'mk-org-config-buffer
