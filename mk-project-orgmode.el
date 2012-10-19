@@ -99,23 +99,56 @@ a single org file is stored in the projects basedir.")
      (add-hook 'mk-proj-before-unload-hook (lambda ()
                                              (when (mk-proj-get-config-val 'org-file)
                                                (project-clock-out))))
-     ;;(add-hook 'mk-proj-after-unload-hook 'mk-org-kill-project-buffer)
+     ;; (add-hook 'after-load-functions (lambda (filename)
+     ;;                                   (when filename
+     ;;                                     (with-current-buffer (find-buffer-visiting filename)
+     ;;                                       (when (eq major-mode 'org-mode)
+     ;;                                         (mk-org-map-entries
+     ;;                                          :file filename
+     ;;                                          :scope 'project-tree
+     ;;                                          :close-files nil
+     ;;                                          :function (lambda ()
+     ;;                                                      (when (and (not (mk-org-entry-is-link-p))
+     ;;                                                                 (or (and (org-get-todo-state)
+     ;;                                                                          (and (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
+     ;;                                                                               (not (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-ignore-todos))))
+     ;;                                                                     (and (or (mk-org-entry-last-clock-position)
+     ;;                                                                              (some (lambda (prop-tuple)
+     ;;                                                                                      (some (lambda (sym) (string-equal (mk-org-symbol-table sym) (cdr prop-tuple)))
+     ;;                                                                                            (append mk-proj-required-vars mk-proj-optional-vars)))
+     ;;                                                                                    (org-entry-properties))
+     ;;                                                                              (org-entry-get (point) org-effort-property))
+     ;;                                                                          (and (org-get-todo-state)
+     ;;                                                                               (and (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
+     ;;                                                                                    (not (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-ignore-todos)))))
+     ;;                                                                     (and (mk-org-entry-is-project-p)
+     ;;                                                                          (or (not (org-get-todo-state))
+     ;;                                                                              (and (org-get-todo-state)
+     ;;                                                                                   (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
+     ;;                                                                                   (not (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-ignore-todos)))))))
+     ;;                                                        (mk-org-entry-define-project)
+     ;;                                                        (unless (eq (last buffer-with-projects) (current-buffer))
+     ;;                                                          (add-to-list 'buffer-with-projects (current-buffer)))))))))))
      ))
-
-
-
-
 
 
 (defun mk-org-files-containing-projects ()
   "Searches all defined projects and returns a list of all .org files
 in which projects have been defined as well as the files specified by
-`mk-org-project-search-files'"
+`mk-org-project-search-files'.
+Also tries to find org files with projects in files from `recentf-list'."
   (let ((org-files '()))
     (maphash (lambda (k p)
                (when (cdr (assoc 'org-file p))
-                 (setq org-files (append (cdr (assoc 'org-file p)) org-files))))
+                 (add-to-list 'org-files (cadr (assoc 'org-file p)))))
              mk-proj-list)
+    (when (boundp 'recentf-list)
+      (dolist (recent-file recentf-list)
+        (when (and (file-exists-p recent-file)
+                   (string-match ".*\\.org" recent-file)
+                   (= (call-process "bash" nil nil nil "-c" (concat "grep \"MKP_NAME\" \"" recent-file "\"")) 0))
+          (print recent-file)
+          (add-to-list 'org-files recent-file 'string-equal))))
     (remove-if (lambda (x)
                  (or (not (file-exists-p x))
                      (eq x nil)))
