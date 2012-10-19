@@ -591,7 +591,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
    (save-excursion
      (org-back-to-heading t)
      (beginning-of-line)
-     (unless (and (org-mode-p)
+     (unless (and (eq major-mode 'org-mode)
                   (looking-at org-complex-heading-regexp))
        (error "mk-org: buffer is not in org-mode or point is not a org heading"))
      (let* ((entry-properties (org-entry-properties))
@@ -624,7 +624,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
                           (save-excursion
                             (org-back-to-heading t)
                             (beginning-of-line)
-                            (unless (and (org-mode-p)
+                            (unless (and (eq major-mode 'org-mode)
                                          (looking-at org-complex-heading-regexp))
                               (error "mk-org: buffer is not in org-mode or point is not a org heading"))
                             (project-undef (mk-org-entry-name)))))
@@ -938,7 +938,7 @@ See also `mk-org-entry-nearest-active'."
 
 (defun mk-org-config-insert (proj-name config-alist &optional insert-undefined insert-internal headline)
   (interactive)
-  (unless (org-mode-p)
+  (unless (eq major-mode 'org-mode)
     (error "mk-org: current buffer not in org-mode"))
   (unless proj-name
     (setq proj-name (or (cadr (assoc 'name config-alist) headline) "NewProject")))
@@ -989,7 +989,7 @@ See also `mk-org-entry-nearest-active'."
                                     ((looking-at org-complex-heading-regexp)
                                      (org-end-of-subtree)
                                      (mk-org-config-insert proj-name config-alist nil nil headline))
-                                    ((org-mode-p)
+                                    ((eq major-mode 'org-mode)
                                      (mk-org-config-insert proj-name config-alist nil nil headline))))))
          (save-buffer)
          (set-buffer-modified-p mod)
