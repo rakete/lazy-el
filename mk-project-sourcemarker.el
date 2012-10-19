@@ -141,11 +141,7 @@
                                (mk-sourcemarker-save))
                              (mk-sourcemarker-with-project-db
                               (let* ((filename (buffer-file-name buf))
-                                     (sm (if (mk-sourcemarker-with-project-db
-                                              (gethash filename (symbol-value (intern continue-db-symbol))))
-                                             (mk-sourcemarker-with-project-db
-                                              (gethash filename (symbol-value (intern-soft continue-db-symbol)) nil))
-                                           (gethash filename (symbol-value (intern-soft continue-db-symbol)) nil)))
+                                     (sm (gethash filename (symbol-value (intern-soft continue-db-symbol)) nil))
                                      (timestamp (and sm (read (cdr (assoc :timestamp sm))))))
                                 (if timestamp
                                     (add-to-list 'results `(,timestamp . ,buf))
