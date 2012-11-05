@@ -36,6 +36,7 @@
 (require 'grep)
 (require 'thingatpt)
 (require 'cl)
+(require 'xcscope)
 
 (defvar mk-proj-version "1.6.0")
 
@@ -84,11 +85,11 @@ value is not used if a custom find command is set in
 See also `mk-proj-optional-vars' `mk-proj-var-before-get-functions'")
 
 (defvar mk-proj-optional-vars '(parent ;; parent needs to come first!
+                                languages
                                 src-patterns
                                 ignore-patterns
                                 ack-args
                                 vcs
-                                tags-file
                                 compile-cmd
                                 install-cmd
                                 run-cmd
@@ -99,7 +100,10 @@ See also `mk-proj-optional-vars' `mk-proj-var-before-get-functions'")
                                 src-find-cmd
                                 grep-find-cmd
                                 index-find-cmd
+                                tags-file
                                 etags-cmd
+                                cscope-namefile
+                                cscope-cmd
                                 patterns-are-regex
                                 friends
                                 open-friends-cache)
@@ -114,26 +118,40 @@ See also `mk-proj-required-vars' `mk-proj-var-before-get-functions'")
   (when (stringp val)
     (expand-file-name val)))
 
+(defun mk-proj-basedir-expand (var val &optional proj-name config-alist)
+  (when (stringp val)
+    (file-name-as-directory (expand-file-name val))))
+
 (defun mk-proj-var-get-tags-file (var val &optional proj-name config-alist)
   (if val
       (expand-file-name val)
-    (mk-proj-get-cache-path var proj-name 'copy)))
+    (mk-proj-get-cache-path var proj-name t)))
 
 (defun mk-proj-var-get-open-file-cache (var val &optional proj-name config-alist)
   (if val
       (expand-file-name val)
-    (mk-proj-get-cache-path var proj-name)))
+    (mk-proj-get-cache-path var proj-name nil)))
 
 (defun mk-proj-var-get-file-list-cache (var val &optional proj-name config-alist)
   (if val
       (expand-file-name val)
     (mk-proj-get-cache-path var proj-name t)))
 
-(defvar mk-proj-var-before-get-functions '((basedir . mk-proj-var-expand)
+(defun mk-proj-var-guess-languages (var val &optional proj-name config-alist)
+  (or val (mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns proj-name))))
+
+(defvar mk-proj-var-before-get-functions '((basedir . mk-proj-basedir-expand)
                                            (tags-file . mk-proj-var-get-tags-file)
+                                           (cscope-namefile . mk-proj-var-get-tags-file)
                                            (file-list-cache . mk-proj-var-get-file-list-cache)
                                            (open-files-cache . mk-proj-var-get-open-file-cache)
-                                           (open-friends-cache . mk-proj-var-get-open-file-cache))
+                                           (open-friends-cache . mk-proj-var-get-open-file-cache)
+                                           (languages . mk-proj-var-guess-languages)
+                                           (patterns-are-regex . (lambda (var val &optional proj-name config-alist)
+                                                                   (if (and config-alist
+                                                                            (not (assoc 'patterns-are-regex config-alist)))
+                                                                       t
+                                                                     val))))
   "Config vars from `mk-proj-required-vars' and `mk-proj-optional-vars' (except 'name')
 can be associated with a function in this association list, which will be
 applied to the value of the var right after it is taken from the config-alist.
@@ -231,20 +249,30 @@ incubator root could be guessed as basedir.")
 help guessing a projects basedir. Matching directory names will be ignored
 and their parent directory used as basedir.")
 
-(defvar mk-proj-src-pattern-table '(("h" ".*\\.c" ".*\\.cpp" ".*\\.cc")
-                                    ("hpp" ".*\\.c" ".*\\.cpp" ".*\\.cc")
-                                    ("hh" ".*\\.c" ".*\\.cpp" ".*\\.cc")
-                                    ("c" ".*\\.h")
-                                    ("cpp" ".*\\.h" ".*\\.hpp" ".*\\.hh")
-                                    ("cc" ".*\\.h" ".*\\.hpp" ".*\\.hh")
-                                    ("hs" ".*\\.lhs" ".*\\.cabal")
-                                    ("php" ".*\\.html")
-                                    ("js" ".*\\.html")
-                                    ("el")
-                                    ("lisp")
-                                    ("clojure" ".*\\.clj")
-                                    ("clj" ".*\\.clojure")
-                                    )
+(defvar mk-proj-src-pattern-table '(("h" . (c ".*\\.c" ".*\\.cpp" ".*\\.cc" ".*\\.h"))
+                                    ("hpp" . (cpp ".*\\.cpp" ".*\\.c" ".*\\.h" ".*\\.hpp"))
+                                    ("hh" . (cpp ".*\\.cc" ".*\\.c" ".*\\.h" ".*\\.hh"))
+                                    ("c" . (c ".*\\.c" ".*\\.h"))
+                                    ("cpp" . (cpp ".*\\.cpp"  ".*\\.c" ".*\\.h" ".*\\.hpp"))
+                                    ("cc" . (cpp  ".*\\.cc"  ".*\\.c" ".*\\.h" ".*\\.hh"))
+                                    ("hs" . (haskell  ".*\\.hs" ".*\\.lhs" ".*\\.cabal"))
+                                    ("lhs" . (haskell  ".*\\.hs" ".*\\.lhs" ".*\\.cabal"))
+                                    ("cabal" . (haskell  ".*\\.hs" ".*\\.lhs" ".*\\.cabal"))
+                                    ("php" . (php  ".*\\.php" ".*\\.html"))
+                                    ("js" . (javascript  ".*\\.js" ".*\\.html"))
+                                    ("el" . (elisp  ".*\\.el"))
+                                    ("lisp" . (lisp  ".*\\.lisp"  ".*\\.lsp"))
+                                    ("lsp" . (lisp  ".*\\.lisp"  ".*\\.lsp"))
+                                    ("lua" . (lua ".*\\.lua"))
+                                    ("clojure" . (clojure ".*\\.clj" ".*\\.clojure"))
+                                    ("clj" . (clojure ".*\\.clojure" ".*\\.clj"))
+                                    ("java" . (java ".*\\.java"))
+                                    ("pl" . (perl ".*\\.pl" ".*\\.pm" ".*\\.pod" ".*\\.t"))
+                                    ("pm" . (perl ".*\\.pl" ".*\\.pm" ".*\\.pod" ".*\\.t"))
+                                    ("pod" . (perl ".*\\.pl" ".*\\.pm" ".*\\.pod" ".*\\.t"))
+                                    ("t" . (perl ".*\\.pl" ".*\\.pm" ".*\\.pod" ".*\\.t"))
+                                    ("py" . (python ".*\\.py"))
+                                    ("sh" . (shell . ".*\\.sh")))
   "Maps file suffixes to regexps used as source-patterns when guessing a
 project config from the currently opened file in the active buffer.")
 
@@ -260,6 +288,24 @@ See also `mk-proj-config-save-section'")
 can find it, if not it creates it at the end of the file).
 
 See also `mk-proj-config-save-location'")
+
+(defvar mk-proj-language-source-tagging '((c . (etags cscope gtags semantic))
+                                          (cpp . (etags cscope gtags semantic))
+                                          (csharp . (etags semantic))
+                                          (elisp . (etags semantic))
+                                          (erlang . (etags semantic))
+                                          (lisp . (etags semantic))
+                                          (lua . (etags))
+                                          (scheme . (etags semantic))
+                                          (haskell . (htags))
+                                          (ocaml . (etags))
+                                          (perl . (etags))
+                                          (python . (etags semantic))
+                                          (php . (etags gtags semantic))
+                                          (shell . (etags))
+                                          (ruby . (etags))
+                                          (java . (etags gtags semantic))
+                                          (javascript . (etags semantic))))
 
 
 ;; ---------------------------------------------------------------------
@@ -938,6 +984,17 @@ find command will be used and the `mk-proj-ignore-patterns' and
 
 ;; (mk-proj-guess-buffers (current-buffer) mk-proj-incubator-paths)
 
+(defun mk-proj-src-pattern-languages (src-patterns)
+  (let ((lang nil)
+        (languages nil))
+    (loop for pattern in src-patterns
+          do (setq lang (cadr (assoc (car (last (split-string pattern "\\." t))) mk-proj-src-pattern-table)))
+          if (not (eq lang nil))
+          do (add-to-list 'languages lang))
+    languages))
+
+;;(mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns))
+
 (defvar mk-proj-guess-functions '((buffer . ((()
                                               `(1 . ,(current-buffer)))))
                                   (mode . (((buffer)
@@ -1030,10 +1087,10 @@ find command will be used and the `mk-proj-ignore-patterns' and
                                                                    (and (last splits)
                                                                         (> (length splits) 1)))
                                                               do (let ((file-ending (car (last (split-string f "\\." t)))))
-                                                                   (add-to-list 'patterns (concat ".*\\." (regexp-quote file-ending)))
+                                                                   ;;(add-to-list 'patterns (concat ".*\\." (regexp-quote file-ending)))
                                                                    (mapc (lambda (s)
                                                                            (add-to-list 'patterns s))
-                                                                         (cdr (assoc file-ending mk-proj-src-pattern-table))))
+                                                                         (cddr (assoc file-ending mk-proj-src-pattern-table))))
                                                               else
                                                               do (add-to-list 'patterns (regexp-quote f))))
                                                       (when files
@@ -1067,8 +1124,39 @@ find command will be used and the `mk-proj-ignore-patterns' and
                                   (vcs . (((basedir)
                                            (let ((r nil))
                                              (loop for f in (directory-files basedir)
-                                                   until (some (lambda (y) (string-equal (cdr y) f)) mk-proj-vcs-path)
-                                                   finally return `(10 . ,f))))))))
+                                                   if (some (lambda (y)
+                                                              (string-equal (cdr y) f)) mk-proj-vcs-path)
+                                                   return `(10 . ,(car (rassoc f mk-proj-vcs-path))))))))
+                                  (etags-cmd . ((nil
+                                                 '(10 . "etags --extra=fq --fields=+afiklmnsSzt --C++-kinds=+p --C-kinds=+p -o"))))
+                                  (languages . (((src-patterns)
+                                                 (let ((languages (mk-proj-src-pattern-languages src-patterns)))
+                                                   (when languages
+                                                     `(10 . ,languages))))))
+                                  (ack-args . (((languages)
+                                                (let ((args nil))
+                                                  (dolist (lang languages)
+                                                    (cond ((eq lang 'c)
+                                                           (add-to-list 'args "--cc"))
+                                                          ((eq lang 'cpp)
+                                                           (add-to-list 'args "--cpp"))
+                                                          ((eq lang 'elisp)
+                                                           (add-to-list 'args "--el"))
+                                                          ((eq lang 'perl)
+                                                           (add-to-list 'args "--perl"))
+                                                          ((eq lang 'python)
+                                                           (add-to-list 'args "--python"))
+                                                          ((eq lang 'lisp)
+                                                           (add-to-list 'args "--lisp"))
+                                                          ((eq lang 'scheme)
+                                                           (add-to-list 'args "--scheme"))
+                                                          ((eq lang 'shell)
+                                                           (add-to-list 'args "--shell"))
+                                                          ((eq lang 'haskell)
+                                                           (add-to-list 'args "--haskell"))))
+                                                  (when args
+                                                    `(10 . ,(reduce (lambda (a b) (concat a " " b))
+                                                                    args)))))))))
 
 (defun* mk-proj-guess-alist (&optional ask-basedir ask-name)
   ;; go through mk-proj-guess-functions and collect all symbols that are used
@@ -1553,7 +1641,12 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
       (error "Invalid VCS setting!"))
     (message "Loading project %s ..." proj-name)
     (cd (file-name-as-directory (mk-proj-get-config-val 'basedir)))
-    (mk-proj-tags-load)
+    (mk-proj-etags-load mk-proj-name)
+    (dolist (friend (mk-proj-get-config-val 'friends))
+      (mk-proj-etags-load mk-proj-name friend))
+    (mk-proj-cscope-load mk-proj-name)
+    (dolist (friend (mk-proj-get-config-val 'friends))
+      (mk-proj-cscope-load mk-proj-name friend))
     (mk-proj-fib-init)
     (add-hook 'kill-emacs-hook 'mk-proj-kill-emacs-hook)
     (when (mk-proj-get-config-val 'startup-hook)
@@ -1607,7 +1700,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
         (progn
           (message "Unloading project %s" mk-proj-name)
           (run-hooks 'mk-proj-before-unload-hook)
-          (mk-proj-tags-clear)
+          (mk-proj-etags-clear)
+          (mk-proj-cscope-clear)
           (mk-proj-maybe-kill-buffer (mk-proj-fib-name))
           (mk-proj-save-open-file-info)
           (mk-proj-save-open-friends-info)
@@ -1781,64 +1875,181 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 ;; Etags
 ;; ---------------------------------------------------------------------
 
-(defun mk-proj-tags-load ()
+(defun mk-proj-etags-load (&optional proj-name tags-proj)
   "Load TAGS file (if tags-file set)"
-  (mk-proj-tags-clear)
-  (setq tags-file-name  (mk-proj-get-config-val 'tags-file)
-        tags-table-list nil)
-  (when (and (mk-proj-get-config-val 'tags-file)
-             (file-readable-p (mk-proj-get-config-val 'tags-file)))
-    (let ((zeitgeist-prevent-send t))
-      (visit-tags-table (mk-proj-get-config-val 'tags-file)))))
+  (unless proj-name
+    (mk-proj-assert-proj)
+    (setq proj-name mk-proj-name))
+  (let ((zeitgeist-prevent-send t)
+        (tags-add-tables t))
+    (when (and (mk-proj-get-config-val 'tags-file proj-name t)
+               (file-readable-p (mk-proj-get-config-val 'tags-file proj-name t)))
+      (visit-tags-table (mk-proj-get-config-val 'tags-file proj-name t)))
+    (when (and (boundp 'etags-table-alist)
+               tags-proj
+               (mk-proj-get-config-val 'tags-file tags-proj t)
+               (file-readable-p (mk-proj-get-config-val 'tags-file tags-proj t)))
+      (let* ((proj-name-entry-key (concat (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t))) ".*"))
+             (proj-name-entry-value (cdr (assoc proj-name-entry-key etags-table-alist)))
+             (tags-proj-entry-key (concat (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir tags-proj t))) ".*")))
+        ;; main entry proj-name -> tags-file from proj-name, and from tags-proj, and all other that were already present in the list
+        (add-to-list 'proj-name-entry-value (mk-proj-get-config-val 'tags-file tags-proj t) nil)
+        (unless (string-equal proj-name tags-proj)
+          (add-to-list 'proj-name-entry-value (mk-proj-get-config-val 'tags-file proj-name t) t))
+        (setq etags-table-alist (remove-if (lambda (xs) (string-equal (car xs) proj-name-entry-key)) etags-table-alist))
+        (add-to-list 'etags-table-alist (append (list proj-name-entry-key) proj-name-entry-value))
+        ;; another entry for tags-proj
+        (setq etags-table-alist (remove-if (lambda (xs) (string-equal (car xs) tags-proj-entry-key)) etags-table-alist))
+        (add-to-list 'etags-table-alist (append (list tags-proj-entry-key) proj-name-entry-value))
+        ))))
 
-(defun mk-proj-tags-clear ()
+(defun mk-proj-cscope-load (&optional proj-name tags-proj)
+  (unless proj-name
+    (mk-proj-assert-proj)
+    (setq proj-name mk-proj-name))
+  (unless cscope-initial-directory
+    (setq cscope-initial-directory (file-name-directory (mk-proj-get-config-val 'basedir proj-name t))))
+  (let* ((db-key (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name))))
+         (current-db-list (or (assoc db-key cscope-database-regexps)
+                              (list (file-name-directory (mk-proj-get-config-val 'basedir proj-name t)))))
+         (proj-entry (list (file-name-directory (mk-proj-get-config-val 'cscope-namefile proj-name t))
+                           (list "-s" (mk-proj-get-config-val 'basedir proj-name))))
+         (tags-proj-entry (when tags-proj
+                            (list (file-name-directory (mk-proj-get-config-val 'cscope-namefile tags-proj t))
+                                  (list "-s" (mk-proj-get-config-val 'basedir tags-proj))))))
+    (add-to-list 'current-db-list proj-entry 'eq)
+    (when tags-proj
+      (add-to-list 'current-db-list tags-proj-entry 'eq))
+    (setq cscope-database-regexps (remove-if (lambda (xs)
+                                               (string-equal (car xs) (car current-db-list)))
+                                             cscope-database-regexps))
+    (add-to-list 'cscope-database-regexps current-db-list 'eq)))
+
+(defun mk-proj-etags-clear ()
   "Clear the TAGS file (if tags-file set)"
-  (let ((zeitgeist-prevent-send t))
-    (when (and (mk-proj-get-config-val 'tags-file)
-               (get-file-buffer (mk-proj-get-config-val 'tags-file)))
-      (mk-proj-maybe-kill-buffer (get-file-buffer (mk-proj-get-config-val 'tags-file))))
-    (setq tags-file-name  nil
-          tags-table-list nil)))
+  (dolist (proj-name (append (list mk-proj-name) (mk-proj-get-config-val 'friends mk-proj-name t)))
+    (let ((zeitgeist-prevent-send t))
+      (when (and (mk-proj-get-config-val 'tags-file proj-name t)
+                 (get-file-buffer (mk-proj-get-config-val 'tags-file proj-name t)))
+        (mk-proj-maybe-kill-buffer (get-file-buffer (mk-proj-get-config-val 'tags-file proj-name t))))))
+  (setq tags-file-name  nil
+        tags-table-list nil)
+  (when (boundp 'etags-table-alist)
+    (setq etags-table-alist nil)))
 
-(defun mk-proj-etags-cb (process event)
+(defun mk-proj-cscope-clear ()
+  (setq cscope-initial-directory nil
+        cscope-database-regexps nil))
+
+(defun mk-proj-etags-cb (process event &optional proj-name)
   "Visit tags table when the etags process finishes."
   (message "Etags process %s received event %s" process event)
-  (kill-buffer (get-buffer "*etags*"))
+  (kill-buffer (get-buffer (concat "*etags " proj-name "*")))
   (cond
    ((string= event "finished\n")
-    (mk-proj-tags-load)
-    (message "Refreshing TAGS file %s...done" (mk-proj-get-config-val 'tags-file)))
-   (t (message "Refreshing TAGS file %s...failed" (mk-proj-get-config-val 'tags-file)))))
+    (mk-proj-etags-load mk-proj-name proj-name)
+    (message "Refreshing TAGS file %s...done" (mk-proj-get-config-val 'tags-file proj-name t)))
+   (t (message "Refreshing TAGS file %s...failed" (mk-proj-get-config-val 'tags-file proj-name t)))))
 
-(defun project-tags ()
-  "Regenerate the project's TAG file. Runs in the background."
-  (interactive)
-  (mk-proj-assert-proj)
-  (if (mk-proj-get-config-val 'tags-file)
-      (let* ((tags-file-name (file-name-nondirectory (mk-proj-get-config-val 'tags-file)))
+(defun mk-proj-cscope-cb (process event &optional proj-name)
+  (message "Cscope process %s received event %s" process event)
+  (kill-buffer (get-buffer (concat "*cscope " proj-name "*")))
+  (cond
+   ((string= event "finished\n")
+    (mk-proj-cscope-load mk-proj-name proj-name)
+    (message "Refreshing CSCOPE files in %s...done" (file-name-directory (mk-proj-get-config-val 'cscope-namefile proj-name t))))
+   (t (message "Refreshing CSCOPE files in %s...failed" (file-name-directory (mk-proj-get-config-val 'cscope-namefile proj-name t))))))
+
+(defun mk-proj-cscope (&optional proj-name)
+  (unless proj-name
+    (mk-proj-assert-proj)
+    (setq proj-name mk-proj-name))
+  (if (mk-proj-get-config-val 'cscope-namefile proj-name t)
+      (let* ((cscope-files (mk-proj-get-config-val 'cscope-namefile proj-name t))
+             (default-directory (mk-proj-get-config-val 'basedir proj-name))
+             (default-find-cmd (concat "find '" (mk-proj-get-config-val 'basedir proj-name t)
+                                       "' -type f "
+                                       (mk-proj-find-cmd-src-args (mk-proj-get-config-val 'src-patterns proj-name t) proj-name)
+                                       (mk-proj-find-cmd-ignore-args (mk-proj-get-config-val 'ignore-patterns proj-name t) proj-name)
+                                       ))
+             (cscope-find-cmd (concat default-find-cmd " > " cscope-files))
+             (cscope-shell-cmd (if (mk-proj-get-config-val 'cscope-cmd proj-name t)
+                                   (mk-proj-get-config-val 'cscope-cmd proj-name t)
+                                 (concat "cscope -b -q -k -i " cscope-files)))
+             (cscope-cmd (concat cscope-find-cmd "; " cscope-shell-cmd))
+             (cscope-proc-name (concat proj-name "-cscope-process")))
+        (message "project-cscope default-dir %s" default-directory)
+        (message "project-cscope cscope-cmd \"%s\"" cscope-cmd)
+        (message "Refreshing CSCOPE files in %s..." (file-name-directory cscope-files))
+        (start-process-shell-command cscope-proc-name (concat "*cscope " proj-name "*") cscope-cmd)
+        (set-process-sentinel (get-process cscope-proc-name) `(lambda (p e) (mk-proj-cscope-cb p e ,proj-name)))
+        )))
+
+(defun mk-proj-etags (&optional proj-name)
+  (unless proj-name
+    (mk-proj-assert-proj)
+    (setq proj-name mk-proj-name))
+  (if (mk-proj-get-config-val 'tags-file proj-name t)
+      (let* ((tags-file-name (file-name-nondirectory (mk-proj-get-config-val 'tags-file proj-name t)))
              ;; If the TAGS file is in the basedir, we can generate
              ;; relative filenames which will allow the TAGS file to
              ;; be relocatable if moved with the source. Otherwise,
              ;; run the command from the TAGS file's directory and
              ;; generate absolute filenames.
-             (relative-tags (string= (file-name-as-directory (mk-proj-get-config-val 'basedir))
-                                     (file-name-directory (mk-proj-get-config-val 'tags-file))))
-             (default-directory (file-name-as-directory (file-name-directory (mk-proj-get-config-val 'tags-file))))
-             (default-find-cmd (concat "find '" (if relative-tags "." (file-name-as-directory (mk-proj-get-config-val 'basedir)))
+             (relative-tags (string= (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t))
+                                     (file-name-directory (mk-proj-get-config-val 'tags-file proj-name t))))
+             (default-directory (file-name-as-directory (file-name-directory (mk-proj-get-config-val 'tags-file proj-name t))))
+             (default-find-cmd (concat "find '" (if relative-tags "." (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t)))
                                        "' -type f "
-                                       (mk-proj-find-cmd-src-args (mk-proj-get-config-val 'src-patterns))))
-             (etags-shell-cmd (if (mk-proj-get-config-val 'etags-cmd)
-                                  (mk-proj-get-config-val 'etags-cmd)
-                                "etags -o"))
-             (etags-cmd (concat (or (mk-proj-find-cmd-val 'src) default-find-cmd)
-                                " | " etags-shell-cmd " '" tags-file-name "' - "))
-             (proc-name "etags-process"))
+                                       (mk-proj-find-cmd-src-args (mk-proj-get-config-val 'src-patterns proj-name t) proj-name)
+                                       (mk-proj-find-cmd-ignore-args (mk-proj-get-config-val 'ignore-patterns proj-name t) proj-name)
+                                       ))
+             (etags-shell-cmd (if (mk-proj-get-config-val 'etags-cmd proj-name t)
+                                  (mk-proj-get-config-val 'etags-cmd proj-name t)
+                                "etags --extra=fq --fields=+afiklmnsSzt --C++-kinds=+p --C-kinds=+p -o"))
+             (etags-cmd (concat (or (mk-proj-find-cmd-val 'src proj-name) default-find-cmd)
+                                " | " etags-shell-cmd " '" tags-file-name "' -L - "))
+             (etags-proc-name (concat proj-name "-etags-process")))
         (message "project-tags default-dir %s" default-directory)
-        (message "project-tags cmd \"%s\"" etags-cmd)
-        (message "Refreshing TAGS file %s..." (mk-proj-get-config-val 'tags-file))
-        (start-process-shell-command proc-name "*etags*" etags-cmd)
-        (set-process-sentinel (get-process proc-name) 'mk-proj-etags-cb))
-    (message "mk-proj-tags-file is not set")))
+        (message "project-tags etags-cmd \"%s\"" etags-cmd)
+        (message "Refreshing TAGS file %s..." (mk-proj-get-config-val 'tags-file proj-name t))
+        (start-process-shell-command etags-proc-name (concat "*etags " proj-name "*") etags-cmd)
+        (set-process-sentinel (get-process etags-proc-name) `(lambda (p e) (mk-proj-etags-cb p e ,proj-name)))
+        )))
+
+(defun project-tags ()
+  "Regenerate the project's TAG file. Runs in the background."
+  (interactive)
+  (mk-proj-assert-proj)
+  (if (mk-proj-has-univ-arg)
+      (project-tags-with-friends)
+    (dolist (tagging (remove-duplicates (apply 'append (mapcar (lambda (l) (assoc l mk-proj-language-source-tagging))
+                                                               (mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns))))))
+      (cond ((eq tagging 'etags)
+             (mk-proj-etags-clear)
+             (mk-proj-etags))
+            ((eq tagging 'cscope)
+             (mk-proj-cscope-clear)
+             (mk-proj-cscope))))))
+
+(defun project-tags-with-friends ()
+  (interactive)
+  (mk-proj-assert-proj)
+  (dolist (tagging (remove-duplicates (apply 'append (mapcar (lambda (l) (assoc l mk-proj-language-source-tagging))
+                                                             (mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns))))))
+    (cond ((eq tagging 'etags)
+           (mk-proj-etags-clear)
+           (mk-proj-etags mk-proj-name))
+          ((eq tagging 'cscope)
+           (mk-proj-cscope-clear)
+           (mk-proj-cscope mk-proj-name))))
+  (dolist (friend (mk-proj-get-config-val 'friends mk-proj-name t))
+    (dolist (tagging (remove-duplicates (apply 'append (mapcar (lambda (l) (assoc l mk-proj-language-source-tagging))
+                                                               (mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns friend))))))
+      (cond ((eq tagging 'etags)
+             (mk-proj-etags friend))
+            ((eq tagging 'cscope)
+             (mk-proj-cscope friend))))))
 
 (defun mk-proj-find-cmd-src-args (src-patterns &optional proj-name)
   "Generate the ( -name <pat1> -o -name <pat2> ...) pattern for find cmd"
@@ -1906,7 +2117,7 @@ C-u prefix, start from the current directory."
 
 (define-compilation-mode ack-mode "Ack" "Ack compilation mode." nil)
 
-(defvar mk-proj-ack-default-args "--nocolor --nogroup")
+(defvar mk-proj-ack-default-args "--nocolor --nogroup --column")
 
 (defun mk-proj-ack-cmd (regex)
   "Generate the ack command string given a regex to search for."
@@ -1927,11 +2138,11 @@ With C-u prefix act as `project-ack-with-friends'."
            (regex (or phrase
                       (if wap (read-string (concat "Ack project for (default \"" wap "\"): ") nil nil wap)
                         (read-string "Ack project for: "))))
-           (path (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t)))
+           (path (file-name-as-directory (mk-proj-get-config-val 'basedir)))
            (whole-cmd (concat (mk-proj-ack-cmd regex) " " path))
            (confirmed-cmd (read-string "Ack command: " whole-cmd nil whole-cmd))
-           (default-directory (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t))))
-      (compilation-start confirmed-cmd 'ack-mode))))
+           (default-directory (file-name-as-directory (mk-proj-get-config-val 'basedir))))
+      (compilation-start confirmed-cmd 'ack-and-a-half-mode))))
 
 ;; ---------------------------------------------------------------------
 ;; Compile
@@ -2059,21 +2270,22 @@ If it is nil, return all files.
 Returned file paths are relative to the project's basedir."
   (unless (get-buffer (mk-proj-fib-name proj-name))
     (mk-proj-fib-init proj-name))
-  (with-current-buffer (mk-proj-fib-name proj-name)
-    (let ((basedir (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name)))
-          (current-filename nil))
-      (sort (loop for line in (split-string (buffer-string) "\n" t)
-                  if (> (length line) 0)
-                  do (setq current-filename (if (file-name-absolute-p line)
-                                                (file-relative-name line (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name)))
-                                              line))
-                  if (or (not regex)
-                         (and (stringp regex)
-                              (string-match regex current-filename))
-                         (and (listp regex)
-                              (some (lambda (re) (string-match re current-filename)) regex)))
-                  collect current-filename)
-            #'string-lessp))))
+  (when (gethash proj-name mk-proj-list nil)
+    (with-current-buffer (mk-proj-fib-name proj-name)
+      (let ((basedir (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t)))
+            (current-filename nil))
+        (sort (loop for line in (split-string (buffer-string) "\n" t)
+                    if (> (length line) 0)
+                    do (setq current-filename (if (file-name-absolute-p line)
+                                                  (file-relative-name line basedir)
+                                                line))
+                    if (or (not regex)
+                           (and (stringp regex)
+                                (string-match regex current-filename))
+                           (and (listp regex)
+                                (some (lambda (re) (string-match re current-filename)) regex)))
+                    collect current-filename)
+              #'string-lessp)))))
 
 (defun mk-proj-files (&optional proj-name)
   (unless proj-name
@@ -2393,13 +2605,13 @@ project is not loaded."
   (let* ((wap (word-at-point))
          (regex (if wap (read-string (concat "Ack project for (default \"" wap "\"): ") nil nil wap)
                   (read-string "Ack project for: ")))
-         (paths (mk-proj-find-unique-paths (append (list (mk-proj-get-config-val 'basedir mk-proj-name t)) (mk-proj-friend-basedirs))))
+         (paths (mk-proj-find-unique-paths (append (list (mk-proj-get-config-val 'basedir)) (mk-proj-friend-basedirs))))
          (whole-cmd (concat (let ((s ""))
                               (dolist (d paths s)
                                 (setq s (concat s (mk-proj-ack-cmd regex) " " d "; "))))))
          (confirmed-cmd (read-string "Ack command: " whole-cmd nil whole-cmd))
-         (default-directory (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t))))
-    (compilation-start confirmed-cmd 'ack-mode)))
+         (default-directory (file-name-as-directory (mk-proj-get-config-val 'basedir))))
+    (compilation-start confirmed-cmd 'ack-and-a-half-mode)))
 
 ;;(defun mk-proj-find-projects-owning-file (file))
 
