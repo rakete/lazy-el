@@ -1044,7 +1044,22 @@ find command will be used and the `mk-proj-ignore-patterns' and
                                                                             (lambda (a b) (> (length a) (length b))))))
                                                      (when (car found-paths)
                                                        `(300 . ,(car  found-paths)))))))
-                                              ))
+                                              ;; find basedir by trying to match buffers directory to project basedirs
+                                              ((buffer)
+                                               (let ((basedirs '()))
+                                                 (dolist (proj-name (mk-proj-find-projects-owning-buffer buffer))
+                                                   (let ((basedir (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t))))
+                                                     (unless (some (apply-partially 'string-equal basedir) basedirs)
+                                                       (add-to-list 'basedirs basedir))))
+                                                 (if (eq (length basedirs) 1)
+                                                     `(400 . ,(car basedirs))
+                                                   (let ((basedirs-without-incubators (remove-if (lambda (dir)
+                                                                                                   (some (lambda (incubator)
+                                                                                                           (string-equal dir (file-name-as-directory incubator)))
+                                                                                                         mk-proj-incubator-paths))
+                                                                                                 basedirs)))
+                                                     (when (eq (length basedirs-without-incubators) 1)
+                                                       `(150 . ,(car basedirs-without-incubators)))))))))
                                   (name . (((buffer)
                                             (progn
                                               (unless buffer
@@ -1101,7 +1116,7 @@ find command will be used and the `mk-proj-ignore-patterns' and
                                                         `(100 . ,patterns))))))
                                   (patterns-are-regex . ((nil
                                                           '(10 . t))))
-                                  (compile-cmd . ((()
+                                  (compile-cmd . ((nil
                                                    (when (and (boundp 'compile-command)
                                                               compile-command)
                                                      `(50 . ,compile-command)))
@@ -1724,6 +1739,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
              (file-exists-p (buffer-file-name (current-buffer))))
     (cd (mk-proj-dirname (buffer-file-name (current-buffer)))))
   (modify-frame-parameters (selected-frame) (list (cons 'name "Emacs")))
+  (setq compile-command nil)
   (message "Project settings have been cleared"))
 
 (defun project-close-files ()
