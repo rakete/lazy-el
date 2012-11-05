@@ -359,8 +359,8 @@ load time. See also `project-menu-remove'."
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  (if (or (mk-proj-get-config-val 'vcs) (mk-proj-get-config-val 'vcs proj-name t))
-      (cdr (assoc (or (mk-proj-get-config-val 'vcs) (mk-proj-get-config-val 'vcs proj-name t)) mk-proj-vcs-path))
+  (if (mk-proj-get-config-val 'vcs proj-name)
+      (cdr (assoc (mk-proj-get-config-val 'vcs proj-name) mk-proj-vcs-path))
     nil))
 
 (defun mk-proj-has-univ-arg ()
@@ -379,9 +379,9 @@ load time. See also `project-menu-remove'."
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
   (let ((cmd (ecase context
-               ('src   (mk-proj-get-config-val 'src-find-cmd proj-name))
-               ('grep  (mk-proj-get-config-val 'grep-find-cmd proj-name))
-               ('index (mk-proj-get-config-val 'index-find-cmd proj-name)))))
+               ('src   (mk-proj-get-config-val 'src-find-cmd proj-name t))
+               ('grep  (mk-proj-get-config-val 'grep-find-cmd proj-name t))
+               ('index (mk-proj-get-config-val 'index-find-cmd proj-name t)))))
     (if cmd
         (cond ((stringp cmd) cmd)
               ((functionp cmd) (funcall cmd context))
@@ -574,7 +574,7 @@ Examples:
 
 (defvar mk-proj-list (make-hash-table :test 'equal))
 
-(defun mk-proj-find-config (&optional proj-name inherit)
+(defun* mk-proj-find-config (&optional proj-name (inherit t))
   "Get a projects config-alist from the global projects hashmap."
   (unless proj-name
     (mk-proj-assert-proj)
@@ -587,7 +587,7 @@ Examples:
             alist (append alist (remove-if (lambda (x) (some (lambda (y) (eq (first x) (first y))) alist)) child))))
     alist))
 
-(defun mk-proj-get-config-val (key &optional proj-name inherit)
+(defun* mk-proj-get-config-val (key &optional proj-name (inherit t))
   "Finds the value associated with KEY. A project PROJ
 can optionally be specified.
 If the third argument INHERIT is non-nil, all parents will queried
@@ -595,7 +595,7 @@ for the KEY and the first value that is found is returned."
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  (let* ((proj-alist (mk-proj-find-config proj-name))
+  (let* ((proj-alist (mk-proj-find-config proj-name nil))
          (fn (cdr (assoc key mk-proj-var-before-get-functions)))
          (val  (or (when fn
                      (funcall fn key (cadr (assoc key proj-alist)) proj-name proj-alist))
@@ -616,7 +616,7 @@ for the KEY and the first value that is found is returned."
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  (let* ((current-alist (mk-proj-find-config proj-name))
+  (let* ((current-alist (mk-proj-find-config proj-name nil))
          (new-alist current-alist))
     (when current-alist
       (add-to-list 'new-alist `(,key ,value))
@@ -646,8 +646,9 @@ for the KEY and the first value that is found is returned."
                              (add-to-list 'evaluated-config-alist `(,key ,value)))))))
     (when (cadr (assoc 'parent result-alist))
       (message "%s inherits from %s" proj-name (cadr (assoc 'parent result-alist)))
-      (setq result-alist (mk-proj-alist-union (gethash (cadr (assoc 'parent result-alist)) mk-proj-list)
-                                              result-alist)))
+      ;; (setq result-alist (mk-proj-alist-union (gethash (cadr (assoc 'parent result-alist)) mk-proj-list)
+      ;;                                         result-alist))
+      )
     (when (gethash proj-name mk-proj-list)
       (message "union with %s" proj-name)
       (setq result-alist (mk-proj-alist-union (gethash proj-name mk-proj-list) result-alist)))
@@ -829,8 +830,9 @@ find command will be used and the `mk-proj-ignore-patterns' and
   (let ((projects nil))
     (maphash (lambda (k v)
                (when (and (buffer-file-name buf)
-                          (mk-proj-get-config-val 'basedir k)
-                          (mk-proj-path-equal (buffer-file-name buf) (mk-proj-get-config-val 'basedir k)))
+                          (mk-proj-get-config-val 'basedir k t)
+                          (mk-proj-path-equal (buffer-file-name buf) (mk-proj-get-config-val 'basedir k t))
+                          (some (lambda (re) (string-match re (buffer-file-name buf))) (mk-proj-get-config-val 'src-patterns k t)))
                  (add-to-list 'projects k)))
              (or (and name-list
                       (let ((temp-hash (make-hash-table :test 'equal)))
@@ -1314,7 +1316,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
        (set-window-start window (marker-position marker))
        (lisp-interaction-mode)
        (goto-char (marker-position marker))
-       (mk-proj-config-save mk-proj-name (mk-proj-find-config mk-proj-name))
+       (mk-proj-config-save mk-proj-name (mk-proj-find-config mk-proj-name nil))
        (set-window-dedicated-p window t)
        (mk-proj-backend-edit-project-mode 'elisp)
        (buffer-enable-undo)))
@@ -1481,12 +1483,12 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
       (unless (mk-proj-get-config-val v proj-name t)
         (throw 'mk-proj-check-required-vars v)))))
 
-(defun mk-proj-get-cache-path (symbol &optional proj-name inherit)
+(defun* mk-proj-get-cache-path (symbol &optional proj-name (inherit t))
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
   (let ((directory (concat mk-global-cache-root
-                           (cond ((mk-proj-get-config-val 'parent proj-name)
+                           (cond ((mk-proj-get-config-val 'parent proj-name nil)
                                   (let ((a (concat "/" (mk-proj-join "/" (mk-proj-ancestry proj-name)))))
                                     (concat a "/")))
                                  (t
@@ -1496,19 +1498,19 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
     (let ((r (concat directory file)))
       (cond ((file-exists-p r)
              r)
-            ((and (mk-proj-get-config-val 'parent proj-name)
-                  (file-exists-p (or (mk-proj-get-config-val symbol (mk-proj-get-config-val 'parent proj-name))
-                                     (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent proj-name))))
-                  (or (eq inherit 'copy)))
+            ((and (mk-proj-get-config-val 'parent proj-name nil)
+                  (file-exists-p (or (mk-proj-get-config-val symbol (mk-proj-get-config-val 'parent proj-name nil) nil)
+                                     (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent proj-name nil) t)))
+                  (eq inherit 'copy))
              (progn
-               (copy-file (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent proj-name) t) r)
+               (copy-file (or (mk-proj-get-config-val symbol (mk-proj-get-config-val 'parent proj-name nil) nil)
+                              (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent proj-name nil) t)) r)
                r))
-            ((and (mk-proj-get-config-val 'parent proj-name)
-                  (file-exists-p (or (mk-proj-get-config-val symbol (mk-proj-get-config-val 'parent proj-name))
-                                     (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent proj-name))))
+            ((and (mk-proj-get-config-val 'parent proj-name nil)
+                  (eq (mk-proj-get-config-val 'basedir proj-name nil) nil)
                   (eq inherit t))
-             (or (mk-proj-get-config-val symbol (mk-proj-get-config-val 'parent proj-name))
-                 (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent proj-name))))
+             (or (mk-proj-get-config-val symbol (mk-proj-get-config-val 'parent proj-name nil) nil)
+                 (mk-proj-get-cache-path symbol (mk-proj-get-config-val 'parent proj-name nil) t)))
             (t r)))))
 
 ;;(mk-proj-get-cache-path 'file-list-cache mk-proj-name t)
@@ -1527,13 +1529,13 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 (defun mk-proj-load (proj-name)
   (interactive)
   (let* ((oldname mk-proj-name)
-         (proj-alist (mk-proj-find-config proj-name))
+         (proj-alist (mk-proj-find-config proj-name nil))
          (quiet (and (cadr (assoc 'parent proj-alist))
                      (or (string-equal (cadr (assoc 'parent proj-alist))
                                        mk-proj-name)
                          (and (not (condition-case nil (mk-proj-assert-proj) (error t)))
                               (string-equal (cadr (assoc 'parent proj-alist))
-                                            (mk-proj-get-config-val 'parent)))))))
+                                            (mk-proj-get-config-val 'parent nil nil)))))))
     (unless proj-name
       (error "mk-proj-load: proj-name is nil"))
     (run-hooks 'mk-proj-before-load-hook)
@@ -1579,9 +1581,9 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                      (completing-read "Project Name: " names)))))
     (when (and (cadr (assoc 'name guessed-alist))
                (string-equal name (cadr (assoc 'name guessed-alist)))
-               (not (mk-proj-find-config name)))
+               (not (mk-proj-find-config name nil)))
       (project-def name guessed-alist))
-    (when (not (mk-proj-find-config name))
+    (when (not (mk-proj-find-config name nil))
       (add-to-list 'guessed-alist `(name ,name))
       (project-def name guessed-alist))
     (mk-proj-load name)))
@@ -1668,7 +1670,9 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
              (mk-proj-get-config-val 'basedir proj-name t)
              (string-match (concat "^" (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t)))) file-name)
              (loop for pattern in (mk-proj-get-config-val 'src-patterns proj-name t)
-                   until (string-match (regexp-quote pattern) file-name)
+                   if (string-match (if (mk-proj-get-config-val 'patterns-are-regex proj-name t)
+                                        pattern
+                                      (regexp-quote pattern)) file-name)
                    return t
                    finally return nil))
         t
@@ -1725,7 +1729,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  (if (mk-proj-get-config-val 'basedir proj-name)
+  (if (mk-proj-get-config-val 'basedir proj-name t)
       (let ((b (get-buffer-create "*mk-proj: project-status*")))
         (with-current-buffer b
           (kill-region (point-min) (point-max))
@@ -1843,7 +1847,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
     (setq proj-name mk-proj-name))
   (if src-patterns
       (let ((name-expr " \\(")
-            (regex-or-name-arg (if (mk-proj-get-config-val 'patterns-are-regex proj-name)
+            (regex-or-name-arg (if (mk-proj-get-config-val 'patterns-are-regex proj-name t)
                                    "-regex"
                                  "-name")))
         (dolist (pat src-patterns)
@@ -1944,8 +1948,8 @@ With C-u prefix act as `project-ack-with-friends'."
                              (setq result-compile-command compile-command
                                    compile-command saved-compile-command)
                              result-compile-command)))
-    (let ((cmd (mk-proj-get-config-val 'compile-cmd mk-proj-name t)))
-      (mk-proj-with-directory (mk-proj-get-config-val 'basedir mk-proj-name t)
+    (let ((cmd (mk-proj-get-config-val 'compile-cmd)))
+      (mk-proj-with-directory (mk-proj-get-config-val 'basedir)
                               (cond ((stringp cmd)
                                      (let ((new-cmd (internal-compile cmd)))
                                        (unless (string-equal cmd new-cmd)
@@ -1966,7 +1970,7 @@ With C-u prefix act as `project-ack-with-friends'."
   "Open dired in the project's basedir (or jump to the existing dired buffer)"
   (interactive)
   (mk-proj-assert-proj t)
-  (dired (mk-proj-get-config-val 'basedir t)))
+  (dired (mk-proj-get-config-val 'basedir)))
 
 ;; ---------------------------------------------------------------------
 ;; Find-file
@@ -2083,11 +2087,11 @@ Returned file paths are relative to the project's basedir."
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
   (let ((friendly-files (mapcan (lambda (friend)
-                                  (if (file-exists-p (mk-proj-with-directory (mk-proj-get-config-val 'basedir proj-name)
+                                  (if (file-exists-p (mk-proj-with-directory (mk-proj-get-config-val 'basedir proj-name t)
                                                                              (expand-file-name friend)))
                                       (list friend)
                                     (mk-proj-files friend)))
-                                (mk-proj-get-config-val 'friends proj-name))))
+                                (mk-proj-get-config-val 'friends proj-name t))))
     friendly-files))
 
 (defun mk-proj-normalize-drive-letter (file)
@@ -2134,7 +2138,7 @@ See also: `project-index', `project-find-file-ido'."
                       (ido-completing-read "Select match (ido): " matches)
                     (completing-read "Select match: " matches))))
         (when file
-          (find-file (concat (file-name-as-directory (mk-proj-get-config-val 'basedir)) file))))))))
+          (find-file (concat (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t)) file))))))))
 
 (defun* project-find-file-ido ()
   "Find file in the current project using 'ido'.
@@ -2151,7 +2155,7 @@ selection of the file. See also: `project-index',
   (let ((file (ido-completing-read "Find file in project matching (ido): "
                                    (mk-proj-fib-matches))))
     (when file
-      (find-file (concat (file-name-as-directory (mk-proj-get-config-val 'basedir)) file)))))
+      (find-file (concat (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t)) file)))))
 
 (defun project-multi-occur (regex)
   "Search all open project files for 'regex' using `multi-occur'.
@@ -2237,15 +2241,15 @@ project is not loaded."
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
   (let ((resulting-matches '()))
-    (dolist (friend (mk-proj-get-config-val 'friends proj-name) resulting-matches)
-      (if (file-exists-p (mk-proj-with-directory (mk-proj-get-config-val 'basedir proj-name)
+    (dolist (friend (mk-proj-get-config-val 'friends proj-name t) resulting-matches)
+      (if (file-exists-p (mk-proj-with-directory (mk-proj-get-config-val 'basedir proj-name t)
                                                  (expand-file-name friend)))
           (if regex
               (when (string-match regex friend) (add-to-list 'resulting-matches (expand-file-name friend)))
             (add-to-list 'resulting-matches (expand-file-name friend)))
         (setq resulting-matches (append resulting-matches
                                         (mapcar (lambda (f)
-                                                  (expand-file-name (concat (file-name-as-directory (mk-proj-get-config-val 'basedir friend)) f)))
+                                                  (expand-file-name (concat (file-name-as-directory (mk-proj-get-config-val 'basedir friend t)) f)))
                                                 (mk-proj-fib-matches regex friend))))))
     ;;(remove-duplicates resulting-matches :test #'string-equal)
     ))
@@ -2260,7 +2264,7 @@ project is not loaded."
                    (if (file-exists-p (expand-file-name f))
                        (when (string-equal f file-name)
                          (return-from "friend-loop" t))
-                     (when (mk-proj-find-config f)
+                     (when (mk-proj-find-config f t)
                        (let* ((friend-config (mk-proj-find-config f t))
                               (basedir (expand-file-name (car (cdr (assoc 'basedir friend-config)))))
                               (friend-basedir (if (string-equal (substring basedir -1) "/")
