@@ -1358,7 +1358,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                   (or (not (some (lambda (j) (eq k j)) mk-proj-internal-vars))
                       insert-internal)
                   (or (not (cdr (assoc k mk-proj-var-before-get-functions)))
-                      (not (string-equal (funcall (cdr (assoc k mk-proj-var-before-get-functions)) k nil) (mk-proj-get-config-val k proj-name)))
+                      (not (string-equal (prin1-to-string (funcall (cdr (assoc k mk-proj-var-before-get-functions)) k nil))
+                                         (prin1-to-string (mk-proj-get-config-val k proj-name))))
                       insert-internal))
           do (when (or insert-undefined
                        (assoc k config-alist))
@@ -1490,7 +1491,18 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   (interactive)
   (mk-proj-assert-proj)
   (mk-proj-backend-funcall (mk-proj-detect-backend)
-                           'save mk-proj-name (mk-proj-find-config)))
+                           'save mk-proj-name (mk-proj-find-config nil nil)))
+
+(defun project-insert ()
+  (interactive)
+  (mk-proj-assert-proj)
+  (cond ((or (eq major-mode 'emacs-lisp-mode)
+             (eq major-mode 'lisp-interaction-mode))
+         (mk-proj-backend-funcall 'elisp
+                                  'insert mk-proj-name (mk-proj-find-config nil nil)))
+        ((or (eq major-mode 'org-mode))
+         (mk-proj-backend-funcall 'orgmode
+                                  'insert mk-proj-name (mk-proj-find-config nil nil)))))
 
 (defun* project-create ()
   (interactive)
