@@ -819,7 +819,7 @@ find command will be used and the `mk-proj-ignore-patterns' and
              (message "Defined: %s" proj-name)
              alist)))
         ((and (functionp 'mk-org-entry-define-project)
-              (org-mode-p)
+              (eq major-mode 'org-mode)
               (looking-at org-complex-heading-regexp)
               (mk-org-entry-define-project)))))
 
