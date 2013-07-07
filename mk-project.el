@@ -37,6 +37,7 @@
 (require 'thingatpt)
 (require 'cl)
 (require 'xcscope)
+(require 'etags-table)
 
 (defvar mk-proj-version "1.6.0")
 
@@ -888,7 +889,7 @@ find command will be used and the `mk-proj-ignore-patterns' and
                  mk-proj-list))
     projects))
 
-;;(mk-proj-find-projects-owning-buffer (current-buffer))
+;; (mk-proj-find-projects-owning-buffer (current-buffer))
 
 (defun mk-proj-find-unique-paths (paths)
   (let ((result '()))
@@ -1052,15 +1053,21 @@ find command will be used and the `mk-proj-ignore-patterns' and
                                                    (let ((basedir (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t))))
                                                      (unless (some (apply-partially 'string-equal basedir) basedirs)
                                                        (add-to-list 'basedirs basedir))))
-                                                 (if (eq (length basedirs) 1)
-                                                     `(400 . ,(car basedirs))
-                                                   (let ((basedirs-without-incubators (remove-if (lambda (dir)
-                                                                                                   (some (lambda (incubator)
-                                                                                                           (string-equal dir (file-name-as-directory incubator)))
-                                                                                                         mk-proj-incubator-paths))
-                                                                                                 basedirs)))
-                                                     (when (eq (length basedirs-without-incubators) 1)
-                                                       `(150 . ,(car basedirs-without-incubators)))))))))
+                                                 (let ((basedirs-without-incubators (remove-if (lambda (dir)
+                                                                                                 (some (lambda (incubator)
+                                                                                                         (string-equal (file-name-as-directory dir)
+                                                                                                                       (file-name-as-directory incubator)))
+                                                                                                       mk-proj-incubator-paths))
+                                                                                               basedirs)))
+                                                   (if (and (eq (length basedirs) 1)
+                                                            (eq (length basedirs-without-incubators) 1))
+                                                       `(400 . ,(car basedirs))
+                                                     (if (eq (length basedirs-without-incubators) 1)
+                                                         `(250 . ,(car basedirs-without-incubators))
+                                                       (if (> (length basedirs-without-incubators) 1)
+                                                           `(25 . ,(car basedirs-without-incubators))
+                                                         (if (> (length basedirs) 1)
+                                                             `(10 . ,(car basedirs)))))))))))
                                   (name . (((buffer)
                                             (progn
                                               (unless buffer
@@ -1144,7 +1151,7 @@ find command will be used and the `mk-proj-ignore-patterns' and
                                                               (string-equal (cdr y) f)) mk-proj-vcs-path)
                                                    return `(10 . ,(car (rassoc f mk-proj-vcs-path))))))))
                                   (etags-cmd . ((nil
-                                                 '(10 . "etags --extra=fq --fields=+afiklmnsSzt --C++-kinds=+p --C-kinds=+p -o"))))
+                                                 '(10 . "ctags-exuberant --extra=fq --fields=+afiklmnsSzt --C++-kinds=+p --C-kinds=+p -e -o"))))
                                   (languages . (((src-patterns)
                                                  (let ((languages (mk-proj-src-pattern-languages src-patterns)))
                                                    (when languages
@@ -1191,29 +1198,29 @@ find command will be used and the `mk-proj-ignore-patterns' and
     ;; and makes a let clause out of them, thus binding them in the scope of body
     (macrolet ((alet (&rest body) `(let ,let-args ,@body)))
       (alet
-       (flet ((best-result (rs)
-                           (let (bestscore bestresult)
-                             (dolist (tuple rs bestresult)
-                               (when (or (not bestscore)
-                                         (> (car tuple) bestscore))
-                                 (setq bestscore (car tuple)
-                                       bestresult (cdr tuple))))))
-              (guess-symbol (sym)
-                            ;;(message (concat (format-time-string "%H:%M:%S" (current-time)) " " (prin1-to-string sym)))
-                            (let ((scores '()))
-                              (dolist (flist (cdr (assoc sym mk-proj-guess-functions)) (best-result scores))
-                                (let ((args (first flist))
-                                      (expr (second flist)))
-                                  (dolist (arg args)
-                                    ;; check if neccessary symbols are set, this sets a symbol after guessing it so
-                                    ;; we do not have to guess something twice
-                                    (when (eq (symbol-value arg) 'undefined)
-                                      ;;(message "setting symbol %S" arg)
-                                      (setf (symbol-value arg) (guess-symbol arg))
-                                      ))
-                                  (let ((r (condition-case e (eval expr)
-                                             (error (message "error while guessing %S: %S" sym e)))))
-                                    (when r (add-to-list 'scores r))))))))
+       (cl-labels ((best-result (rs)
+                                (let (bestscore bestresult)
+                                  (dolist (tuple rs bestresult)
+                                    (when (or (not bestscore)
+                                              (> (car tuple) bestscore))
+                                      (setq bestscore (car tuple)
+                                            bestresult (cdr tuple))))))
+                   (guess-symbol (sym)
+                                 ;;(message (concat (format-time-string "%H:%M:%S" (current-time)) " " (prin1-to-string sym)))
+                                 (let ((scores '()))
+                                   (dolist (flist (cdr (assoc sym mk-proj-guess-functions)) (best-result scores))
+                                     (let ((args (first flist))
+                                           (expr (second flist)))
+                                       (dolist (arg args)
+                                         ;; check if neccessary symbols are set, this sets a symbol after guessing it so
+                                         ;; we do not have to guess something twice
+                                         (when (eq (symbol-value arg) 'undefined)
+                                           ;;(message "setting symbol %S" arg)
+                                           (setf (symbol-value arg) (guess-symbol arg))
+                                           ))
+                                       (let ((r (condition-case e (eval expr)
+                                                  (error (message "error while guessing %S: %S in %s" sym e (prin1-to-string expr))))))
+                                         (when r (add-to-list 'scores r))))))))
          ;;(message (concat (format-time-string "%H:%M:%S" (current-time)) " start"))
          (dolist (var (append mk-proj-required-vars mk-proj-optional-vars))
            ;; for each var check if it is already set, if not use guess-symbol to guess it
@@ -1258,12 +1265,10 @@ find command will be used and the `mk-proj-ignore-patterns' and
          ;; find already defined project that fits the guessed project so well that we'll use that instead
          ;; creates list of all projects in same basedir, then selects those matching the same src-patterns
          ;; as the guessed, uses the first of those if multiple match
-         ;;(message (concat (format-time-string "%H:%M:%S" (current-time)) " check defined"))
          (let ((already-defined (or (and (buffer-file-name (current-buffer))
                                          (mk-proj-find-projects-in-directory (mk-proj-dirname (buffer-file-name (current-buffer)))))
                                     (mk-proj-find-projects-in-directory (cadr (assoc 'basedir result)))))
                (pattern-projects nil))
-           ;;(message (concat (format-time-string "%H:%M:%S" (current-time)) " do lookup"))
            (if already-defined
                (loop for proj-name in already-defined
                      if (setq pattern-projects
@@ -1509,9 +1514,11 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   (interactive)
   (if (and (gethash 'org-mode mk-proj-backend-list)
            (boundp 'org-complex-heading-regexp)
-           (save-excursion
-             (org-back-to-heading)
-             (looking-at org-complex-heading-regexp)))
+           (if (eq major-mode 'org-mode)
+               (save-excursion
+                 (org-back-to-heading)
+                 (looking-at org-complex-heading-regexp))
+             t))
       (mk-proj-backend-funcall 'org-mode
                                'buffer :create)
     (mk-proj-backend-funcall (mk-proj-detect-backend)
@@ -1893,7 +1900,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
           (while (not (eobp))
             (let ((start (point)))
               (while (not (eolp)) (forward-char)) ; goto end of line
-              (let ((line (buffer-substring start (point))))
+              (let ((line (buffer-substring start (point)))
+                    (enable-local-variables nil))
                 (message "Attempting to open %s" line)
                 (if (file-exists-p line)
                     (find-file-noselect line t)
@@ -2035,7 +2043,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                                        ))
              (etags-shell-cmd (if (mk-proj-get-config-val 'etags-cmd proj-name t)
                                   (mk-proj-get-config-val 'etags-cmd proj-name t)
-                                "etags --extra=fq --fields=+afiklmnsSzt --C++-kinds=+p --C-kinds=+p -o"))
+                                "ctags-exuberant --extra=fq --fields=+afiklmnsSzt --C++-kinds=+p --C-kinds=+p -e -o"))
              (etags-cmd (concat (or (mk-proj-find-cmd-val 'src proj-name) default-find-cmd)
                                 " | " etags-shell-cmd " '" tags-file-name "' -L - "))
              (etags-proc-name (concat proj-name "-etags-process")))
@@ -2177,14 +2185,18 @@ With C-u prefix act as `project-ack-with-friends'."
 ;; Compile
 ;; ---------------------------------------------------------------------
 
-(defun project-compile ()
+(defun project-compile (&optional non-interactive)
   (interactive)
-  (mk-proj-assert-proj t)
-  (flet ((internal-compile (&optional cmd)
+  (mk-proj-assert-proj (not non-interactive))
+  (cl-flet ((internal-compile (&optional cmd)
                            (let ((saved-compile-command compile-command)
                                  (compile-command (or cmd compile-command))
                                  (result-compile-command nil))
-                             (call-interactively 'compile)
+                             (if non-interactive
+                                 (let ((compilation-ask-about-save t)
+                                       (compilation-read-command t))
+                                   (call-interactively 'compile))
+                               (call-interactively 'compile))
                              (setq result-compile-command compile-command
                                    compile-command saved-compile-command)
                              result-compile-command)))
@@ -2589,7 +2601,8 @@ project is not loaded."
           (while (not (eobp))
             (let ((start (point)))
               (while (not (eolp)) (forward-char)) ; goto end of line
-              (let ((line (buffer-substring start (point))))
+              (let ((line (buffer-substring start (point)))
+                    (enable-local-variables nil))
                 (message "Attempting to open %s" line)
                 (find-file-noselect line t)))
             (forward-line)))))))

@@ -48,7 +48,7 @@ The behaviour of this command is modified with
             "*anything mk-project*"))
 
 (defun anything-c-mk-project-buffer-persistent-action (name)
-  (flet ((kill (item)
+  (cl-flet ((kill (item)
                (with-current-buffer item
                  (if (and (buffer-modified-p)
                           (buffer-file-name (current-buffer)))
