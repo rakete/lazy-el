@@ -753,6 +753,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
                             (show-all)
                             (beginning-of-buffer)
                             (when (mk-org-entry-is-in-project-p) (org-cycle))
+                            (widen)
                             (mk-org-reveal)
                             (goto-char (marker-position marker))
                             (set-frame-name (mk-org-entry-headline))
