@@ -248,6 +248,9 @@ than the current one."
      ;; 6. try-guessing t -> create, convert and load guessed
      ((and try-guessing
            guessed-alist
+           (or (not mk-proj-name)
+               (not (string-equal mk-proj-name
+                                  (cadr (assoc 'name guessed-alist)))))
            (y-or-n-p (concat "Create .org file for guessed project *" (cadr (assoc 'name guessed-alist)) "? ")))
       (mk-org-config-save (cadr (assoc 'name guessed-alist)) guessed-alist)
       (mk-proj-load (cadr (assoc 'name guessed-alist)))
