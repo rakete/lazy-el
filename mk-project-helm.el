@@ -110,11 +110,35 @@
     (type . file))
   "All files of the currently active project.")
 
+(defvar mk-project-helm-open-buffers-cache nil)
+;; (unless helm-buffer-max-len-mode
+;;   (setq helm-buffer-max-len-mode 0))
+
 (defvar helm-c-source-mk-project-open-buffers
   `((name . "Mk-Project buffers")
-    (candidates . (lambda () (mapcar 'buffer-name (condition-case nil
-                                                      (remove-if (lambda (buf) (string-match "\*[^\*]\*" (buffer-name buf))) (mk-proj-buffers))
-                                                    (error nil)))))
+    (init . (lambda ()
+              (setq mk-project-helm-open-buffers-cache
+                    (mapcar 'buffer-name
+                            (condition-case nil
+                                (remove-if (lambda (buf) (string-match "\*[^\*]\*" (buffer-name buf))) (mk-proj-buffers))
+                              (error nil))))
+              (let ((result (cl-loop for b in mk-project-helm-open-buffers-cache maximize
+                                     (length b)
+                                     into len-buf maximize
+                                     (length
+                                      (with-current-buffer b
+                                        (symbol-name major-mode)))
+                                     into len-mode finally return
+                                     (cons len-buf len-mode))))
+                (unless helm-buffer-max-length
+                  (setq helm-buffer-max-length
+                        (car result)))
+                (unless helm-buffer-max-len-mode
+                  (setq helm-buffer-max-len-mode
+                        (cdr result))))))
+    (candidates . mk-project-helm-open-buffers-cache)
+    (no-matchplugin)
+    (volatile)
     (type . buffer)
     (match helm-c-buffer-match-major-mode)
     (persistent-action . helm-c-buffers-list-persistent-action)
@@ -150,16 +174,37 @@
     (type . file))
   "All files of projects which are friends of this project.")
 
+(defvar mk-project-helm-open-friendly-buffers-cache nil)
+
 (defvar helm-c-source-mk-project-open-friendly-buffers
   `((name . "Mk-Project friendly buffers")
-    (candidates . (lambda () (mapcar 'buffer-name (condition-case nil
-                                                      (mk-proj-friendly-buffers nil)
-                                                    (error nil)))))
+    (init . (lambda ()
+              (setq mk-project-helm-open-friendly-buffers-cache
+                    (mapcar 'buffer-name
+                            (condition-case nil
+                                (mk-proj-friendly-buffers nil)
+                              (error nil))))
+              (let ((result (cl-loop for b in mk-project-helm-open-buffers-cache maximize
+                                     (length b)
+                                     into len-buf maximize
+                                     (length
+                                      (with-current-buffer b
+                                        (symbol-name major-mode)))
+                                     into len-mode finally return
+                                     (cons len-buf len-mode))))
+                (unless helm-buffer-max-length
+                  (setq helm-buffer-max-length
+                        (car result)))
+                (unless helm-buffer-max-len-mode
+                  (setq helm-buffer-max-len-mode
+                        (cdr result))))))
+    (candidates . mk-project-helm-open-friendly-buffers-cache)
+    (no-matchplugin)
+    (volatile)
     (type . buffer)
     (match helm-c-buffer-match-major-mode)
     (persistent-action . helm-c-buffers-list-persistent-action)
     (keymap . ,helm-c-buffer-map)
-    (volatile)
     (mode-line . helm-buffer-mode-line-string)
     (persistent-help
      . "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer"))
