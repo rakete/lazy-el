@@ -1099,8 +1099,10 @@ See also `mk-org-entry-nearest-active'."
        (let ((has-error t))
          (beginning-of-buffer)
          (outline-next-heading)
-         (let ((headline (mk-org-entry-headline))
-               (marker (mk-org-find-save-location-marker (mk-org-entry-name))))
+         (let* ((headline (mk-org-entry-headline))
+                (proj-name (mk-org-entry-name))
+                (config-alist (mk-proj-eval-alist proj-name (mk-org-entry-alist)))
+                (marker (mk-org-find-save-location-marker proj-name config-alist)))
            (org-copy-subtree 1 nil)
            (when marker
              (with-current-buffer (marker-buffer marker)
