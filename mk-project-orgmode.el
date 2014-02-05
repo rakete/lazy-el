@@ -311,7 +311,8 @@ will be used internally. You can specify a MATCH to be used in that case with:
 '(org \"tags/property/todo match\")"
   (let ((results '())
         (next-point nil)
-        (opened-files nil))
+        (opened-files nil)
+        (enable-local-variables :safe))
     (dolist (project-file (setq opened-files (cond ((and (markerp match) (marker-buffer match))
                                                     `(,(marker-buffer match)))
                                                    ((and (functionp 'continue-sourcemarker-p)
@@ -703,7 +704,8 @@ will be used internally. You can specify a MATCH to be used in that case with:
     (setq proj-name mk-proj-name))
   (mk-org-assert-org proj-name)
   (let ((org-file (mk-proj-config-val 'org-file proj-name t))
-        (org-headline (mk-proj-config-val 'org-headline proj-name t)))
+        (org-headline (mk-proj-config-val 'org-headline proj-name t))
+        (enable-local-variables :safe))
     (with-current-buffer (find-file-noselect org-file)
       (car (mk-org-map-entries
             :file (current-buffer)

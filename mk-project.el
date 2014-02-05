@@ -1903,7 +1903,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
             (let ((start (point)))
               (while (not (eolp)) (forward-char)) ; goto end of line
               (let ((line (buffer-substring start (point)))
-                    (enable-local-variables nil))
+                    (enable-local-variables :safe))
                 (message "Attempting to open %s" line)
                 (if (file-exists-p line)
                     (find-file-noselect line t)
