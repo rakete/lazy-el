@@ -949,48 +949,49 @@ See also `mk-org-entry-nearest-active'."
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  (cond ;; find parent headline
-        ((and (mk-proj-get-config-val 'parent proj-name t)
-              (mk-proj-get-config-val 'org-file proj-name t)
-              (mk-proj-get-config-val 'org-headline proj-name t))
-         (with-current-buffer (find-file-noselect (mk-proj-get-config-val 'org-file proj-name t))
-           (save-excursion
-             (if (condition-case nil (goto-char (org-find-exact-headline-in-buffer (mk-proj-get-config-val 'org-headline proj-name t))) (error nil))
-                 (point-marker)
-               (error "mk-org: could not find a location to save project %s" proj-name)))))
-        ;; find existing project headline
-        ((and (mk-proj-get-config-val 'org-file proj-name t)
-              (mk-proj-get-config-val 'org-headline proj-name t))
-         (with-current-buffer (find-file-noselect (mk-proj-get-config-val 'org-file proj-name t))
-           (save-excursion
-             (if (condition-case nil (goto-char (org-find-exact-headline-in-buffer (mk-proj-get-config-val 'org-headline proj-name t))) (error nil))
-                 (point-marker)
-               (error "mk-org: could not find a loctation to save project %s" proj-name)))))
-        ;; find file in directory named after project
-        ((condition-case nil (directory-files (expand-file-name mk-org-config-save-location)) (error nil))
-         (with-current-buffer (find-file-noselect (concat (expand-file-name mk-org-config-save-location) proj-name ".org"))
-           (save-excursion
-             (goto-char (point-max))
-             (point-marker))))
-        ;; find headline (section) to save under in one big org file
-        ((and (stringp mk-org-config-save-location)
-              (stringp mk-org-config-save-section)
-              (file-exists-p (expand-file-name mk-org-config-save-location)))
-         (with-current-buffer (find-file-noselect (expand-file-name mk-org-config-save-location))
-           (save-excursion
-             (if (condition-case nil (goto-char (org-find-exact-headline-in-buffer mk-org-config-save-section)) (error nil))
-                 (point-marker)
-               (error "mk-org: could not find a location to save project %s" proj-name)))))
-        ;; find file in project basedir
-        ((and mk-org-config-save-location
-              (or (mk-proj-get-config-val 'basedir proj-name t)
-                  (cadr (assoc 'basedir config-alist))))
-         (with-current-buffer (find-file-noselect (concat (or (mk-proj-get-config-val 'basedir proj-name t)
-                                                              (cadr (assoc 'basedir config-alist))) "/" proj-name ".org"))
-           (goto-char (point-max))
-           (point-marker)))
-        ;; no suitable location found
-        (t (error "mk-org: could not find a location to save project %s" proj-name))))
+  (let ((enable-local-variables :safe))
+    (cond ;; find parent headline
+     ((and (mk-proj-get-config-val 'parent proj-name t)
+           (mk-proj-get-config-val 'org-file proj-name t)
+           (mk-proj-get-config-val 'org-headline proj-name t))
+      (with-current-buffer (find-file-noselect (mk-proj-get-config-val 'org-file proj-name t))
+        (save-excursion
+          (if (condition-case nil (goto-char (org-find-exact-headline-in-buffer (mk-proj-get-config-val 'org-headline proj-name t))) (error nil))
+              (point-marker)
+            (error "mk-org: could not find a location to save project %s 1" proj-name)))))
+     ;; find existing project headline
+     ((and (mk-proj-get-config-val 'org-file proj-name t)
+           (mk-proj-get-config-val 'org-headline proj-name t))
+      (with-current-buffer (find-file-noselect (mk-proj-get-config-val 'org-file proj-name t))
+        (save-excursion
+          (if (condition-case nil (goto-char (org-find-exact-headline-in-buffer (mk-proj-get-config-val 'org-headline proj-name t))) (error nil))
+              (point-marker)
+            (error "mk-org: could not find a loctation to save project %s 2" proj-name)))))
+     ;; find file in directory named after project
+     ((condition-case nil (directory-files (expand-file-name mk-org-config-save-location)) (error nil))
+      (with-current-buffer (find-file-noselect (concat (expand-file-name mk-org-config-save-location) proj-name ".org"))
+        (save-excursion
+          (goto-char (point-max))
+          (point-marker))))
+     ;; find headline (section) to save under in one big org file
+     ((and (stringp mk-org-config-save-location)
+           (stringp mk-org-config-save-section)
+           (file-exists-p (expand-file-name mk-org-config-save-location)))
+      (with-current-buffer (find-file-noselect (expand-file-name mk-org-config-save-location))
+        (save-excursion
+          (if (condition-case nil (goto-char (org-find-exact-headline-in-buffer mk-org-config-save-section)) (error nil))
+              (point-marker)
+            (error "mk-org: could not find a location to save project %s 3" proj-name)))))
+     ;; find file in project basedir
+     ((and mk-org-config-save-location
+           (or (mk-proj-get-config-val 'basedir proj-name t)
+               (cadr (assoc 'basedir config-alist))))
+      (with-current-buffer (find-file-noselect (concat (or (mk-proj-get-config-val 'basedir proj-name t)
+                                                           (cadr (assoc 'basedir config-alist))) "/" proj-name ".org"))
+        (goto-char (point-max))
+        (point-marker)))
+     ;; no suitable location found
+     (t (error "mk-org: could not find a location to save project %s 4" proj-name)))))
 
 
 
