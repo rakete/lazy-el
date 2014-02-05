@@ -22,7 +22,7 @@
 (require 'org-install)
 (require 'org-protocol)
 (require 'org-agenda)
-(require 'org-depend)
+;;(require 'org-depend)
 (require 'ob)
 
 (defvar mk-org-project-search-files nil
