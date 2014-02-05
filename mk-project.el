@@ -1002,20 +1002,20 @@ find command will be used and the `mk-proj-ignore-patterns' and
 (defvar mk-proj-guess-functions '((buffer . ((()
                                               `(1 . ,(current-buffer)))))
                                   (mode . (((buffer)
-                                            `(1 . ,(with-current-buffer buffer major-mode)))))
+                                            (print `(1 . ,(with-current-buffer buffer major-mode))))))
                                   (basedir . (;; default-directory
                                               (()
-                                               `(1 . ,(expand-file-name default-directory)))
+                                               (print `(1 . ,(expand-file-name default-directory))))
                                               ;; buffer-file-name
                                               ((buffer)
                                                (when (buffer-file-name buffer)
-                                                 `(10 . ,(mk-proj-dirname (buffer-file-name buffer)))))
+                                                 (print `(10 . ,(mk-proj-dirname (buffer-file-name buffer))))))
                                               ;; longest-common-path of buffers with same mode
                                               ((mode buffer)
                                                (let ((found-path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths mode))))
                                                  (when (and found-path
                                                             (not (string-equal (expand-file-name "~") found-path)))
-                                                   `(50 . ,found-path))))
+                                                   (print `(50 . ,found-path)))))
                                               ;; find directory that is not a common project subdir
                                               ((buffer)
                                                (let* ((path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths)))
@@ -1029,7 +1029,7 @@ find command will be used and the `mk-proj-ignore-patterns' and
                                                    (setq splitted-path (butlast splitted-path)
                                                          path (reduce (lambda (a b) (concat a "/" b)) splitted-path)))
                                                  (when path
-                                                   `(100 . ,path))))
+                                                   (print `(100 . ,path)))))
                                               ;; find basedir by searching for buildsystem patterns
                                               ((buffer)
                                                (let ((path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths))))
@@ -1038,16 +1038,23 @@ find command will be used and the `mk-proj-ignore-patterns' and
                                                                                   collect (mk-proj-search-path re path mk-proj-incubator-paths mk-proj-common-project-subdir-names))
                                                                             (lambda (a b) (> (length a) (length b))))))
                                                      (when (car found-paths)
-                                                       `(200 . ,(car found-paths)))))))
+                                                       (print `(200 . ,(car found-paths))))))))
                                               ;; find basedir by searching for vcs pattern
                                               ((buffer)
-                                               (let ((path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths))))
-                                                 (when path
-                                                   (let ((found-paths (sort (loop for re in (mapcar 'regexp-quote (mapcar 'cdr mk-proj-vcs-path))
-                                                                                  collect (mk-proj-search-path re path mk-proj-incubator-paths mk-proj-common-project-subdir-names))
-                                                                            (lambda (a b) (> (length a) (length b))))))
-                                                     (when (car found-paths)
-                                                       `(300 . ,(car  found-paths)))))))
+                                               (let* ((filename (buffer-file-name buffer))
+                                                      (found-paths (when filename
+                                                                     (sort (loop for re in (mapcar 'regexp-quote (mapcar 'cdr mk-proj-vcs-path))
+                                                                                 collect (mk-proj-search-path re (file-name-directory filename) mk-proj-incubator-paths mk-proj-common-project-subdir-names))
+                                                                           (lambda (a b) (> (length a) (length b)))))))
+                                                 (if (car found-paths)
+                                                     (print `(500 . ,(car found-paths)))
+                                                   (let ((path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths))))
+                                                     (when path
+                                                       (let ((found-paths (sort (loop for re in (mapcar 'regexp-quote (mapcar 'cdr mk-proj-vcs-path))
+                                                                                      collect (mk-proj-search-path re path mk-proj-incubator-paths mk-proj-common-project-subdir-names))
+                                                                                (lambda (a b) (> (length a) (length b))))))
+                                                         (when (car found-paths)
+                                                           (print `(300 . ,(car found-paths))))))))))
                                               ;; find basedir by trying to match buffers directory to project basedirs
                                               ((buffer)
                                                (let ((basedirs '()))
@@ -1057,32 +1064,34 @@ find command will be used and the `mk-proj-ignore-patterns' and
                                                        (add-to-list 'basedirs basedir))))
                                                  (let ((basedirs-without-incubators (remove-if (lambda (dir)
                                                                                                  (some (lambda (incubator)
+                                                                                                         (print dir)
+                                                                                                         (print incubator)
                                                                                                          (string-equal (file-name-as-directory dir)
                                                                                                                        (file-name-as-directory incubator)))
                                                                                                        mk-proj-incubator-paths))
                                                                                                basedirs)))
                                                    (if (and (eq (length basedirs) 1)
                                                             (eq (length basedirs-without-incubators) 1))
-                                                       `(400 . ,(car basedirs))
+                                                       (print `(400 . ,(car basedirs)))
                                                      (if (eq (length basedirs-without-incubators) 1)
-                                                         `(250 . ,(car basedirs-without-incubators))
+                                                         (print `(250 . ,(car basedirs-without-incubators)))
                                                        (if (> (length basedirs-without-incubators) 1)
-                                                           `(25 . ,(car basedirs-without-incubators))
+                                                           (print `(25 . ,(car basedirs-without-incubators)))
                                                          (if (> (length basedirs) 1)
-                                                             `(10 . ,(car basedirs)))))))))))
+                                                             (print `(10 . ,(car basedirs))))))))))))
                                   (name . (((buffer)
                                             (progn
                                               (unless buffer
                                                 (setq buffer (current-buffer)))
                                               (when (buffer-file-name buffer)
-                                                `(10 . ,(car (split-string (mk-proj-filename (buffer-file-name buffer)) "\\."))))))
+                                                (print `(10 . ,(car (split-string (mk-proj-filename (buffer-file-name buffer)) "\\.")))))))
                                            ((basedir)
                                             (let ((pname (car (reverse (split-string basedir "/" t)))))
                                               (when (loop for ig in mk-proj-incubator-paths
                                                           if (mk-proj-path-equal ig basedir)
                                                           return nil
                                                           finally return t)
-                                                `(100 . ,pname))))))
+                                                (print `(100 . ,pname)))))))
                                   (src-patterns . (((basedir mode)
                                                     (let* ((all-incubator 'undefined)
                                                            ;; guess buffers, collect files and set all-incubator, files from incubator
@@ -1123,13 +1132,13 @@ find command will be used and the `mk-proj-ignore-patterns' and
                                                         (mapc (apply-partially 'add-to-list 'patterns)
                                                               (mapcar (lambda (fname) (concat ".*" (regexp-quote fname))) files))
                                                         ;; patterns might look something like this: "foo\\.el" "bar\\.el" "*\\.el
-                                                        `(100 . ,patterns))))))
+                                                        (print `(100 . ,patterns)))))))
                                   (patterns-are-regex . ((nil
-                                                          '(10 . t))))
+                                                          (print '(10 . t)))))
                                   (compile-cmd . ((nil
                                                    (when (and (boundp 'compile-command)
                                                               compile-command)
-                                                     `(50 . ,compile-command)))
+                                                     (print `(50 . ,compile-command))))
                                                   ((basedir)
                                                    (let ((bsystem))
                                                      (loop for filename in (directory-files basedir)
@@ -1141,23 +1150,25 @@ find command will be used and the `mk-proj-ignore-patterns' and
                                                                                           (setq bsystem bs)))))
                                                      (cond ((and bsystem
                                                                  (assoc 'build (cadr bsystem)))
-                                                            `(100 . ,(cadr (assoc 'build (cadr bsystem)))))
+                                                            (print `(100 . ,(cadr (assoc 'build (cadr bsystem))))))
                                                            ((and (boundp 'compile-command)
                                                                  compile-command)
-                                                            `(100 . ,compile-command)))
+                                                            (print `(100 . ,compile-command))))
                                                      ))))
                                   (vcs . (((basedir)
                                            (let ((r nil))
                                              (loop for f in (directory-files basedir)
                                                    if (some (lambda (y)
                                                               (string-equal (cdr y) f)) mk-proj-vcs-path)
-                                                   return `(10 . ,(car (rassoc f mk-proj-vcs-path))))))))
-                                  (etags-cmd . ((nil
-                                                 '(10 . "ctags-exuberant --extra=fq --fields=+afiklmnsSzt --C++-kinds=+p --C-kinds=+p -e -o"))))
+                                                   return (print `(10 . ,(car (rassoc f mk-proj-vcs-path)))))))))
+                                  (etags-cmd . (((languages)
+                                                 (when (or (find 'c languages)
+                                                           (find 'cpp languages))
+                                                   (print '(10 . "ctags-exuberant --extra=fq --fields=+afiklmnsSzt --C++-kinds=+p --C-kinds=+p -e -o"))))))
                                   (languages . (((src-patterns)
                                                  (let ((languages (mk-proj-src-pattern-languages src-patterns)))
                                                    (when languages
-                                                     `(10 . ,languages))))))
+                                                     (print `(10 . ,languages)))))))
                                   (ack-args . (((languages)
                                                 (let ((args nil))
                                                   (dolist (lang languages)
@@ -1180,8 +1191,8 @@ find command will be used and the `mk-proj-ignore-patterns' and
                                                           ((eq lang 'haskell)
                                                            (add-to-list 'args "--haskell"))))
                                                   (when args
-                                                    `(10 . ,(reduce (lambda (a b) (concat a " " b))
-                                                                    args)))))))))
+                                                    (print `(10 . ,(reduce (lambda (a b) (concat a " " b))
+                                                                           args))))))))))
 
 (defun* mk-proj-guess-alist (&optional ask-basedir ask-name)
   ;; go through mk-proj-guess-functions and collect all symbols that are used
