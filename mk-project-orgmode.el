@@ -1275,7 +1275,8 @@ This is taken almost directly from `org-babel-read'."
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
   (mk-org-assert-org proj-name)
-  (let ((zeitgeist-prevent-send t))
+  (let ((zeitgeist-prevent-send t)
+        (continue-prevent-save t))
     (mk-org-map-entries
      :file (mk-proj-get-config-val 'org-file proj-name)
      :match `(headline ,(mk-proj-get-config-val 'org-headline proj-name))
@@ -1286,11 +1287,12 @@ This is taken almost directly from `org-babel-read'."
 
 (defun project-clock-out (&optional proj-name)
   (interactive)
-  (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (when (org-clocking-p)
-    (mk-org-assert-org proj-name)
-    (org-clock-out)))
+  (let ((continue-prevent-save t))
+    (unless proj-name
+      (mk-proj-assert-proj)
+      (setq proj-name mk-proj-name))
+    (when (org-clocking-p)
+      (mk-org-assert-org proj-name)
+      (org-clock-out))))
 
 (provide 'mk-project-orgmode)
