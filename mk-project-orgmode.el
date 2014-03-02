@@ -93,42 +93,22 @@ a single org file is stored in the projects basedir.")
                              :test-fun (lambda (ca)
                                          (assoc 'org-file ca)))
 
+     (add-hook 'mk-proj-before-load-hook (lambda ()
+                                           (unless (mk-proj-get-config-val 'org-file proj-name)
+                                             (let ((org-file (concat (mk-proj-get-config-val 'basedir proj-name) "/" proj-name ".org")))
+                                               (when (file-exists-p org-file)
+                                                 (mk-org-search-files org-file))))))
      (add-hook 'mk-proj-after-load-hook (lambda ()
                                           (when (mk-proj-get-config-val 'org-file)
                                             (project-clock-in))))
      (add-hook 'mk-proj-before-unload-hook (lambda ()
                                              (when (mk-proj-get-config-val 'org-file)
                                                (project-clock-out))))
-     ;; (add-hook 'after-load-functions (lambda (filename)
-     ;;                                   (when filename
-     ;;                                     (with-current-buffer (find-buffer-visiting filename)
-     ;;                                       (when (eq major-mode 'org-mode)
-     ;;                                         (mk-org-map-entries
-     ;;                                          :file filename
-     ;;                                          :scope 'project-tree
-     ;;                                          :close-files nil
-     ;;                                          :function (lambda ()
-     ;;                                                      (when (and (not (mk-org-entry-is-link-p))
-     ;;                                                                 (or (and (org-get-todo-state)
-     ;;                                                                          (and (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
-     ;;                                                                               (not (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-ignore-todos))))
-     ;;                                                                     (and (or (mk-org-entry-last-clock-position)
-     ;;                                                                              (some (lambda (prop-tuple)
-     ;;                                                                                      (some (lambda (sym) (string-equal (mk-org-symbol-table sym) (cdr prop-tuple)))
-     ;;                                                                                            (append mk-proj-required-vars mk-proj-optional-vars)))
-     ;;                                                                                    (org-entry-properties))
-     ;;                                                                              (org-entry-get (point) org-effort-property))
-     ;;                                                                          (and (org-get-todo-state)
-     ;;                                                                               (and (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
-     ;;                                                                                    (not (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-ignore-todos)))))
-     ;;                                                                     (and (mk-org-entry-is-project-p)
-     ;;                                                                          (or (not (org-get-todo-state))
-     ;;                                                                              (and (org-get-todo-state)
-     ;;                                                                                   (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-todo-keywords)
-     ;;                                                                                   (not (some (lambda (x) (string-equal (org-get-todo-state) x)) mk-org-ignore-todos)))))))
-     ;;                                                        (mk-org-entry-define-project)
-     ;;                                                        (unless (eq (last buffer-with-projects) (current-buffer))
-     ;;                                                          (add-to-list 'buffer-with-projects (current-buffer)))))))))))
+     (add-hook 'after-save-hook (lambda ()
+                                  (let ((filename (buffer-file-name (current-buffer))))
+                                    (when (string-equal (file-truename filename)
+                                                        (file-truename (mk-proj-get-config-val 'org-file)))
+                                      (mk-org-search-files filename)))))
      ))
 
 
@@ -674,7 +654,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
          (alist (mk-proj-eval-alist proj-name (mk-org-entry-alist marker))))
     (when alist
       (puthash proj-name alist mk-proj-list)
-      (message "Defined: %s" proj-name)
+      ;;(message "Defined: %s" proj-name)
       alist)))
 
 (defun mk-org-entry-undefine-project (&optional marker)
@@ -1175,15 +1155,14 @@ This is taken almost directly from `org-babel-read'."
         (show-all)
         (re-search-forward org-clock-string (save-excursion (org-end-of-subtree)) t)))))
 
-(defun mk-org-define-projects ()
-  (interactive)
+(defun mk-org-search-files (&rest search-files)
   (unless mk-org-project-search-files
     (error "mk-org: could not find any projects, mk-org-project-search-files is not set"))
   (let ((buffer-with-projects nil)
         (pre-define-buffer-list (buffer-list))
         (continue-prevent-save t)
         (continue-prevent-restore t)
-        (files (mk-org-files-containing-projects))
+        (files (or search-files (mk-org-files-containing-projects)))
         (zeitgeist-prevent-send t))
     (when files
       (mk-org-map-entries
