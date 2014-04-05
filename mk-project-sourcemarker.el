@@ -24,8 +24,8 @@
 
 (eval-after-load "mk-project-sourcemarker"
   '(progn
-     (add-to-list 'mk-proj-optional-vars 'sourcemarker-db-path)
-     (add-to-list 'mk-proj-optional-vars 'sourcemarker-db-symbol)
+     (add-to-list 'mk-proj-optional-vars '(sourcemarker-db-path . (stringp)))
+     (add-to-list 'mk-proj-optional-vars '(sourcemarker-db-symbol . (stringp)))
 
      (add-to-list 'mk-proj-var-before-get-functions
                   '(sourcemarker-db-path . (lambda (var val &optional proj-name config-alist)

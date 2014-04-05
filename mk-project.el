@@ -79,35 +79,33 @@ the associated paths when greping or indexing the project. This
 value is not used if a custom find command is set in
 `mk-proj-grep-find-cmd' or `mk-proj-index-find-cmd'")
 
-(defvar mk-proj-required-vars '(name
-                                basedir)
+(defvar mk-proj-required-vars '((name . (stringp))
+                                (basedir . (stringp)))
   "Project config vars that are required in every project.
 
 See also `mk-proj-optional-vars' `mk-proj-var-before-get-functions'")
 
-(defvar mk-proj-optional-vars '(parent ;; parent needs to come first!
-                                languages
-                                src-patterns
-                                ignore-patterns
-                                ack-args
-                                vcs
-                                compile-cmd
-                                install-cmd
-                                run-cmd
-                                startup-hook
-                                shutdown-hook
-                                file-list-cache
-                                open-files-cache
-                                src-find-cmd
-                                grep-find-cmd
-                                index-find-cmd
-                                tags-file
-                                etags-cmd
-                                cscope-namefile
-                                cscope-cmd
-                                patterns-are-regex
-                                friends
-                                open-friends-cache)
+(defvar mk-proj-optional-vars '((parent . (stringp)) ;; parent needs to come first!
+                                (languages . (listp))
+                                (src-patterns . (listp))
+                                (ignore-patterns . (listp))
+                                (ack-args . (stringp))
+                                (vcs . (symbolp))
+                                (compile-cmd . (functionp commandp stringp listp))
+                                (startup-hook . (functionp commandp stringp listp))
+                                (shutdown-hook . (functionp commandp stringp listp))
+                                (file-list-cache . (stringp))
+                                (open-files-cache . (stringp))
+                                (src-find-cmd . (stringp))
+                                (grep-find-cmd . (stringp))
+                                (index-find-cmd . (stringp))
+                                (tags-file . (stringp))
+                                (etags-cmd . (stringp))
+                                (cscope-namefile . (stringp))
+                                (cscope-cmd . (stringp))
+                                (patterns-are-regex . (symbolp))
+                                (friends . (listp))
+                                (open-friends-cache . (stringp)))
   "Project config vars that are optional.
 
 See also `mk-proj-required-vars' `mk-proj-var-before-get-functions'")
@@ -697,10 +695,18 @@ for the KEY and the first value that is found is returned."
     (when (gethash proj-name mk-proj-list)
       ;;(message "union with %s" proj-name)
       (setq result-alist (mk-proj-alist-union (gethash proj-name mk-proj-list) result-alist)))
-    (loop for req-var in mk-proj-required-vars
-          if (or (and (assoc req-var result-alist)
-                      (not (cadr (assoc req-var result-alist)))))
-          do (progn (error "Project \"%s\" contains errors" proj-name)
+    (loop for varchecks in (append mk-proj-required-vars mk-proj-optional-vars)
+          if (or (and (assoc (car varchecks) mk-proj-required-vars)
+                      (assoc (car varchecks) result-alist)
+                      (or (not (cadr (assoc (car varchecks) result-alist)))
+                          (not (some (lambda (check) (funcall check (cadr (assoc (car varchecks) result-alist))))
+                                     (cdr varchecks)))))
+                 (and (assoc (car varchecks) mk-proj-optional-vars)
+                      (assoc (car varchecks) result-alist)
+                      (not (some (lambda (check) (funcall check (cadr (assoc (car varchecks) result-alist))))
+                                 (cdr varchecks)))
+                      (not (eq (cadr (assoc (car varchecks) result-alist)) nil))))
+          do (progn (error "Project \"%s\" contains error: %S %s" proj-name (car varchecks) (assoc (car varchecks) result-alist))
                     (return-from "mk-proj-eval-alist" nil)))
     result-alist))
 
@@ -1230,41 +1236,43 @@ find command will be used and the `mk-proj-ignore-patterns' and
                                                   (error (message "error while guessing %S: %S in %s" sym e (prin1-to-string expr))))))
                                          (when r (add-to-list 'scores r))))))))
          ;;(message (concat (format-time-string "%H:%M:%S" (current-time)) " start"))
-         (dolist (var (append mk-proj-required-vars mk-proj-optional-vars))
+         (dolist (varchecks (append mk-proj-required-vars mk-proj-optional-vars))
            ;; for each var check if it is already set, if not use guess-symbol to guess it
            ;; since only args from mk-proj-guess-functions are defined by the alet, not all
            ;; possible project symbols, we have to check if a var is bound before setting it
            ;; with setf or returning its value if it is not 'undefined, default is to just
            ;; guess and not set anything
-           (let ((gv (cond ((and ask-basedir
-                                 (boundp var)
-                                 (eq var 'basedir))
-                            (progn
-                              (interactive)
-                              (setf (symbol-value var)
-                                    (let ((guessed-dir (guess-symbol var)))
-                                      (ido-read-directory-name (format "Continue with this basedir? (%s): " guessed-dir)
-                                                               guessed-dir
-                                                               nil
-                                                               t)))))
-                           ((and ask-name
-                                 (boundp var)
-                                 (eq var 'name))
-                            (progn
-                              (interactive)
-                              (setf (symbol-value var)
-                                    (let ((guessed-name (guess-symbol var)))
-                                      (read-input (format "Use this name? (%s): " guessed-name)
-                                                  nil
-                                                  nil
-                                                  guessed-name)))))
-                           ((and (boundp var)
-                                 (not (eq (symbol-value var) 'undefined)))
-                            (symbol-value var))
-                           ((and (boundp var)
-                                 (eq (symbol-value var) 'undefined))
-                            (setf (symbol-value var) (guess-symbol var)))
-                           (t (guess-symbol var)))))
+           (let* ((var (car varchecks))
+                  (checks (cdr varchecks))
+                  (gv (cond ((and ask-basedir
+                                  (boundp var)
+                                  (eq var 'basedir))
+                             (progn
+                               (interactive)
+                               (setf (symbol-value var)
+                                     (let ((guessed-dir (guess-symbol var)))
+                                       (ido-read-directory-name (format "Continue with this basedir? (%s): " guessed-dir)
+                                                                guessed-dir
+                                                                nil
+                                                                t)))))
+                            ((and ask-name
+                                  (boundp var)
+                                  (eq var 'name))
+                             (progn
+                               (interactive)
+                               (setf (symbol-value var)
+                                     (let ((guessed-name (guess-symbol var)))
+                                       (read-input (format "Use this name? (%s): " guessed-name)
+                                                   nil
+                                                   nil
+                                                   guessed-name)))))
+                            ((and (boundp var)
+                                  (not (eq (symbol-value var) 'undefined)))
+                             (symbol-value var))
+                            ((and (boundp var)
+                                  (eq (symbol-value var) 'undefined))
+                             (setf (symbol-value var) (guess-symbol var)))
+                            (t (guess-symbol var)))))
              (if gv
                  (add-to-list 'result `(,var ,gv))
                ;; when a required var couldn't be found, abort
@@ -1361,24 +1369,21 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 
 
 
-
-
-
 (defun mk-proj-config-insert (proj-name config-alist &optional insert-undefined insert-internal)
   (save-excursion
     (insert (concat "(project-def \"" proj-name "\" '("))
     (loop for k in (append mk-proj-required-vars mk-proj-optional-vars)
-          if (and (not (eq k 'name))
-                  (or (not (some (lambda (j) (eq k j)) mk-proj-internal-vars))
+          if (and (not (eq (car k) 'name))
+                  (or (not (some (lambda (j) (eq (car k) j)) mk-proj-internal-vars))
                       insert-internal)
-                  (or (not (cdr (assoc k mk-proj-var-before-get-functions)))
-                      (not (string-equal (prin1-to-string (funcall (cdr (assoc k mk-proj-var-before-get-functions)) k nil))
-                                         (prin1-to-string (mk-proj-get-config-val k proj-name))))
+                  (or (not (cdr (assoc (car k) mk-proj-var-before-get-functions)))
+                      (not (string-equal (prin1-to-string (funcall (cdr (assoc (car k) mk-proj-var-before-get-functions)) (car k) nil))
+                                         (prin1-to-string (mk-proj-get-config-val (car k) proj-name))))
                       insert-internal))
           do (when (or insert-undefined
-                       (assoc k config-alist))
-               (insert (concat "(" (symbol-name k) " " (prin1-to-string (cadr (assoc k config-alist))) ")"))
-               (unless (eq k (car (last mk-proj-optional-vars)))
+                       (assoc (car k) config-alist))
+               (insert (concat "(" (symbol-name (car k)) " " (prin1-to-string (cadr (assoc (car k) config-alist))) ")"))
+               (unless (eq (car k) (car (last mk-proj-optional-vars)))
                  (newline))
                (indent-according-to-mode)))
     (insert "))\n")))
@@ -1611,8 +1616,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 (defun mk-proj-check-required-vars (proj-name)
   (catch 'mk-proj-check-required-vars
     (dolist (v mk-proj-required-vars)
-      (unless (mk-proj-get-config-val v proj-name t)
-        (throw 'mk-proj-check-required-vars v)))))
+      (unless (mk-proj-get-config-val (car v) proj-name t)
+        (throw 'mk-proj-check-required-vars (car v))))))
 
 (defun* mk-proj-get-cache-path (symbol &optional proj-name (inherit t))
   (unless proj-name
@@ -1872,7 +1877,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
         (with-current-buffer b
           (kill-region (point-min) (point-max))
           (dolist (v (append mk-proj-required-vars mk-proj-optional-vars))
-            (insert (format "%-32s = %s\n" (symbol-name v) (mk-proj-get-config-val v proj-name t)))))
+            (insert (format "%-32s = %s\n" (symbol-name (car v)) (mk-proj-get-config-val (car v) proj-name t)))))
         (when (not (eq b (current-buffer)))
           (set-window-dedicated-p (display-buffer b) t)))
     (message "No project loaded.")))

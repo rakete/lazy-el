@@ -53,8 +53,8 @@ a single org file is stored in the projects basedir.")
 
 (eval-after-load "mk-project-orgmode"
   '(progn
-     (add-to-list 'mk-proj-optional-vars 'org-file)
-     (add-to-list 'mk-proj-optional-vars 'org-headline)
+     (add-to-list 'mk-proj-optional-vars '(org-file . (stringp)))
+     (add-to-list 'mk-proj-optional-vars '(org-headline . (stringp)))
 
      (add-to-list 'mk-proj-internal-vars 'org-file)
      (add-to-list 'mk-proj-internal-vars 'org-headline)
@@ -178,7 +178,7 @@ a single symbol and don't need the whole alist."
          (props '())
          (table (progn
                   (dolist (varchecks proj-vars props)
-                    (add-to-list 'props `(,varchecks . ,(concat "mkp_" (replace-regexp-in-string "-" "_" (downcase (symbol-name (car varchecks))))))))
+                    (add-to-list 'props `(,(car varchecks) . ,(concat "mkp_" (replace-regexp-in-string "-" "_" (downcase (symbol-name (car varchecks))))))))
                   )))
     (if symbol
         (cdr (assoc symbol table))
