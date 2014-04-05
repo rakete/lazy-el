@@ -32,7 +32,6 @@
 ;; http://github.com/mattkeller/mk-project
 
 ;;; Code:
-
 (require 'grep)
 (require 'thingatpt)
 (require 'cl)
@@ -352,9 +351,20 @@ load time. See also `project-menu-remove'."
 
 (eval-after-load "mk-project"
   '(progn
-     (add-hook 'emacs-kill-hook (lambda ()
-                                  (mk-proj-save-state)))
-     (run-with-idle-timer 90 t 'mk-proj-save-state)))
+     (run-with-idle-timer 90 t 'mk-proj-save-state)
+     (add-hook 'after-save-hook (lambda ()
+                                  (when mk-proj-name
+                                    (let* ((file-name (expand-file-name (buffer-file-name (current-buffer))))
+                                           (extension (car (last (split-string file-name "\\."))))
+                                           (new-pattern (concat ".*\\." extension))
+                                           (src-patterns (mk-proj-get-config-val 'src-patterns mk-proj-name t)))
+                                      (when (and (assoc extension mk-proj-src-pattern-table)
+                                                 (or (string-match (concat "^" (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t)))) file-name)
+                                                     (string-match (concat "^" (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t)))) (file-truename file-name)))
+                                                 (not (some (lambda (pattern) (string-match pattern file-name)) src-patterns)))
+                                        (mk-proj-set-config-val 'src-patterns (add-to-list 'src-patterns new-pattern))
+                                        (project-index))))))
+     ))
 
 (defun mk-proj-zip (&rest lists)
   (let* (;;(lists (append (list a) rest))
@@ -996,7 +1006,10 @@ find command will be used and the `mk-proj-ignore-patterns' and
           do (setq lang (cadr (assoc (car (last (split-string pattern "\\." t))) mk-proj-src-pattern-table)))
           if (not (eq lang nil))
           do (add-to-list 'languages lang))
-    languages))
+    (if (and (find 'cpp languages)
+             (not (some (lambda (file-name) (string-match ".*\\.c$" file-name)) (mk-proj-files))))
+        (remove-if (lambda (lang) (eq lang 'c)) languages)
+      languages)))
 
 ;;(mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns))
 
@@ -2221,6 +2234,10 @@ With C-u prefix act as `project-ack-with-friends'."
 ;; Compile
 ;; ---------------------------------------------------------------------
 
+(defun mk-proj-buffer-lang (&optional buffer)
+  (cadr (assoc (car (last (split-string (buffer-file-name (or buffer (current-buffer))) "\\.")))
+               mk-proj-src-pattern-table)))
+
 (defun project-compile (&optional non-interactive)
   (interactive)
   (mk-proj-assert-proj (not non-interactive))
@@ -2238,10 +2255,23 @@ With C-u prefix act as `project-ack-with-friends'."
                                 result-compile-command)))
     (let ((cmd (mk-proj-get-config-val 'compile-cmd)))
       (mk-proj-with-directory (mk-proj-get-config-val 'basedir)
-                              (cond ((stringp cmd)
-                                     (let ((new-cmd (internal-compile cmd)))
-                                       (unless (string-equal cmd new-cmd)
-                                         (mk-proj-set-config-val 'compile-cmd new-cmd))))
+                              (cond ((and (listp cmd)
+                                          (mk-proj-buffer-lang (current-buffer)))
+                                     (let* ((old-cmd (cadr (assoc (mk-proj-buffer-lang (current-buffer)) cmd)))
+                                            (compile-history (append (mapcar 'cadr cmd) compile-history))
+                                            (new-cmd (internal-compile old-cmd))
+                                            (new-list (mk-proj-alist-union cmd (list (list (mk-proj-buffer-lang (current-buffer)) new-cmd)))))
+                                       (unless (string-equal old-cmd new-cmd)
+                                         (mk-proj-set-config-val 'compile-cmd new-list))))
+                                    ((stringp cmd)
+                                     (let* ((old-cmd (print cmd))
+                                            (new-cmd (print (internal-compile old-cmd)))
+                                            (new-list (print (mk-proj-alist-union (mapcar (lambda (lang) (list lang old-cmd)) (mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns)))
+                                                                                  (list (list (mk-proj-buffer-lang (current-buffer)) new-cmd))))))
+                                       (unless (string-equal old-cmd new-cmd)
+                                         (if (> (length (mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns))) 1)
+                                             (mk-proj-set-config-val 'compile-cmd new-list)
+                                           (mk-proj-set-config-val 'compile-cmd new-cmd)))))
                                     ((commandp cmd)
                                      (call-interactively cmd))
                                     ((functionp cmd)
