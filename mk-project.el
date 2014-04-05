@@ -819,7 +819,7 @@ find command will be used and the `mk-proj-ignore-patterns' and
   (interactive)
   (cond ((stringp proj-name)
          (let ((alist (mk-proj-eval-alist proj-name config-alist)))
-           (when alist
+           (when (and alist (file-exists-p (cadr (assoc 'basedir alist))))
              (puthash proj-name alist mk-proj-list)
              (message "Defined: %s" proj-name)
              alist)))
