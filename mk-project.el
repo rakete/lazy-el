@@ -1814,7 +1814,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
     (if (and file-name
              (file-exists-p file-name)
              (mk-proj-get-config-val 'basedir proj-name t)
-             (string-match (concat "^" (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t)))) file-name)
+             (or (string-match (concat "^" (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t)))) file-name)
+                 (string-match (concat "^" (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t)))) (file-truename file-name)))
              (loop for pattern in (mk-proj-get-config-val 'src-patterns proj-name t)
                    if (string-match (if (mk-proj-get-config-val 'patterns-are-regex proj-name t)
                                         pattern
@@ -1943,17 +1944,21 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                (mk-proj-get-config-val 'tags-file tags-proj t)
                (file-readable-p (mk-proj-get-config-val 'tags-file tags-proj t)))
       (let* ((proj-name-entry-key (concat (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t))) ".*"))
+             (proj-name-entry-key-true (concat (regexp-quote (file-truename (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t)))) ".*"))
              (proj-name-entry-value (cdr (assoc proj-name-entry-key etags-table-alist)))
-             (tags-proj-entry-key (concat (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir tags-proj t))) ".*")))
+             (tags-proj-entry-key (concat (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir tags-proj t))) ".*"))
+             (tags-proj-entry-key-true (concat (regexp-quote (file-truename (file-name-as-directory (mk-proj-get-config-val 'basedir tags-proj t)))) ".*")))
         ;; main entry proj-name -> tags-file from proj-name, and from tags-proj, and all other that were already present in the list
         (add-to-list 'proj-name-entry-value (mk-proj-get-config-val 'tags-file tags-proj t) nil)
         (unless (string-equal proj-name tags-proj)
           (add-to-list 'proj-name-entry-value (mk-proj-get-config-val 'tags-file proj-name t) t))
         (setq etags-table-alist (remove-if (lambda (xs) (string-equal (car xs) proj-name-entry-key)) etags-table-alist))
         (add-to-list 'etags-table-alist (append (list proj-name-entry-key) proj-name-entry-value))
+        (add-to-list 'etags-table-alist (append (list proj-name-entry-key-true) proj-name-entry-value))
         ;; another entry for tags-proj
         (setq etags-table-alist (remove-if (lambda (xs) (string-equal (car xs) tags-proj-entry-key)) etags-table-alist))
         (add-to-list 'etags-table-alist (append (list tags-proj-entry-key) proj-name-entry-value))
+        (add-to-list 'etags-table-alist (append (list tags-proj-entry-key-true) proj-name-entry-value))
         ))))
 
 (defun mk-proj-cscope-load (&optional proj-name tags-proj)
@@ -1970,6 +1975,21 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
          (tags-proj-entry (when tags-proj
                             (list (file-name-directory (mk-proj-get-config-val 'cscope-namefile tags-proj t))
                                   (list "-s" (mk-proj-get-config-val 'basedir tags-proj))))))
+    (add-to-list 'current-db-list proj-entry 'eq)
+    (when tags-proj
+      (add-to-list 'current-db-list tags-proj-entry 'eq))
+    (setq cscope-database-regexps (remove-if (lambda (xs)
+                                               (string-equal (car xs) (car current-db-list)))
+                                             cscope-database-regexps))
+    (add-to-list 'cscope-database-regexps current-db-list 'eq))
+  (let* ((db-key (regexp-quote (file-truename (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name)))))
+         (current-db-list (or (assoc db-key cscope-database-regexps)
+                              (list (file-truename (file-name-directory (mk-proj-get-config-val 'basedir proj-name t))))))
+         (proj-entry (list (file-name-directory (mk-proj-get-config-val 'cscope-namefile proj-name t))
+                           (list "-s" (file-truename (mk-proj-get-config-val 'basedir proj-name)))))
+         (tags-proj-entry (when tags-proj
+                            (list (file-truename (file-name-directory (mk-proj-get-config-val 'cscope-namefile tags-proj t)))
+                                  (list "-s" (file-truename (mk-proj-get-config-val 'basedir tags-proj)))))))
     (add-to-list 'current-db-list proj-entry 'eq)
     (when tags-proj
       (add-to-list 'current-db-list tags-proj-entry 'eq))
@@ -2539,7 +2559,8 @@ project is not loaded."
                               (friend-basedir (if (string-equal (substring basedir -1) "/")
                                                   basedir
                                                 (concat basedir "/"))))
-                         (when (string-match (concat "^" (regexp-quote friend-basedir)) file-name)
+                         (when (or (string-match (concat "^" (regexp-quote friend-basedir)) file-name)
+                                   (string-match (concat "^" (regexp-quote (file-truename friend-basedir))) file-name))
                            (return-from "friend-loop" t))))))))
           t
         nil))))
