@@ -105,10 +105,11 @@ a single org file is stored in the projects basedir.")
                                              (when (mk-proj-get-config-val 'org-file)
                                                (project-clock-out))))
      (add-hook 'after-save-hook (lambda ()
-                                  (let ((filename (buffer-file-name (current-buffer))))
-                                    (when (string-equal (file-truename filename)
-                                                        (file-truename (mk-proj-get-config-val 'org-file)))
-                                      (mk-org-search-files filename)))))
+                                  (when mk-proj-name
+                                    (let ((filename (buffer-file-name (current-buffer))))
+                                      (when (string-equal (file-truename filename)
+                                                          (file-truename (mk-proj-get-config-val 'org-file)))
+                                        (mk-org-search-files filename))))))
      ))
 
 
@@ -126,7 +127,7 @@ Also tries to find org files with projects in files from `recentf-list'."
       (dolist (recent-file recentf-list)
         (when (and (file-exists-p recent-file)
                    (string-match ".*\\.org" recent-file)
-                   (= (call-process "bash" nil nil nil "-c" (concat "grep \"MKP_NAME\" \"" recent-file "\"")) 0))
+                   (= (call-process "bash" nil nil nil "-c" (concat "grep \"MKP_NAME\\|mkp_name\" \"" recent-file "\"")) 0))
           (print recent-file)
           (add-to-list 'org-files recent-file 'string-equal))))
     (remove-if (lambda (x)
@@ -138,7 +139,7 @@ Also tries to find org files with projects in files from `recentf-list'."
                                                        (cond ((condition-case nil (directory-files path) (error nil))
                                                               (let ((currentdir default-directory))
                                                                 (cd path)
-                                                                (let ((result (split-string (shell-command-to-string "grep -ls \"MKP_NAME\" *.org") "\n" t)))
+                                                                (let ((result (split-string (shell-command-to-string "grep -ls \"MKP_NAME\\|mkp_name\" *.org") "\n" t)))
                                                                   (cd currentdir)
                                                                   (mapcar (lambda (f) (expand-file-name (concat path f))) result))))
                                                              ((file-exists-p path)
@@ -175,11 +176,15 @@ Optional argument SYMBOL can be specified if you just want to look up
 a single symbol and don't need the whole alist."
   (let* ((proj-vars (append mk-proj-required-vars mk-proj-optional-vars))
          (props '())
-         (table (dolist (var proj-vars props)
-                  (add-to-list 'props `(,var . ,(concat "MKP_" (replace-regexp-in-string "-" "_" (upcase (symbol-name var)))))))))
+         (table (progn
+                  (dolist (varchecks proj-vars props)
+                    (add-to-list 'props `(,varchecks . ,(concat "mkp_" (replace-regexp-in-string "-" "_" (downcase (symbol-name (car varchecks))))))))
+                  )))
     (if symbol
         (cdr (assoc symbol table))
       table)))
+
+;; (mk-org-symbol-table 'name)
 
 (defun mk-org-assert-org (&optional proj-name try-guessing)
   "Same as `mk-proj-assert-proj' but makes sure that the project has
@@ -338,9 +343,9 @@ will be used internally. You can specify a MATCH to be used in that case with:
                              ((and match (listp match) (functionp (car match)))
                               (funcall (car match) (cadr match)))
                              ((stringp match)
-                              (concat "^[ \t]*:MKP_NAME:[ \t]*\\(\"" match "\"\\)"))
+                              (concat "^[ \t]*:\\(MKP_NAME\\|mkp_name\\):[ \t]*\\(\"" match "\"\\)"))
                              (t
-                              "^[ \t]*:MKP_NAME:[ \t]*\\(.*\\)")))
+                              "^[ \t]*:\\(MKP_NAME\\|mkp_name\\):[ \t]*\\(.*\\)")))
                    (case-fold-search nil)
                    (skip-project-functions nil))
               (while (cond ((numberp re)
@@ -385,6 +390,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
                          (f-closure (lambda ()
                                       (let ((r nil)
                                             (entry-name (read (or (org-entry-get (point) (mk-org-symbol-table 'name))
+                                                                  (org-entry-get (point) (upcase (mk-org-symbol-table 'name)))
                                                                   (concat "\"" parent-name ":" (mk-org-entry-headline) "\"")
                                                                   "nil")))
                                             (entry-level (save-excursion
@@ -404,11 +410,13 @@ will be used internally. You can specify a MATCH to be used in that case with:
                                                             (> (org-outline-level) entry-level))
                                                           (not (eobp)))
                                                 (cond ((and (eq scope 'project-tree)
-                                                            (org-entry-get (point) (mk-org-symbol-table 'name)))
+                                                            (or (org-entry-get (point) (mk-org-symbol-table 'name))
+                                                                (org-entry-get (point) (upcase (mk-org-symbol-table 'name)))))
                                                        (let* ((parent-name entry-name)
                                                               (parent-level entry-level)
                                                               (parent-point entry-point)
                                                               (entry-name (read (or (org-entry-get (point) (mk-org-symbol-table 'name))
+                                                                                    (org-entry-get (point) (upcase (mk-org-symbol-table 'name)))
                                                                                     "nil")))
                                                               (entry-level (save-excursion
                                                                              (beginning-of-line)
@@ -417,13 +425,16 @@ will be used internally. You can specify a MATCH to be used in that case with:
                                                          (setq skip-project-functions (append skip-project-functions
                                                                                               `((lambda ()
                                                                                                   (string-equal (read (or (org-entry-get (point) (mk-org-symbol-table 'name))
+                                                                                                                          (org-entry-get (point) (upcase (mk-org-symbol-table 'name)))
                                                                                                                           "nil"))
                                                                                                                 ,(read (or (org-entry-get (point) (mk-org-symbol-table 'name))
+                                                                                                                           (org-entry-get (point) (upcase (mk-org-symbol-table 'name)))
                                                                                                                            "nil")))))))
                                                          (funcall project-recursion)
                                                          (outline-previous-heading)))
                                                       ((and (eq scope 'project-single)
-                                                            (org-entry-get (point) (mk-org-symbol-table 'name)))
+                                                            (or (org-entry-get (point) (mk-org-symbol-table 'name))
+                                                                (org-entry-get (point) (upcase (mk-org-symbol-table 'name)))))
                                                        (mk-org-forward-same-level)
                                                        )
                                                       (t
@@ -473,9 +484,13 @@ will be used internally. You can specify a MATCH to be used in that case with:
    (if (and (boundp 'entry-name)
             (eq (point) entry-point))
        entry-name
-     (and (org-entry-get (point) (mk-org-symbol-table 'name) t)
-          (or (read (or (org-entry-get (point) (mk-org-symbol-table 'name)) "nil"))
-              (concat (read (org-entry-get (point) (mk-org-symbol-table 'name) t)) ":" (mk-org-entry-headline)))))))
+     (or (read (or (org-entry-get (point) (mk-org-symbol-table 'name))
+                   (org-entry-get (point) (upcase (mk-org-symbol-table 'name)))
+                   "nil"))
+         (let ((some-name (or (org-entry-get (point) (mk-org-symbol-table 'name) t)
+                              (org-entry-get (point) (upcase (mk-org-symbol-table 'name)) t))))
+           (when some-name
+             (concat (read some-name) ":" (mk-org-entry-headline))))))))
 
 (defun mk-org-entry-marker (&optional marker)
   (interactive)
@@ -524,7 +539,8 @@ will be used internally. You can specify a MATCH to be used in that case with:
        (let ((p (mk-org-entry-parent-point)))
          (if (eq p nil) nil
            (goto-char p)
-           (read (org-entry-get (point) (mk-org-symbol-table 'name)))))))))
+           (read (or (org-entry-get (point) (mk-org-symbol-table 'name))
+                     (org-entry-get (point) (upcase (mk-org-symbol-table 'name)))))))))))
 
 (defun mk-org-entry-parent-point (&optional marker)
   (interactive)
@@ -536,16 +552,19 @@ will be used internally. You can specify a MATCH to be used in that case with:
      (save-excursion
        (org-back-to-heading t)
        (let ((parent-point nil)
-             (parent-name (org-entry-get (point) (mk-org-symbol-table 'name) t))
+             (parent-name (or (org-entry-get (point) (mk-org-symbol-table 'name) t)
+                              (org-entry-get (point) (upcase (mk-org-symbol-table 'name)) t)))
              (cont nil)
              (is-project (mk-org-entry-is-project-p)))
          (setq cont (org-up-heading-safe))
          (when is-project
-             (setq parent-name (org-entry-get (point) (mk-org-symbol-table 'name) t)))
+           (setq parent-name (or (org-entry-get (point) (mk-org-symbol-table 'name) t)
+                                 (org-entry-get (point) (upcase (mk-org-symbol-table 'name)) t))))
          (when (and parent-name cont)
            (while (and cont
                        (setq parent-point (point))
-                       (not (string-equal (org-entry-get (point) (mk-org-symbol-table 'name))
+                       (not (string-equal (or (org-entry-get (point) (mk-org-symbol-table 'name))
+                                              (org-entry-get (point) (upcase (mk-org-symbol-table 'name))))
                                           parent-name)))
              (setq cont (org-up-heading-safe))))
          parent-point)))))
@@ -608,7 +627,8 @@ will be used internally. You can specify a MATCH to be used in that case with:
   (with-or-without-marker marker
    (when (save-excursion
            (beginning-of-line)
-           (org-entry-get (point) (mk-org-symbol-table 'name)))
+           (or (org-entry-get (point) (mk-org-symbol-table 'name))
+               (org-entry-get (point) (upcase (mk-org-symbol-table 'name)))))
      t)))
 
 (defun mk-org-entry-is-in-project-p (&optional marker)
@@ -616,7 +636,8 @@ will be used internally. You can specify a MATCH to be used in that case with:
   (with-or-without-marker marker
                           (when (save-excursion
                                   (beginning-of-line)
-                                  (org-entry-get (point) (mk-org-symbol-table 'name) t))
+                                  (or (org-entry-get (point) (mk-org-symbol-table 'name) t)
+                                      (org-entry-get (point) (upcase (mk-org-symbol-table 'name)) t)))
                             t)))
 
 (defun mk-org-entry-alist (&optional marker)
@@ -629,17 +650,15 @@ will be used internally. You can specify a MATCH to be used in that case with:
      (unless (and (eq major-mode 'org-mode)
                   (looking-at org-complex-heading-regexp))
        (error "mk-org: buffer is not in org-mode or point is not a org heading"))
-     (let* ((entry-properties (org-entry-properties))
-            (ks '())
-            (props (dolist (p entry-properties ks) (push (car p) ks)))
-            (entry-config '()))
-       (dolist (propname props entry-config)
-         (let ((sym (rassoc propname (mk-org-symbol-table))))
-           (if sym
-               (let* ((config-propname (cdr sym))
-                      (config-item (car sym))
-                      (item-value (read (cdr (assoc config-propname entry-properties)))))
-                 (add-to-list 'entry-config `(,config-item ,item-value))))))
+     (let ((entry-config '()))
+       (dolist (prop (mk-org-symbol-table) entry-config)
+         (let* ((sym (car prop))
+               (propname (cdr prop))
+               (value (read (or (org-entry-get (point) propname)
+                                (org-entry-get (point) (upcase propname))
+                                "nil"))))
+           (when value
+             (add-to-list 'entry-config `(,sym ,value)))))
        (let ((entry-config (append entry-config `((org-file ,(or (buffer-file-name (current-buffer))
                                                                  (buffer-file-name (buffer-base-buffer (current-buffer)))))
                                                   (org-headline ,(mk-org-entry-headline))
@@ -991,15 +1010,16 @@ See also `mk-org-entry-nearest-active'."
       (if headline
           (insert headline)
         (insert proj-name))
-      (org-set-property "MKP_NAME" (prin1-to-string proj-name))
+      (org-set-property "mkp_name" (prin1-to-string proj-name))
       (loop for k in (append mk-proj-required-vars mk-proj-optional-vars)
-            if (not (or (eq k 'name)
-                        (or (mk-proj-any (lambda (j) (eq k j)) mk-proj-internal-vars)
+            if (not (or (eq (car k) 'name)
+                        (or (mk-proj-any (lambda (j) (eq (car k) j)) mk-proj-internal-vars)
                             insert-internal)))
             do (when (or insert-undefined
-                         (assoc k config-alist))
-                 (let* ((prop (cdr (assoc k (mk-org-symbol-table))))
-                        (val (cadr (assoc k config-alist))))
+                         (assoc (car k) config-alist))
+                 (let* ((prop (cdr (assoc (car k) (mk-org-symbol-table))))
+                        (val (cadr (assoc (car k) config-alist))))
+                   (org-entry-delete (point) (upcase prop))
                    (org-set-property prop (prin1-to-string val)))))
       (point-marker))))
 
@@ -1020,13 +1040,15 @@ See also `mk-org-entry-nearest-active'."
               (saved-marker (save-excursion
                               (cond ((looking-at (format org-complex-heading-regexp-format headline))
                                      (progn
-                                       (org-set-property "MKP_NAME" (prin1-to-string proj-name))
+                                       (org-set-property "mkp_name" (prin1-to-string proj-name))
                                        (loop for k in (append mk-proj-required-vars mk-proj-optional-vars)
-                                             if (not (or (eq k 'name)
-                                                         (mk-proj-any (lambda (j) (eq k j)) mk-proj-internal-vars)))
-                                             do (when (assoc k config-alist)
-                                                  (let* ((prop (cdr (assoc k (mk-org-symbol-table))))
-                                                         (val (cadr (assoc k config-alist))))
+                                             if (not (or (eq (car k) 'name)
+                                                         (mk-proj-any (lambda (j) (eq (car k) j)) mk-proj-internal-vars)))
+                                             do (when (assoc (car k) config-alist)
+                                                  (let* ((prop (cdr (assoc (car k) (mk-org-symbol-table))))
+                                                         (val (cadr (assoc (car k) config-alist))))
+                                                    (print prop)
+                                                    (org-entry-delete (point) (upcase prop))
                                                     (org-set-property prop (prin1-to-string val)))))
                                        (point-marker)))
                                     ((looking-at org-complex-heading-regexp)
