@@ -1799,8 +1799,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 
 (defun mk-proj-buffer-name (buf)
   "Return buffer's name based on filename or dired's location"
-  (let ((file-name (or (buffer-file-name buf)
-                       (with-current-buffer buf list-buffers-directory))))
+  (let ((file-name (or (buffer-file-name (or (buffer-base-buffer buf) buf))
+                       (with-current-buffer (or (buffer-base-buffer buf) buf) list-buffers-directory))))
     (if file-name
         (expand-file-name file-name)
       nil)))
