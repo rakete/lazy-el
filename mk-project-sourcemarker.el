@@ -32,7 +32,7 @@
                                              (if mk-sourcemarker-per-project-db
                                                  (if val
                                                      (expand-file-name val)
-                                                   (mk-proj-get-cache-path 'sourcemarker-db nil 'copy))
+                                                   (mk-proj-get-cache-file 'sourcemarker-db nil 'copy))
                                                (or (and val (expand-file-name val))
                                                    continue-db-path)))))
      (add-to-list 'mk-proj-var-before-get-functions
@@ -110,7 +110,8 @@
                    (mk-proj-friendly-buffer-p (current-buffer)))))
       (continue-restore)
     (if (and (not (condition-case nil (mk-proj-assert-proj) (error t)))
-             (not (mk-sourcemarker-with-project-db (gethash (buffer-file-name (current-buffer)) (symbol-value (intern continue-db-symbol)))))
+             (not (mk-sourcemarker-with-project-db (or (gethash (buffer-file-name (current-buffer)) (symbol-value (intern continue-db-symbol)))
+                                                       (gethash (mk-proj-file-truename (buffer-file-name (current-buffer))) (symbol-value (intern continue-db-symbol))))))
              (mk-proj-get-config-val 'parent))
         (mk-proj-with-current-project (mk-proj-get-config-val 'parent)
                                       (mk-sourcemarker-restore))
@@ -125,7 +126,7 @@
     (with-current-buffer buf
       (mk-sourcemarker-restore))))
 
-(defun mk-sourcemarker-save (&optional keep-timestamp)
+(defun mk-sourcemarker-save ()
   (interactive)
   (if (or (condition-case nil (mk-proj-assert-proj) (error t))
           (not (or (mk-proj-buffer-p (current-buffer))
@@ -144,7 +145,8 @@
                                (mk-sourcemarker-save))
                              (mk-sourcemarker-with-project-db
                               (let* ((filename (buffer-file-name buf))
-                                     (sm (gethash filename (symbol-value (intern-soft continue-db-symbol)) nil))
+                                     (sm (or (gethash filename (symbol-value (intern-soft continue-db-symbol)) nil)
+                                             (gethash (mk-proj-file-truename filename) (symbol-value (intern-soft continue-db-symbol)) nil)))
                                      (timestamp (and sm (read (cdr (assoc :timestamp sm))))))
                                 (if timestamp
                                     (add-to-list 'results `(,timestamp . ,buf))
@@ -156,33 +158,27 @@
 
 (defun mk-sourcemarker-display-most-recent-buffer ()
   (mk-proj-assert-proj)
-  (print (mk-proj-buffers))
   (let* ((results '())
          (buffer (progn
-                   (dolist (buf (append (mk-proj-buffers) (mk-proj-friendly-buffers)))
+                   (dolist (buf (append (mk-proj-buffers)))
                      (when (buffer-file-name buf)
                        (mk-sourcemarker-with-project-db
                         (let* ((filename (buffer-file-name buf))
-                               (sm (if (or (not (or (mk-proj-buffer-p (find-buffer-visiting filename))
-                                                    (mk-proj-friendly-buffer-p (find-buffer-visiting filename))))
-                                           (not (mk-sourcemarker-with-project-db
-                                                 (gethash filename (symbol-value (intern continue-db-symbol))))))
-                                       nil ;;(gethash filename (symbol-value (intern-soft global-db-symbol)) nil)
-                                     (gethash filename (symbol-value (intern-soft continue-db-symbol)) nil)))
+                               (sm (or (gethash filename (symbol-value (intern continue-db-symbol)))
+                                       (gethash (mk-proj-file-truename filename) (symbol-value (intern continue-db-symbol)))))
                                (timestamp (and sm (read (cdr (assoc :timestamp sm))))))
                           (when timestamp
-                            (add-to-list 'results (print `(,timestamp . ,buf))))))))
-                   (print (cdar (sort results (lambda (a b) (> (car a) (car b)))))))))
-    (print results)
-    (print buffer)
+                            (add-to-list 'results `(,timestamp . ,buf)))))))
+                   (cdar (sort results (lambda (a b) (> (car a) (car b))))))))
     (let ((display-buffer-reuse-frames nil))
       (let ((buffer (or buffer (car (mk-proj-file-buffers))))
             (window (get-buffer-window buffer 'visible)))
         (if window
             (raise-frame (window-frame window))
-          (display-buffer buffer))))
+          (display-buffer buffer))
+        (with-current-buffer buffer (recenter))))
     ))
 
-(sort '((0 . "foo") (1 . "bar")) (lambda (a b) (> (car a) (car b))))
+;;(sort '((0 . "foo") (1 . "bar")) (lambda (a b) (> (car a) (car b))))
 
 (provide 'mk-project-sourcemarker)
