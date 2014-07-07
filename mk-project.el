@@ -279,24 +279,24 @@ can find it, if not it creates it at the end of the file).
 
 See also `mk-proj-config-save-location'")
 
-(defvar mk-proj-language-source-tag-systems '((c . (rtags+gtags rtags gtags))
-                                              (cpp . (rtags+gtags rtags gtags))
-                                              (csharp . (gtags+exuberant-ctags))
-                                              (elisp . (gtags+exuberant-ctags))
-                                              (erlang . (gtags+exuberant-ctags))
-                                              (lisp . (gtags+exuberant-ctags))
-                                              (scheme . (gtags+exuberant-ctags))
-                                              (lua . (gtags+exuberant-ctags))
-                                              (haskell . (haskell-hothasktags haskell-ghc))
-                                              (ocaml . (gtags+exuberant-ctags))
-                                              (perl . (gtags+exuberant-ctags))
-                                              (python . (gtags+exuberant-ctags))
-                                              (php . (gtags))
-                                              (shell . (gtags+exuberant-ctags))
-                                              (ruby . (gtags+exuberant-ctags))
-                                              (java . (gtags))
-                                              (javascript . (gtags))
-                                              (yacc . (gtags))))
+(defvar mk-proj-language-tag-systems '((c . (gtags+rtags rtags gtags cscope))
+                                       (cpp . (gtags+rtags rtags gtags cscope))
+                                       (csharp . (gtags+exuberant-ctags))
+                                       (elisp . (gtags+exuberant-ctags))
+                                       (erlang . (gtags+exuberant-ctags))
+                                       (lisp . (gtags+exuberant-ctags))
+                                       (scheme . (gtags+exuberant-ctags))
+                                       (lua . (gtags+exuberant-ctags))
+                                       (haskell . (haskell-hothasktags haskell-ghc))
+                                       (ocaml . (gtags+exuberant-ctags))
+                                       (perl . (gtags+exuberant-ctags))
+                                       (python . (gtags+exuberant-ctags))
+                                       (php . (gtags))
+                                       (shell . (gtags+exuberant-ctags))
+                                       (ruby . (gtags+exuberant-ctags))
+                                       (java . (gtags))
+                                       (javascript . (gtags))
+                                       (yacc . (gtags))))
 
 
 ;; ---------------------------------------------------------------------
@@ -1937,9 +1937,10 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   "Create or update the projects TAG database."
   (interactive)
   (unless proj-name
-    (setq proj-name (progn (mk-proj-assert-proj t) mk-proj-name)))
+    (mk-proj-assert-proj t)
+    (setq proj-name mk-proj-name))
   (unless files
-    (setq files (append (mk-proj-files proj-name t) (mk-proj-friendly-files proj-name t))))
+    (setq files (mk-proj-unique-files)))
   (let ((default-directory (mk-proj-get-config-val 'basedir proj-name))
         (gtags-executable (executable-find "gtags"))
         (global-executable (executable-find "global"))
@@ -1948,13 +1949,13 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
         (sys-files (make-hash-table)))
     (dolist (f files)
       (let ((lang (car-safe (mk-proj-src-pattern-languages (list f)))))
-        (dolist (sys (cdr (assoc lang mk-proj-language-source-tag-systems)))
-          (cond ((and (or (eq sys 'rtags+gtags) (eq sys 'gtags+rtags))
+        (dolist (sys (cdr (assoc lang mk-proj-language-tag-systems)))
+          (cond ((and (or (eq sys 'gtags+rtags))
                       gtags-executable
                       global-executable
                       rtags-executable)
-                 (return (puthash 'rtags+gtags
-                                  (append (list f) (gethash 'rtags+gtags sys-files))
+                 (return (puthash 'gtags+rtags
+                                  (append (list f) (gethash 'gtags+rtags sys-files))
                                   sys-files)))
                 ((and (eq sys 'rtags)
                       rtags-executable)
@@ -1988,7 +1989,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                     (gtags-arguments (or (mk-proj-get-config-val 'gtags-arguments proj-name)
                                          ""))
                     (gtags-commands (make-hash-table)))
-               (when (gethash 'rtags+gtags sys-files)
+               (when (gethash 'gtags+rtags sys-files)
                  ("rtags not implemented yet"))
                (when (gethash 'gtags sys-files)
                  (puthash 'gtags
@@ -2005,7 +2006,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                                   "GTAGSROOT=" gtags-root " "
                                   "gtags " gtags-dbpath " -i -v -f - " gtags-arguments ";")
                           gtags-commands))
-               (let* ((ordering (list 'gtags+exuberant-ctags 'rtags+gtags 'gtags))
+               (let* ((ordering (list 'gtags+exuberant-ctags 'gtags+rtags 'gtags))
                       (commands (loop for sys in ordering
                                       if (gethash sys gtags-commands)
                                       collect (gethash sys gtags-commands)))
@@ -2038,11 +2039,179 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 
 ;; (mk-proj-process-group "testor" (list "cat" "cat") (list "foo\nbar\n" "blubber\n") t)
 
-(defun project-setup-tags ()
+(defun mk-proj-src-pattern-tag-systems (src-patterns)
+  (let ((systems '()))
+    (dolist (lang (mk-proj-src-pattern-languages src-patterns))
+      (dolist (sys (cdr (assoc lang mk-proj-language-tag-systems)))
+        (add-to-list 'systems sys)))
+    systems))
+
+;;(mk-proj-src-pattern-tag-systems (mk-proj-unique-files "emacs-config"))
+
+(defun project-setup-tags (&optional proj-name)
   "Setup environment for existing TAG database."
   (interactive)
-  
+  (unless proj-name
+    (mk-proj-assert-proj t)
+    (setq proj-name mk-proj-name))
+  (let ((proj-systems (mk-proj-src-pattern-tag-systems (mk-proj-unique-files proj-name)))
+        (available-systems '()))
+    (when (or (find 'gtags proj-systems)
+              (find 'gtags+rtags proj-systems)
+              (find 'gtags+exuberant-ctags proj-systems))
+      (let* ((gtags-file (concat (mk-proj-file-truename (concat (mk-proj-get-root-cache-dir nil proj-name) "GTAGS"))))
+             (gtags-file-alternative (concat (mk-proj-get-config-val 'basedir proj-name) "GTAGS")))
+        (cond ((file-exists-p gtags-file)
+               (let ((gtags-dbpath (mk-proj-dirname gtags-file))
+                     (gtags-root "/"))
+                 (setenv "GTAGSDBPATH" gtags-dbpath)
+                 (setenv "GTAGSROOT" gtags-root)
+                 (add-to-list 'available-systems 'gtags))))))
+    available-systems))
+
+;;(project-setup-tags)
+
+(defun mk-proj-get-jumps (system cmd)
+  (let ((jumps '())
+        (process-buffer "tags-cmd-output"))
+    (cond ((eq 'gtags system)
+           (condition-case nil (shell-command cmd process-buffer) (error nil))
+           (when (get-buffer process-buffer)
+             (with-current-buffer process-buffer
+               (goto-char (point-min))
+               (loop do (let* ((tokens (split-string (thing-at-point 'line) " " t)))
+                          (setq jumps
+                                (nconc jumps
+                                       (list (list :word (nth 0 tokens)
+                                                   :line-number (nth 1 tokens)
+                                                   :relative-path (nth 2 tokens)
+                                                   :line-contents (mapconcat 'identity (nthcdr 3 tokens) " ")))))
+                          (forward-line 1))
+                     until (eobp)))
+             (kill-buffer process-buffer)))
+          ((eq 'rtags system)
+           nil)
+          ((eq 'cscope system)
+           nil)
+          ((eq 'find-function system)
+           nil)
+          ((eq 'imenu system)
+           nil)
+          ((eq 'imenu-many system)
+           nil))
+    jumps))
+
+;; go through all, assign score to each jump
+;; sort jumps in file by line number
+;; sort files by highest scoring jump
+;; pick file with the highest scoring jump as first
+;; if two files have equally high scoring jumps, pick the one which has less jumps in it
+(defun mk-proj-sort-jumps (jumps regexp buffer)
+  (let ((file-map (make-hash-table :test 'equal))
+        (buffer-languages (mk-proj-src-pattern-languages (when (buffer-file-name buffer) (list (buffer-file-name buffer)))))
+        (inc (if (boundp 'ido-buffer-history) (* (ceiling (/ (float (length ido-buffer-history)) 100)) 100) 100)))
+    (dolist (jump jumps)
+      (let* ((jump-word (plist-get jump :word))
+             (jump-path (file-truename (plist-get jump :relative-path)))
+             (jump-line-number (plist-get jump :line-number))
+             (jump-line-contents (plist-get jump :line-contents))
+             (line-map (gethash jump-path file-map (make-hash-table)))
+             (score 0))
+        (when (and jump-word
+                   (string-match-p regexp jump-word))
+          (setq score (+ score inc)))
+        (when (and jump-word
+                   (> score 0)
+                   (string-match-p (concat "^" regexp "$") jump-word))
+          (setq score (+ score inc)))
+        (when (and jump-line-contents
+                   jump-word
+                   (string-match-p regexp jump-line-contents))
+          (setq score (+ score inc)))
+        (when (and (buffer-file-name buffer)
+                   (mk-proj-path-equal jump-path (file-truename (buffer-file-name buffer))))
+          (setq score (+ score inc)))
+        (when (and mk-proj-name
+                   (mk-proj-path-equal jump-path (file-truename (mk-proj-get-config-val 'basedir mk-proj-name t))))
+          (setq score (+ score inc)))
+        (when (and (boundp 'ido-buffer-history)
+                   (find-buffer-visiting jump-path))
+          (setq score (+ score (or (position (buffer-name (find-buffer-visiting jump-path))
+                                             (reverse ido-buffer-history))
+                                   0))))
+        (when (and jump-path
+                   buffer-languages)
+          (dolist (lang buffer-languages)
+            (when (find lang (mk-proj-src-pattern-languages (list jump-path)))
+              (setq score (+ score inc)))))
+        (when (not (file-exists-p jump-path))
+          (setq score -1))
+        (puthash jump-line-number (plist-put jump :score score) line-map)
+        (puthash jump-path line-map file-map)))
+    (print file-map)))
+
+(defun mk-proj-select-jumps (jumps)
+  ;; (when (> (length jumps) 0)
+  ;;   (if (> (length jumps) 1)
+  ;;       nil
+  ;;     (ring-insert find-tag-marker-ring (point-marker))))
   )
+
+;; first try tags
+;; then find-function
+;; lastly imenu (so many potential results though)
+;; maybe just search in current expression/buffer?
+(defun project-jump-definition (&optional word buffer)
+  (interactive)
+  (unless buffer
+    (setq buffer (current-buffer)))
+  (unless word
+    (setq word (thing-at-point 'symbol)))
+  (let ((buffer-systems (mk-proj-src-pattern-tag-systems (when (buffer-file-name buffer) (list (buffer-file-name buffer)))))
+        (jumps '()))
+    (when (or (not buffer-systems)
+              (find 'gtags buffer-systems)
+              (find 'gtags+rtags buffer-systems)
+              (find 'gtags+exuberant-ctags buffer-systems))
+      (setq jumps (nconc jumps (mk-proj-get-jumps 'gtags (concat "global -dx " (prin1-to-string word))))))
+    (when (or (not buffer-systems)
+              (find 'rtags buffer-systems)
+              (find 'gtags+rtags buffer-systems))
+      nil)
+    (when (or (not buffer-systems)
+              (find 'cscope buffer-systems))
+      nil)
+    (mk-proj-select-jumps (mk-proj-sort-jumps jumps (regexp-quote word) buffer))))
+
+;; (project-jump-definition "special-display")
+
+(defun project-jump-references (&optional word buffer))
+
+(defun project-jump-callees (&optional word buffer)
+  ;; only supported by cscope afaik
+  )
+
+(defun project-jump-regexp (regexp &optional buffer)
+  (interactive "s")
+  (unless buffer
+    (setq buffer (current-buffer)))
+  (let ((buffer-systems (mk-proj-src-pattern-tag-systems (when (buffer-file-name buffer) (list (buffer-file-name buffer)))))
+        (jumps '()))
+    (when (or (not buffer-systems)
+              (find 'gtags buffer-systems)
+              (find 'gtags+rtags buffer-systems)
+              (find 'gtags+exuberant-ctags buffer-systems))
+      (setq jumps (nconc jumps (mk-proj-get-jumps 'gtags (concat "global -dx " (prin1-to-string regexp))))))
+    (when (or (not buffer-systems)
+              (find 'rtags buffer-systems)
+              (find 'gtags+rtags buffer-systems))
+      nil)
+    (when (or (not buffer-systems)
+              (find 'cscope buffer-systems))
+      nil)
+    (mk-proj-select-jumps (mk-proj-sort-jumps jumps regexp buffer))))
+
+;; (project-jump-regexp "mk-proj-.*")
 
 ;; ---------------------------------------------------------------------
 ;; Grep
@@ -2127,7 +2296,8 @@ With C-u prefix act as `project-ack-with-friends'."
   (mk-proj-assert-proj t)
   (if (mk-proj-has-univ-arg)
       (project-ack-with-friends)
-    (let* ((wap (word-at-point))
+    (let* ((wap (or (thing-at-point 'symbol)
+                    (thing-at-point 'word)))
            (regex (or phrase
                       (if wap (read-string (concat "Ack project for (default \"" wap "\"): ") nil nil wap)
                         (read-string "Ack project for: "))))
@@ -2312,16 +2482,25 @@ Returned file paths are relative to the project's basedir."
     (mapcar (lambda (f) (expand-file-name (concat basedir f)))
             (mk-proj-fib-matches nil proj-name))))
 
+(defun mk-proj-unique-files (&optional proj-name)
+  (unless proj-name
+    (mk-proj-assert-proj)
+    (setq proj-name mk-proj-name))
+  (let ((proj-files (mk-proj-files proj-name t))
+        (friendly-files (mk-proj-friendly-files proj-name t))
+        (unique-friends '()))
+    (dolist (f friendly-files)
+      (unless (find f proj-files :test 'equal)
+        (setq unique-friends (append (list f) unique-friends))))
+    (append proj-files unique-friends)))
+
 (defun mk-proj-friendly-files (&optional proj-name truenames)
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  (let* ((friendly-files (mapcan (lambda (friend)
-                                   (let ((friend-file (if truenames
-                                                          (mk-proj-with-directory (mk-proj-get-config-val 'basedir proj-name t)
-                                                                                  (expand-file-name friend))
-                                                        (mk-proj-with-directory (mk-proj-file-truename (mk-proj-get-config-val 'basedir proj-name t))
-                                                                                (mk-proj-file-truename (expand-file-name friend))))))
+  (let* ((basedir (mk-proj-file-truename (mk-proj-get-config-val 'basedir proj-name t)))
+         (friendly-files (mapcan (lambda (friend)
+                                   (let ((friend-file (mk-proj-with-directory basedir (expand-file-name friend))))
                                      (if (file-exists-p friend-file)
                                          (list friend-file)
                                        (mk-proj-files friend truenames))))
