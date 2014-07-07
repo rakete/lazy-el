@@ -1633,7 +1633,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   (let ((cachedir (concat mk-global-cache-root "/" (or (car-safe (mk-proj-ancestry proj-name)) proj-name) "/" dirname)))
     (unless (file-directory-p cachedir)
       (make-directory cachedir t))
-    cachedir))
+    (expand-file-name cachedir)))
 
 (defun mk-proj-ancestry (&optional proj-name)
   (let* ((current (or proj-name
