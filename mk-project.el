@@ -1788,18 +1788,19 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  (let ((file-name (mk-proj-buffer-name buf)))
+  (let ((file-name (mk-proj-buffer-name buf))
+        (basedir (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t))))
     (if (and file-name
              (file-exists-p file-name)
              (mk-proj-get-config-val 'basedir proj-name t)
-             (or (string-match (concat "^" (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t)))) file-name)
-                 (string-match (concat "^" (regexp-quote (mk-proj-file-truename (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t))))) file-name))
              (loop for pattern in (mk-proj-get-config-val 'src-patterns proj-name t)
                    if (string-match (if (mk-proj-get-config-val 'patterns-are-regex proj-name t)
                                         pattern
                                       (regexp-quote pattern)) file-name)
                    return t
-                   finally return nil))
+                   finally return nil)
+             (or (string-match (concat "^" (regexp-quote basedir)) file-name)
+                 (string-match (concat "^" (regexp-quote (file-truename basedir))) file-name)))
         t
       nil)))
 
@@ -2452,12 +2453,12 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                          (return-from "friend-loop" t))
                      (when (mk-proj-find-config f t)
                        (let* ((friend-config (mk-proj-find-config f t))
-                              (basedir (expand-file-name (car (cdr (assoc 'basedir friend-config)))))
-                              (friend-basedir (if (string-equal (substring basedir -1) "/")
-                                                  basedir
-                                                (concat basedir "/"))))
-                         (when (or (string-match (concat "^" (regexp-quote friend-basedir)) file-name)
-                                   (string-match (concat "^" (regexp-quote (mk-proj-file-truename friend-basedir))) file-name))
+                              (non-slash-basedir (expand-file-name (car (cdr (assoc 'basedir friend-config)))))
+                              (slash-basedir (if (string-equal (substring non-slash-basedir -1) "/")
+                                                  non-slash-basedir
+                                                (concat non-slash-basedir "/"))))
+                         (when (or (string-match (concat "^" (regexp-quote slash-basedir)) file-name)
+                                   (string-match (concat "^" (regexp-quote (mk-proj-file-truename slash-basedir))) file-name))
                            (return-from "friend-loop" t))))))))
           t
         nil))))
