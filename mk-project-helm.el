@@ -79,63 +79,28 @@
                       do (insert (concat (expand-file-name filename) "\n"))))))
     (candidates-in-buffer)
     (candidate-number-limit . 300)
-    ;; (action ("Find file" . (lambda (entry) (mk-helm-relative-call 'helm-find-many-files entry)))
-    ;;         ("Find file as root" . (lambda (entry) (mk-helm-relative-call 'helm-find-file-as-root entry)))
-    ;;         ("Find file other window" . (lambda (entry) (mk-helm-relative-call 'find-file-other-window entry)))
-    ;;         ("Find file other frame" . (lambda (entry) (mk-helm-relative-call 'find-file-other-frame entry)))
-    ;;         ("Open dired in file's directory" . (lambda (entry) (mk-helm-relative-call 'helm-c-open-dired entry)))
-    ;;         ("Grep File(s) `C-u recurse'" . (lambda (entry) (mk-helm-relative-call 'helm-find-files-grep entry)))
-    ;;         ("Zgrep File(s) `C-u Recurse'" . (lambda (entry) (mk-helm-relative-call 'helm-ff-zgrep entry)))
-    ;;         ("Pdfgrep File(s)" . (lambda (entry) (mk-helm-relative-call 'helm-ff-pdfgrep entry)))
-    ;;         ("Checksum File" . (lambda (entry) (mk-helm-relative-call 'helm-ff-checksum entry)))
-    ;;         ("Ediff File" . (lambda (entry) (mk-helm-relative-call 'helm-find-files-ediff-files entry)))
-    ;;         ("Ediff Merge File" . (lambda (entry) (mk-helm-relative-call 'helm-find-files-ediff-merge-files entry)))
-    ;;         ("View file" . (lambda (entry) (mk-helm-relative-call 'view-file entry)))
-    ;;         ("Insert file" . (lambda (entry) (mk-helm-relative-call 'insert-file entry)))
-    ;;         ("Delete file(s)" . (lambda (entry) (mk-helm-relative-call 'helm-delete-marked-files entry)))
-    ;;         ("Open file externally (C-u to choose)" . (lambda (entry) (mk-helm-relative-call 'helm-c-open-file-externally entry)))
-    ;;         ("Open file with default tool" . (lambda (entry) (mk-helm-relative-call 'helm-c-open-file-with-default-tool entry)))
-    ;;         ("Find file in hex dump" . (lambda (entry) (mk-helm-relative-call 'hexl-find-file entry))))
-    ;; (persistent-help . "Show this file")
-    ;; (action-transformer helm-c-transform-file-load-el
-    ;;                     helm-c-transform-file-browse-url)
-    ;; (candidate-transformer helm-c-highlight-files
-    ;;                        helm-c-w32-pathname-transformer
-    ;;                        helm-c-shorten-home-path
-    ;;                        mk-helm-relative-transformer)
     (keymap . ,helm-generic-files-map)
     (help-message . helm-generic-file-help-message)
     (mode-line . helm-generic-file-mode-line-string)
-    ;;(match helm-c-match-on-file-name)
     (type . file))
   "All files of the currently active project.")
 
 (defvar mk-project-helm-open-buffers-cache nil)
-;; (unless helm-buffer-max-len-mode
-;;   (setq helm-buffer-max-len-mode 0))
 
 (defvar helm-c-source-mk-project-open-buffers
   `((name . "Mk-Project buffers")
     (init . (lambda ()
-              (setq mk-project-helm-open-buffers-cache
-                    (mapcar 'buffer-name
-                            (condition-case nil
-                                (remove-if (lambda (buf) (string-match "\*[^\*]\*" (buffer-name buf))) (mk-proj-buffers))
-                              (error nil))))
-              (let ((result (cl-loop for b in mk-project-helm-open-buffers-cache maximize
-                                     (length b)
-                                     into len-buf maximize
-                                     (length
-                                      (with-current-buffer b
-                                        (symbol-name major-mode)))
-                                     into len-mode finally return
-                                     (cons len-buf len-mode))))
-                (unless helm-buffer-max-length
-                  (setq helm-buffer-max-length
-                        (car result)))
-                (unless helm-buffer-max-len-mode
-                  (setq helm-buffer-max-len-mode
-                        (cdr result))))))
+              (let ((project-buffers (mk-proj-buffers)))
+                (setq mk-project-helm-open-buffers-cache
+                      (mapcar 'buffer-name
+                              (condition-case nil
+                                  (remove-if (lambda (buf) (string-match "\*[^\*]\*" (buffer-name buf))) project-buffers)
+                                (error nil)))))
+              (unless helm-buffer-max-length
+                (setq helm-buffer-max-length 40))
+              (unless helm-buffer-max-len-mode
+                (setq helm-buffer-max-len-mode 40))
+              ))
     (candidates . mk-project-helm-open-buffers-cache)
     (no-matchplugin)
     (volatile)
@@ -167,7 +132,6 @@
                             (mk-proj-fib-matches nil friend))))))))
     (candidates-in-buffer)
     (candidate-number-limit . 300)
-    ;;(candidate-transformer helm-c-shorten-home-path)
     (keymap . ,helm-generic-files-map)
     (help-message . helm-generic-file-help-message)
     (mode-line . helm-generic-file-mode-line-string)
@@ -224,7 +188,6 @@
     (persistent-help
      . "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer"))
   "All special buffers of the currently active project." )
-
 
 (defun helm-mkproject ()
   (interactive)
