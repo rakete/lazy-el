@@ -295,7 +295,7 @@ See also `mk-proj-config-save-location'")
                                        (shell . (gtags+exuberant-ctags))
                                        (ruby . (gtags+exuberant-ctags))
                                        (java . (gtags))
-                                       (javascript . (gtags))
+                                       (javascript . (tern jsctags))
                                        (yacc . (gtags))))
 
 
@@ -2085,7 +2085,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                                        (list (list :word (nth 0 tokens)
                                                    :line-number (nth 1 tokens)
                                                    :relative-path (nth 2 tokens)
-                                                   :line-contents (mapconcat 'identity (nthcdr 3 tokens) " ")))))
+                                                   :line-contents (mapconcat 'identity (nthcdr 3 tokens) " ")
+                                                   :system system))))
                           (forward-line 1))
                      until (eobp)))
              (kill-buffer process-buffer)))
@@ -2106,8 +2107,9 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 ;; sort files by highest scoring jump
 ;; pick file with the highest scoring jump as first
 ;; if two files have equally high scoring jumps, pick the one which has less jumps in it
-(defun mk-proj-sort-jumps (jumps regexp buffer)
+(defun mk-proj-score-jumps (jumps regexp buffer)
   (let ((file-map (make-hash-table :test 'equal))
+        (file-score-map (make-hash-table))
         (buffer-languages (mk-proj-src-pattern-languages (when (buffer-file-name buffer) (list (buffer-file-name buffer)))))
         (inc (if (boundp 'ido-buffer-history) (* (ceiling (/ (float (length ido-buffer-history)) 100)) 100) 100)))
     (dolist (jump jumps)
@@ -2115,7 +2117,9 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
              (jump-path (file-truename (plist-get jump :relative-path)))
              (jump-line-number (plist-get jump :line-number))
              (jump-line-contents (plist-get jump :line-contents))
-             (line-map (gethash jump-path file-map (make-hash-table)))
+             (file-tuple (gethash jump-path file-map (list 0 (make-hash-table))))
+             (file-score (nth 0 file-tuple))
+             (line-map (nth 1 file-tuple))
              (score 0))
         (when (and jump-word
                    (string-match-p regexp jump-word))
@@ -2146,16 +2150,71 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
               (setq score (+ score inc)))))
         (when (not (file-exists-p jump-path))
           (setq score -1))
-        (puthash jump-line-number (plist-put jump :score score) line-map)
-        (puthash jump-path line-map file-map)))
+        (let ((existing-jump (gethash jump-line-number line-map)))
+          (unless (and existing-jump (> (plist-get existing-jump :score) score))
+            (puthash jump-line-number (plist-put jump :score score) line-map)
+            ;;(setf (gethash jump-line-number line-map) (plist-put jump :score score))
+            ))
+        (when (> score file-score) (setq file-score score))
+        (puthash jump-path (list file-score line-map) file-map)
+        ;; (if (gethash jump-path file-map)
+        ;;     (setf (nth 0 (gethash jump-path file-map)) file-score)
+        ;;   (puthash jump-path (list file-score line-map) file-map))
+        ))
     (print file-map)))
 
-(defun mk-proj-select-jumps (jumps)
-  ;; (when (> (length jumps) 0)
-  ;;   (if (> (length jumps) 1)
-  ;;       nil
-  ;;     (ring-insert find-tag-marker-ring (point-marker))))
-  )
+;; (let ((plist (list :foo "foo")))
+;;   (setf (plist-get plist :foo) "bar")
+;;   plist)
+
+(defun mk-proj-count-jumps (jump-map)
+  (let ((count 0))
+    (maphash (lambda (path file-tuple)
+               (maphash (lambda (line-number jump)
+                          (setq count (1+ count)))
+                        (nth 1 file-tuple)))
+             jump-map)
+    count))
+
+(defun mk-proj-sort-jumps (jump-map &rest sorts)
+  (let ((s nil))
+    (while (setq s (pop sorts))
+      (print s))))
+
+;; (mk-proj-sort-jumps (make-hash-table) 'foo 'bar)
+
+(defconst mk-proj-jump-buffer "*mk-proj: jumps*")
+
+(defun mk-proj-select-jumps (jump-map)
+  (let ((n (mk-proj-count-jumps jump-map)))
+    (when (> n 0)
+      (if (= n 1)
+          (ring-insert find-tag-marker-ring (point-marker))
+        (dolist (jump (mk-proj-sort-jumps jump-map 'file-score-asc 'line-desc)))
+        (let ((id )
+              (file)
+              (line)
+              (score)
+              (system)
+              (symbol)
+              (text)))
+        ;; (with-current-buffer (get-buffer-create mk-proj-jump-buffer)
+        ;;   (mk-proj-jump-list-mode)
+        ;;   (setq tabulated-list-entries (list (list "lala" (vector "foo" "222" "9001" "bar" "this is a test"))))
+        ;;   (tabulated-list-print t))
+        ;; (display-buffer mk-proj-jump-buffer)
+        ))))
+
+(define-derived-mode mk-proj-jump-list-mode tabulated-list-mode "Mk-Project jumps"
+  (setq tabulated-list-format [("File" 8 t :right-align t)
+                               ("Line" 8 t :right-align t)
+                               ("Score" 8 t)
+                               ("System" 8 t)
+                               ("Symbol" 8 t)
+                               ("Text" 0 nil)]
+        tabulated-list-padding 1
+        tabulated-list-sort-key nil)
+  (tabulated-list-init-header))
 
 ;; first try tags
 ;; then find-function
@@ -2181,7 +2240,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
     (when (or (not buffer-systems)
               (find 'cscope buffer-systems))
       nil)
-    (mk-proj-select-jumps (mk-proj-sort-jumps jumps (regexp-quote word) buffer))))
+    (mk-proj-select-jumps (mk-proj-score-jumps jumps (regexp-quote word) buffer))))
 
 ;; (project-jump-definition "special-display")
 
@@ -2209,7 +2268,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
     (when (or (not buffer-systems)
               (find 'cscope buffer-systems))
       nil)
-    (mk-proj-select-jumps (mk-proj-sort-jumps jumps regexp buffer))))
+    (mk-proj-select-jumps (mk-proj-score-jumps jumps regexp buffer))))
 
 ;; (project-jump-regexp "mk-proj-.*")
 
@@ -2312,8 +2371,9 @@ With C-u prefix act as `project-ack-with-friends'."
 ;; ---------------------------------------------------------------------
 
 (defun mk-proj-buffer-lang (&optional buffer)
-  (cadr (assoc (car (last (split-string (buffer-file-name (or buffer (current-buffer))) "\\.")))
-               mk-proj-src-pattern-table)))
+  (when (buffer-file-name (or buffer (current-buffer)))
+    (cadr (assoc (car (last (split-string (buffer-file-name (or buffer (current-buffer))) "\\.")))
+                 mk-proj-src-pattern-table))))
 
 (defun project-compile (&optional non-interactive)
   (interactive)
@@ -2332,12 +2392,18 @@ With C-u prefix act as `project-ack-with-friends'."
                                 result-compile-command)))
     (let ((cmd (mk-proj-get-config-val 'compile-cmd)))
       (mk-proj-with-directory (mk-proj-get-config-val 'basedir)
-                              (cond ((and (listp cmd)
-                                          (mk-proj-buffer-lang (current-buffer)))
-                                     (let* ((old-cmd (cadr (assoc (mk-proj-buffer-lang (current-buffer)) cmd)))
+                              (cond ((listp cmd)
+                                     (let* ((lang (or (mk-proj-buffer-lang (current-buffer))
+                                                      (dolist (prev (window-prev-buffers))
+                                                        (let ((buf (nth 0 prev)))
+                                                          (when (and (buffer-file-name buf)
+                                                                     (or (mk-proj-buffer-p buf)
+                                                                         (mk-proj-friendly-buffer-p buf)))
+                                                            (return (mk-proj-buffer-lang buf)))))))
+                                            (old-cmd (cadr (assoc lang cmd)))
                                             (compile-history (append (mapcar 'cadr cmd) compile-history))
                                             (new-cmd (internal-compile old-cmd))
-                                            (new-list (mk-proj-alist-union cmd (list (list (mk-proj-buffer-lang (current-buffer)) new-cmd)))))
+                                            (new-list (mk-proj-alist-union cmd (list (list lang new-cmd)))))
                                        (unless (string-equal old-cmd new-cmd)
                                          (mk-proj-set-config-val 'compile-cmd new-list))))
                                     ((stringp cmd)
