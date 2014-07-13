@@ -1981,7 +1981,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
     (dolist (group (list 'gtags 'rtags 'cscope 'ctags))
       (cond ((eq group 'gtags)
              (let* ((gtags-root "/")
-                    (gtags-dbpath (mk-proj-file-truename (mk-proj-get-root-cache-dir nil proj-name)))
+                    (gtags-dbpath (file-truename (mk-proj-get-root-cache-dir nil proj-name)))
                     (gtags-config (or (let ((c (mk-proj-get-config-val 'gtags-config proj-name))) (when (and c (file-exists-p c)) c))
                                       (let ((c (expand-file-name "~/.globalrc"))) (when (and c (file-exists-p c)) c))
                                       mk-proj-default-gtags-config
@@ -2059,7 +2059,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
     (when (or (find 'gtags proj-systems)
               (find 'gtags+rtags proj-systems)
               (find 'gtags+exuberant-ctags proj-systems))
-      (let* ((gtags-file (concat (mk-proj-file-truename (concat (mk-proj-get-root-cache-dir nil proj-name) "GTAGS"))))
+      (let* ((gtags-file (concat (file-truename (concat (mk-proj-get-root-cache-dir nil proj-name) "GTAGS"))))
              (gtags-file-alternative (concat (mk-proj-get-config-val 'basedir proj-name) "GTAGS")))
         (cond ((file-exists-p gtags-file)
                (let ((gtags-dbpath (mk-proj-dirname gtags-file))
@@ -2478,7 +2478,7 @@ Returned file paths are relative to the project's basedir."
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
   (let ((basedir (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t))))
-    (when truenames (setq basedir (mk-proj-file-truename basedir)))
+    (when truenames (setq basedir (file-truename basedir)))
     (mapcar (lambda (f) (expand-file-name (concat basedir f)))
             (mk-proj-fib-matches nil proj-name))))
 
@@ -2498,7 +2498,7 @@ Returned file paths are relative to the project's basedir."
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  (let* ((basedir (mk-proj-file-truename (mk-proj-get-config-val 'basedir proj-name t)))
+  (let* ((basedir (file-truename (mk-proj-get-config-val 'basedir proj-name t)))
          (friendly-files (mapcan (lambda (friend)
                                    (let ((friend-file (mk-proj-with-directory basedir (expand-file-name friend))))
                                      (if (file-exists-p friend-file)
@@ -2637,7 +2637,7 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                                                   non-slash-basedir
                                                 (concat non-slash-basedir "/"))))
                          (when (or (string-match (concat "^" (regexp-quote slash-basedir)) file-name)
-                                   (string-match (concat "^" (regexp-quote (mk-proj-file-truename slash-basedir))) file-name))
+                                   (string-match (concat "^" (regexp-quote (file-truename slash-basedir))) file-name))
                            (return-from "friend-loop" t))))))))
           t
         nil))))
@@ -2780,7 +2780,7 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
            (src-patterns (mk-proj-get-config-val 'src-patterns mk-proj-name t)))
       (when (and (assoc extension mk-proj-src-pattern-table)
                  (or (string-match (concat "^" (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t)))) file-name)
-                     (string-match (concat "^" (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t)))) (mk-proj-file-truename file-name)))
+                     (string-match (concat "^" (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t)))) (file-truename file-name)))
                  (not (some (lambda (pattern) (string-match pattern file-name)) src-patterns)))
         (mk-proj-set-config-val 'src-patterns (add-to-list 'src-patterns new-pattern))
         (project-index)))))

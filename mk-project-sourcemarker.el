@@ -111,7 +111,7 @@
       (continue-restore)
     (if (and (not (condition-case nil (mk-proj-assert-proj) (error t)))
              (not (mk-sourcemarker-with-project-db (or (gethash (buffer-file-name (current-buffer)) (symbol-value (intern continue-db-symbol)))
-                                                       (gethash (mk-proj-file-truename (buffer-file-name (current-buffer))) (symbol-value (intern continue-db-symbol))))))
+                                                       (gethash (file-truename (buffer-file-name (current-buffer))) (symbol-value (intern continue-db-symbol))))))
              (mk-proj-get-config-val 'parent))
         (mk-proj-with-current-project (mk-proj-get-config-val 'parent)
                                       (mk-sourcemarker-restore))
@@ -146,7 +146,7 @@
                              (mk-sourcemarker-with-project-db
                               (let* ((filename (buffer-file-name buf))
                                      (sm (or (gethash filename (symbol-value (intern-soft continue-db-symbol)) nil)
-                                             (gethash (mk-proj-file-truename filename) (symbol-value (intern-soft continue-db-symbol)) nil)))
+                                             (gethash (file-truename filename) (symbol-value (intern-soft continue-db-symbol)) nil)))
                                      (timestamp (and sm (read (cdr (assoc :timestamp sm))))))
                                 (if timestamp
                                     (add-to-list 'results `(,timestamp . ,buf))
@@ -165,7 +165,7 @@
                        (mk-sourcemarker-with-project-db
                         (let* ((filename (buffer-file-name buf))
                                (sm (or (gethash filename (symbol-value (intern continue-db-symbol)))
-                                       (gethash (mk-proj-file-truename filename) (symbol-value (intern continue-db-symbol)))))
+                                       (gethash (file-truename filename) (symbol-value (intern continue-db-symbol)))))
                                (timestamp (and sm (read (cdr (assoc :timestamp sm))))))
                           (when timestamp
                             (add-to-list 'results `(,timestamp . ,buf)))))))
