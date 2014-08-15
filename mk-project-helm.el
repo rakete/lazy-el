@@ -129,7 +129,9 @@
                         (insert-buffer (mk-proj-fib-name friend))
                       (mapc (lambda (line)
                               (insert (concat (expand-file-name line (mk-proj-get-config-val 'basedir friend t)) "\n")))
-                            (mk-proj-fib-matches nil friend))))))))
+                            (mk-proj-fib-matches nil friend)))))
+                (sort-subr nil 'forward-line 'end-of-line nil nil
+                           (lambda (a b) (string< a b))))))
     (candidates-in-buffer)
     (candidate-number-limit . 300)
     (keymap . ,helm-generic-files-map)
