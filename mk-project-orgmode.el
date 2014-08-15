@@ -1210,7 +1210,8 @@ This is taken almost directly from `org-babel-read'."
                        (not (buffer-modified-p buf))
                        (not (some (lambda (b) (eq b buf)) buffer-with-projects))
                        (not (some (lambda (b) (eq b buf)) pre-define-buffer-list)))
-              (kill-buffer buf))))))))
+              (kill-buffer buf))))))
+    nil))
 
 (defun mk-org-undefine-entries ()
   (interactive)
