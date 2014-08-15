@@ -116,8 +116,8 @@
         (mk-proj-with-current-project (mk-proj-get-config-val 'parent)
                                       (mk-sourcemarker-restore))
       (mk-sourcemarker-with-project-db
-       (message "restoring sourcemarker in buffer %s (%s)" (buffer-name (current-buffer)) (buffer-file-name (current-buffer)))
-       (continue-restore)))))
+       (when (continue-restore)
+         (message "restoring sourcemarker in buffer %s (%s)" (buffer-name (current-buffer)) (buffer-file-name (current-buffer))))))))
 
 (defun mk-sourcemarker-restore-all ()
   (interactive)
