@@ -364,8 +364,21 @@ load time. See also `project-menu-remove'."
 
 (defun mk-proj-assert-proj (&optional try-guessing)
   (unless mk-proj-name
-    (let ((guessed-alist (when try-guessing (mk-proj-guess-alist t t))))
+    (let* ((continue-prevent-restore t)
+           (guessed-alist (cond ((eq try-guessing 'quiet)
+                                 (mk-proj-guess-alist nil nil))
+                                (try-guessing
+                                 (mk-proj-guess-alist t t)))))
       (cond ((and guessed-alist
+                  (eq try-guessing 'quiet)
+                  (gethash (cadr (assoc 'name guessed-alist)) mk-proj-list nil))
+             (mk-proj-load (cadr (assoc 'name guessed-alist))))
+            ((and guessed-alist
+                  (eq try-guessing 'quiet)
+                  (not (gethash (cadr (assoc 'name guessed-alist)) mk-proj-list nil)))
+             (project-def (cadr (assoc 'name guessed-alist)) guessed-alist)
+             (mk-proj-load (cadr (assoc 'name guessed-alist))))
+            ((and guessed-alist
                   try-guessing
                   (gethash (cadr (assoc 'name guessed-alist)) mk-proj-list nil)
                   (y-or-n-p (concat "Load project " (cadr (assoc 'name guessed-alist)) "? ")))
