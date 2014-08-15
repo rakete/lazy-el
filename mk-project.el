@@ -1729,7 +1729,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   (when mk-proj-name
     (condition-case nil
         (progn
-          (message "Unloading project %s" mk-proj-name)
+          (unless quiet (message "Unloading project %s" mk-proj-name))
           (run-hooks 'mk-proj-before-unload-hook)
           (mk-proj-maybe-kill-buffer (mk-proj-fib-name))
           (mk-proj-save-open-friends-info)
@@ -1753,7 +1753,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
     (cd (mk-proj-dirname (buffer-file-name (current-buffer)))))
   (modify-frame-parameters (selected-frame) (list (cons 'name "Emacs")))
   (setq compile-command nil)
-  (message "Project settings have been cleared"))
+  (unless quiet (message "Project settings have been cleared")))
 
 (defun project-close-files ()
   "Close all unmodified files that reside in the project's basedir"
