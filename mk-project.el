@@ -829,462 +829,6 @@ find command will be used and the `mk-proj-ignore-patterns' and
 
 
 
-(defun mk-proj-find-projects-matching-patterns (test-patterns &optional name-list)
-  (let ((results nil))
-    (maphash (lambda (k v)
-               (let ((proj-patterns))
-                 (when (and (setq proj-patterns (cadr (assoc 'src-patterns v)))
-                            (loop for tp in test-patterns
-                                  for pp in proj-patterns
-                                  if (string-match tp pp)
-                                  return t
-                                  finally return nil))
-                   (add-to-list 'results k))))
-             (or (and name-list
-                      (let ((temp-hash (make-hash-table :test 'equal)))
-                        (mapcar (lambda (name) (puthash name (gethash name mk-proj-list) temp-hash)) name-list)
-                        temp-hash))
-                 mk-proj-list))
-    results))
-
-;;(mk-proj-find-projects-matching-patterns '(".*\\.el") (mk-proj-find-projects-matching-patterns '(".*\\.el") ))
-
-(defun* mk-proj-find-projects-in-directory (path &optional name-list)
-  (let ((results nil))
-    (maphash (lambda (k v)
-               (when (string-equal (expand-file-name (concat path "/"))
-                                   (expand-file-name (concat (mk-proj-get-config-val 'basedir k t) "")))
-                 (add-to-list 'results k)))
-             (or (and name-list
-                      (let ((temp-hash (make-hash-table :test 'equal)))
-                        (mapcar (lambda (name) (puthash name (gethash name mk-proj-list) temp-hash)) name-list)
-                        temp-hash))
-                 mk-proj-list))
-    results))
-
-;; (mk-proj-find-projects-in-directory "~/.emacs.d" '("emacs-config"))
-
-;; (mk-proj-guess-alist)
-
-;; (define-minor-mode mk-project)
-
-(defun mk-proj-find-projects-owning-buffer (buf &optional name-list)
-  (let ((projects nil))
-    (maphash (lambda (k v)
-               (when (and (buffer-file-name buf)
-                          (mk-proj-get-config-val 'basedir k t)
-                          (mk-proj-path-equal (buffer-file-name buf) (mk-proj-get-config-val 'basedir k t))
-                          (some (lambda (re) (string-match re (buffer-file-name buf))) (mk-proj-get-config-val 'src-patterns k t)))
-                 (add-to-list 'projects k)))
-             (or (and name-list
-                      (let ((temp-hash (make-hash-table :test 'equal)))
-                        (mapcar (lambda (name) (puthash name (gethash name mk-proj-list) temp-hash)) name-list)
-                        temp-hash))
-                 mk-proj-list))
-    projects))
-
-;; (mk-proj-find-projects-owning-buffer (current-buffer))
-
-(defun mk-proj-find-unique-paths (paths)
-  (let ((result '()))
-    (dolist (path paths result)
-      (unless (some (lambda (a) (mk-proj-path-equal path a)) (mk-proj-filter (lambda (p) (not (string-equal p path))) paths))
-        (add-to-list 'result path)))))
-
-;;(mk-proj-find-unique-paths '( "/home/rakete/.emacs.d/" "/home/rakete/testlab" "/home/rakete/Documents" "/home/rakete/.emacs.d/mk-project"))
-
-(defun mk-proj-find-common-path-of-buffers (&optional buffers ignore-paths)
-  (let* ((common-path 'undefined)
-         (result (dolist (buf
-                          (or buffers (buffer-list))
-                          ;; at the end of the dolist loop over the buffers transform the of strings in common-path
-                          ;; into a real path by interspersing "/" between then, then returning it as result
-                          (unless (or (eq common-path 'undefined)
-                                      (null common-path))
-                            (apply 'concat (mapcar (lambda (s) (concat "/" s)) common-path))))
-                   (when (buffer-file-name buf)
-                     (if (eq common-path 'undefined)
-                         ;; set common-path on first iteration if it is undefined, we'll be unecessarily
-                         ;; checking it against itself once
-                         (setq common-path (split-string (mk-proj-dirname (buffer-file-name buf)) "/" t))
-                       ;; we split both paths by "/" and create a zipper from the resulting lists
-                       ;; /foo/bar     -> '("foo" "bar")
-                       ;; /foo/bar/bla -> '("foo" "bar" "bla")
-                       ;; -> '(("foo" "foo") ("bar" "bar") (nil "bla"))
-                       ;; then walking over the zipper while both tuple's strings match, stopping at a mismatch
-                       ;; and collecting matching strings on the way along
-                       (let ((tuples (mk-proj-zip common-path (split-string (buffer-file-name buf) "/" t)))
-                             (temp-path '()))
-                         (while (string-equal (first (car tuples)) (second (car tuples)))
-                           (add-to-list 'temp-path (first (car tuples)))
-                           (setq tuples (cdr tuples)))
-                         ;; we'll set the new common-path before the next iteration, but only if it wouldn't be
-                         ;; 'equal' (see mk-proj-path-equal) to any of the ignore-paths
-                         (unless (loop for ig in ignore-paths
-                                       if (mk-proj-path-equal ig (apply 'concat (mapcar (lambda (s) (concat "/" s)) (reverse temp-path))))
-                                       return t
-                                       finally return nil)
-                           (setq common-path (reverse temp-path)))))))))
-    result))
-
-;; (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers (current-buffer)
-;;                                             mk-proj-incubator-paths)
-;;                      mk-proj-incubator-paths)
-
-(defun* mk-proj-guess-buffers (&optional test-buffer ignore-paths mode)
-  (unless test-buffer
-    (setq test-buffer (current-buffer)))
-  (let ((buffers (buffer-list)))
-    (while (and (not (buffer-file-name test-buffer))
-                buffers)
-      (setq test-buffer (car buffers)
-            buffers (cdr buffers))))
-  (unless (buffer-file-name test-buffer)
-    (return-from "mk-proj-guess-buffers" nil))
-  (let* ((ignore-paths (sort ignore-paths (lambda (a b) (> (length a) (length b)))))
-         (test-mode (with-current-buffer test-buffer major-mode))
-         (test-path (or (mk-proj-dirname (buffer-file-name test-buffer))
-                        default-directory))
-         (buffer-projects (mk-proj-find-projects-owning-buffer test-buffer))
-         result)
-    (setq result (remove-if-not 'identity
-                                (mapcar (lambda (buf)
-                                          (let (buf-projects)
-                                            (when (and (buffer-file-name buf)
-                                                       (mk-proj-path-complement (mk-proj-dirname (buffer-file-name buf)) test-path)
-                                                       ;; same projects for all buffers considered, all guessed buffers must belong to the
-                                                       ;; same projects as test-buffer, even if test-buffer belongs to multiple projects
-                                                       (or (mk-proj-path-equal test-path (mk-proj-dirname (buffer-file-name buf)) t)
-                                                           (loop for ig in ignore-paths
-                                                                 if (mk-proj-path-equal ig (mk-proj-dirname (buffer-file-name buf)) t)
-                                                                 return nil
-                                                                 finally return t))
-                                                       (equal (setq buf-projects (mk-proj-find-projects-owning-buffer buf)) buffer-projects))
-                                              ;; special treatment for buffers when a project is loaded, exclude project buffers of loaded
-                                              ;; project if test-buffer does not belong to loaded project, exclude buffers that do not
-                                              ;; belong to loaded project when test-buffer belongs to the loaded project
-                                              (unless (or (and (boundp 'mk-proj-name)
-                                                               mk-proj-name
-                                                               (not (some (lambda (p) (string-equal p mk-proj-name)) buffer-projects))
-                                                               (some (lambda (p) (string-equal p mk-proj-name)) buf-projects))
-                                                          (and (boundp 'mk-proj-name)
-                                                               mk-proj-name
-                                                               (not (eq buf test-buffer))
-                                                               (not (some (lambda (p) (string-equal p mk-proj-name)) buffer-projects))
-                                                               (mk-proj-friendly-buffer-p buf mk-proj-name)))
-                                                buf))))
-                                        (if mode
-                                            (remove-if-not (lambda (b) (eq (with-current-buffer b major-mode) mode)) (buffer-list))
-                                          (buffer-list)))))
-    result))
-
-;; (mk-proj-guess-buffers (current-buffer) mk-proj-incubator-paths)
-
-(defun mk-proj-src-pattern-languages (src-patterns)
-  (let ((lang nil)
-        (languages nil))
-    (loop for pattern in src-patterns
-          do (setq lang (cadr (assoc (car (last (split-string pattern "\\." t))) mk-proj-src-pattern-table)))
-          if (not (eq lang nil))
-          do (add-to-list 'languages lang))
-    (if (and (find 'cpp languages)
-             (not (some (lambda (file-name) (string-match ".*\\.c$" file-name)) (mk-proj-files))))
-        (remove-if (lambda (lang) (eq lang 'c)) languages)
-      languages)))
-
-;;(mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns))
-
-(defvar mk-proj-guess-functions '((buffer . ((()
-                                              `(1 . ,(current-buffer)))))
-                                  (mode . (((buffer)
-                                            `(1 . ,(with-current-buffer buffer major-mode)))))
-                                  (basedir . (;; default-directory
-                                              (()
-                                               `(1 . ,(expand-file-name default-directory)))
-                                              ;; buffer-file-name
-                                              ((buffer)
-                                               (when (buffer-file-name buffer)
-                                                  `(10 . ,(mk-proj-dirname (buffer-file-name buffer)))))
-                                              ;; longest-common-path of buffers with same mode
-                                              ((mode buffer)
-                                               (let ((found-path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths mode))))
-                                                 (when (and found-path
-                                                            (not (string-equal (expand-file-name "~") found-path)))
-                                                   `(50 . ,found-path))))
-                                              ;; find directory that is not a common project subdir
-                                              ((buffer)
-                                               (let* ((path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths)))
-                                                      (splitted-path (split-string path "/")))
-                                                 (while (and path
-                                                             splitted-path
-                                                             (not (some (lambda (incubator-path) (mk-proj-path-equal incubator-path path))
-                                                                        mk-proj-incubator-paths))
-                                                             (some (lambda (dir) (string-equal dir (car (last splitted-path))))
-                                                                   mk-proj-common-project-subdir-names))
-                                                   (setq splitted-path (butlast splitted-path)
-                                                         path (reduce (lambda (a b) (concat a "/" b)) splitted-path)))
-                                                 (when path
-                                                   `(100 . ,path))))
-                                              ;; find basedir by searching for buildsystem patterns
-                                              ((buffer)
-                                               (let ((path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths))))
-                                                 (when path
-                                                   (let ((found-paths (sort (loop for re in (mk-proj-buildsystem-patterns)
-                                                                                  collect (mk-proj-search-path re path mk-proj-incubator-paths mk-proj-common-project-subdir-names))
-                                                                            (lambda (a b) (> (length a) (length b))))))
-                                                     (when (car found-paths)
-                                                       `(200 . ,(car found-paths)))))))
-                                              ;; find basedir by searching for vcs pattern
-                                              ((buffer)
-                                               (let* ((filename (buffer-file-name buffer))
-                                                      (found-paths (when filename
-                                                                     (sort (loop for re in (mapcar 'regexp-quote (mapcar 'cdr mk-proj-vcs-path))
-                                                                                 collect (mk-proj-search-path re (file-name-directory filename) mk-proj-incubator-paths mk-proj-common-project-subdir-names))
-                                                                           (lambda (a b) (> (length a) (length b)))))))
-                                                 (if (car found-paths)
-                                                     `(500 . ,(car found-paths))
-                                                   (let ((path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths))))
-                                                     (when path
-                                                       (let ((found-paths (sort (loop for re in (mapcar 'regexp-quote (mapcar 'cdr mk-proj-vcs-path))
-                                                                                      collect (mk-proj-search-path re path mk-proj-incubator-paths mk-proj-common-project-subdir-names))
-                                                                                (lambda (a b) (> (length a) (length b))))))
-                                                         (when (car found-paths)
-                                                           `(300 . ,(car found-paths)))))))))
-                                              ;; find basedir by trying to match buffers directory to project basedirs
-                                              ((buffer)
-                                               (let ((basedirs '()))
-                                                 (dolist (proj-name (mk-proj-find-projects-owning-buffer buffer))
-                                                   (let ((basedir (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t))))
-                                                     (unless (some (apply-partially 'string-equal basedir) basedirs)
-                                                       (add-to-list 'basedirs basedir))))
-                                                 (let ((basedirs-without-incubators (remove-if (lambda (dir)
-                                                                                                 (some (lambda (incubator)
-                                                                                                         (string-equal (file-name-as-directory dir)
-                                                                                                                       (file-name-as-directory incubator)))
-                                                                                                       mk-proj-incubator-paths))
-                                                                                               basedirs)))
-                                                   (if (and (eq (length basedirs) 1)
-                                                            (eq (length basedirs-without-incubators) 1))
-                                                       `(400 . ,(car basedirs))
-                                                     (if (eq (length basedirs-without-incubators) 1)
-                                                         `(250 . ,(car basedirs-without-incubators))
-                                                       (if (> (length basedirs-without-incubators) 1)
-                                                           `(25 . ,(car basedirs-without-incubators))
-                                                         (if (> (length basedirs) 1)
-                                                             `(10 . ,(car basedirs)))))))))))
-                                  (name . (((buffer)
-                                            (progn
-                                              (unless buffer
-                                                (setq buffer (current-buffer)))
-                                              (when (buffer-file-name buffer)
-                                                `(10 . ,(car (split-string (file-name-nondirectory (buffer-file-name buffer)) "\\."))))))
-                                           ((basedir)
-                                            (let ((pname (car (reverse (split-string basedir "/" t)))))
-                                              (when (loop for ig in mk-proj-incubator-paths
-                                                          if (mk-proj-path-equal ig basedir)
-                                                          return nil
-                                                          finally return t)
-                                                `(100 . ,pname))))))
-                                  (src-patterns . (((basedir mode)
-                                                    (let* ((all-incubator 'undefined)
-                                                           ;; guess buffers, collect files and set all-incubator, files from incubator
-                                                           ;; roots are ignored except the current buffers file, if all relevant files
-                                                           ;; we found are from incubator roots all-incubator will be true
-                                                           (files (loop for buf in (mk-proj-guess-buffers (current-buffer) nil mode)
-                                                                        do (cond ((and (some (lambda (ig)
-                                                                                               (mk-proj-path-equal (mk-proj-dirname (buffer-file-name buf)) ig t))
-                                                                                             mk-proj-incubator-paths)
-                                                                                       all-incubator)
-                                                                                  (setq all-incubator t))
-                                                                                 (t
-                                                                                  (setq all-incubator nil)))
-                                                                        if (and (buffer-file-name buf)
-                                                                                (string-match (regexp-quote basedir) (buffer-file-name buf))
-                                                                                (or (eq (current-buffer) buf)
-                                                                                    (not (some (lambda (ig)
-                                                                                                 (mk-proj-path-equal (mk-proj-dirname (buffer-file-name buf)) ig t))
-                                                                                               mk-proj-incubator-paths))))
-                                                                        append (list (file-name-nondirectory (buffer-file-name buf)))))
-                                                           patterns)
-                                                      ;; get unique file endings from filenames and make regexp patterns
-                                                      (unless (and (= (length files) 1)
-                                                                   all-incubator)
-                                                        (loop for f in files
-                                                              if (let ((splits (split-string f "\\." t)))
-                                                                   (and (last splits)
-                                                                        (> (length splits) 1)))
-                                                              do (let ((file-ending (car (last (split-string f "\\." t)))))
-                                                                   ;;(add-to-list 'patterns (concat ".*\\." (regexp-quote file-ending)))
-                                                                   (mapc (lambda (s)
-                                                                           (add-to-list 'patterns s))
-                                                                         (cddr (assoc file-ending mk-proj-src-pattern-table))))
-                                                              else
-                                                              do (add-to-list 'patterns (regexp-quote f))))
-                                                      (when files
-                                                        ;; add files full names as well to the pattern list
-                                                        (mapc (apply-partially 'add-to-list 'patterns)
-                                                              (mapcar (lambda (fname) (concat ".*" (regexp-quote fname))) files))
-                                                        ;; patterns might look something like this: "foo\\.el" "bar\\.el" "*\\.el
-                                                        `(100 . ,patterns))))))
-                                  (patterns-are-regex . ((nil
-                                                          '(10 . t))))
-                                  (compile-cmd . ((nil
-                                                   (when (and (boundp 'compile-command)
-                                                              compile-command)
-                                                     `(50 . ,compile-command)))
-                                                  ((basedir)
-                                                   (let ((bsystem))
-                                                     (loop for filename in (directory-files basedir)
-                                                           until (let ((r nil))
-                                                                   (loop for bs in mk-proj-buildsystems
-                                                                         until (setq r (when (assoc 'files (cadr bs))
-                                                                                         (some (apply-partially 'string-equal filename) (cadr (assoc 'files (cadr bs))))))
-                                                                         finally return (when r
-                                                                                          (setq bsystem bs)))))
-                                                     (cond ((and bsystem
-                                                                 (assoc 'build (cadr bsystem)))
-                                                            `(100 . ,(cadr (assoc 'build (cadr bsystem)))))
-                                                           ((and (boundp 'compile-command)
-                                                                 compile-command)
-                                                            `(100 . ,compile-command)))
-                                                     ))))
-                                  (vcs . (((basedir)
-                                           (let ((r nil))
-                                             (loop for f in (directory-files basedir)
-                                                   if (some (lambda (y)
-                                                              (string-equal (cdr y) f)) mk-proj-vcs-path)
-                                                   return `(10 . ,(car (rassoc f mk-proj-vcs-path))))))))
-                                  (languages . (((src-patterns)
-                                                 (let ((languages (mk-proj-src-pattern-languages src-patterns)))
-                                                   (when languages
-                                                     `(10 . ,languages))))))
-                                  (ack-args . (((languages)
-                                                (let ((args nil))
-                                                  (dolist (lang languages)
-                                                    (cond ((eq lang 'c)
-                                                           (add-to-list 'args "--cc"))
-                                                          ((eq lang 'cpp)
-                                                           (add-to-list 'args "--cpp"))
-                                                          ((eq lang 'elisp)
-                                                           (add-to-list 'args "--el"))
-                                                          ((eq lang 'perl)
-                                                           (add-to-list 'args "--perl"))
-                                                          ((eq lang 'python)
-                                                           (add-to-list 'args "--python"))
-                                                          ((eq lang 'lisp)
-                                                           (add-to-list 'args "--lisp"))
-                                                          ((eq lang 'scheme)
-                                                           (add-to-list 'args "--scheme"))
-                                                          ((eq lang 'shell)
-                                                           (add-to-list 'args "--shell"))
-                                                          ((eq lang 'haskell)
-                                                           (add-to-list 'args "--haskell"))))
-                                                  (when args
-                                                    `(10 . ,(reduce (lambda (a b) (concat a " " b))
-                                                                    args)))))))))
-
-(defun* mk-proj-guess-alist (&optional ask-basedir ask-name)
-  ;; go through mk-proj-guess-functions and collect all symbols that are used
-  ;; as arguments, we'll bind those in a closure around the execution
-  ;; of the function bodies
-  (let ((let-args (let (symbols)
-                    (dolist (element mk-proj-guess-functions)
-                      (add-to-list 'symbols `(,(car element) 'undefined))
-                      (dolist (token (cdr element))
-                        (dolist (arg (car token))
-                          (add-to-list 'symbols `(,arg 'undefined)))))
-                    symbols))
-        (result '())
-        (start-time (current-time)))
-    ;; we define a macro that takes the list of let-args we constructed from mk-proj-guess-functions
-    ;; and makes a let clause out of them, thus binding them in the scope of body
-    (macrolet ((alet (&rest body) `(let ,let-args ,@body)))
-      (alet
-       (cl-labels ((best-result (rs)
-                                (let (bestscore bestresult)
-                                  (dolist (tuple rs bestresult)
-                                    (when (or (not bestscore)
-                                              (> (car tuple) bestscore))
-                                      (setq bestscore (car tuple)
-                                            bestresult (cdr tuple))))))
-                   (guess-symbol (sym)
-                                 ;;(message (concat (format-time-string "%H:%M:%S" (current-time)) " " (prin1-to-string sym)))
-                                 (let ((scores '()))
-                                   (dolist (flist (cdr (assoc sym mk-proj-guess-functions)) (best-result scores))
-                                     (let ((args (first flist))
-                                           (expr (second flist)))
-                                       (dolist (arg args)
-                                         ;; check if neccessary symbols are set, this sets a symbol after guessing it so
-                                         ;; we do not have to guess something twice
-                                         (when (eq (symbol-value arg) 'undefined)
-                                           ;;(message "setting symbol %S" arg)
-                                           (setf (symbol-value arg) (guess-symbol arg))
-                                           ))
-                                       (let ((r (condition-case e (eval expr)
-                                                  (error (message "error while guessing %S: %S in %s" sym e (prin1-to-string expr))))))
-                                         (when r (add-to-list 'scores r))))))))
-         ;;(message (concat (format-time-string "%H:%M:%S" (current-time)) " start"))
-         (dolist (varchecks (append mk-proj-required-vars mk-proj-optional-vars))
-           ;; for each var check if it is already set, if not use guess-symbol to guess it
-           ;; since only args from mk-proj-guess-functions are defined by the alet, not all
-           ;; possible project symbols, we have to check if a var is bound before setting it
-           ;; with setf or returning its value if it is not 'undefined, default is to just
-           ;; guess and not set anything
-           (let* ((var (car varchecks))
-                  (checks (cdr varchecks))
-                  (gv (cond ((and ask-basedir
-                                  (boundp var)
-                                  (eq var 'basedir))
-                             (progn
-                               (interactive)
-                               (setf (symbol-value var)
-                                     (let ((guessed-dir (guess-symbol var)))
-                                       (ido-read-directory-name (format "Continue with this basedir? (%s): " guessed-dir)
-                                                                guessed-dir
-                                                                nil
-                                                                t)))))
-                            ((and ask-name
-                                  (boundp var)
-                                  (eq var 'name))
-                             (progn
-                               (interactive)
-                               (setf (symbol-value var)
-                                     (let ((guessed-name (guess-symbol var)))
-                                       (read-input (format "Use this name? (%s): " guessed-name)
-                                                   nil
-                                                   nil
-                                                   guessed-name)))))
-                            ((and (boundp var)
-                                  (not (eq (symbol-value var) 'undefined)))
-                             (symbol-value var))
-                            ((and (boundp var)
-                                  (eq (symbol-value var) 'undefined))
-                             (setf (symbol-value var) (guess-symbol var)))
-                            (t (guess-symbol var)))))
-             (if gv
-                 (add-to-list 'result `(,var ,gv))
-               ;; when a required var couldn't be found, abort
-               (when (some (apply-partially 'eq var) mk-proj-required-vars)
-                 (return-from "mk-proj-guess-alist" nil)))))
-         ;; find already defined project that fits the guessed project so well that we'll use that instead
-         ;; creates list of all projects in same basedir, then selects those matching the same src-patterns
-         ;; as the guessed, uses the first of those if multiple match
-         (let ((already-defined (or (and (buffer-file-name (current-buffer))
-                                         (mk-proj-find-projects-in-directory (mk-proj-dirname (buffer-file-name (current-buffer)))))
-                                    (mk-proj-find-projects-in-directory (cadr (assoc 'basedir result)))))
-               (pattern-projects nil))
-           (if already-defined
-               (loop for proj-name in already-defined
-                     if (setq pattern-projects
-                              (mk-proj-find-projects-matching-patterns (mk-proj-get-config-val 'src-patterns proj-name t)
-                                                                       already-defined))
-                     return (let ((already-defined-result (gethash (car pattern-projects) mk-proj-list)))
-                              ;; add name if it does not already exist to alist, doubles functionality in project-def
-                              (unless (assoc 'name already-defined-result)
-                                (add-to-list 'already-defined-result `(name ,(car pattern-projects))))
-                              already-defined-result))
-             result)))))))
-
 
 
 
@@ -1659,6 +1203,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
             current (mk-proj-config-val 'parent current)))
     ancestry))
 
+(defvar mk-proj-prevent-after-save-update nil)
+
 (defun mk-proj-load (proj-name)
   (interactive)
   (let* ((oldname mk-proj-name)
@@ -1668,7 +1214,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                                        mk-proj-name)
                          (and (not (condition-case nil (mk-proj-assert-proj) (error t)))
                               (string-equal (cadr (assoc 'parent proj-alist))
-                                            (mk-proj-get-config-val 'parent nil nil)))))))
+                                            (mk-proj-get-config-val 'parent nil nil))))))
+         (mk-proj-prevent-after-save-update t))
     (unless proj-name
       (error "mk-proj-load: proj-name is nil"))
     (run-hooks 'mk-proj-before-load-hook)
@@ -1740,34 +1287,35 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 (defun project-unload (&optional quiet)
   "Unload the current project's settings after running the shutdown hook."
   (interactive "P")
-  (when mk-proj-name
-    (condition-case nil
-        (progn
-          (unless quiet (message "Unloading project %s" mk-proj-name))
-          (run-hooks 'mk-proj-before-unload-hook)
-          (mk-proj-maybe-kill-buffer (mk-proj-fib-name))
-          (mk-proj-save-open-friends-info)
-          (mk-proj-save-open-file-info)
-          (run-hooks 'mk-proj-before-files-unload-hook)
-          (and (or (mk-proj-buffers) (mk-proj-friendly-buffers))
-               (not quiet)
-               (y-or-n-p (concat "Close all '" mk-proj-name "' project files? "))
-               (project-close-friends)
-               (project-close-files))
-          (when (mk-proj-get-config-val 'shutdown-hook)
-            (if (functionp (mk-proj-get-config-val 'shutdown-hook))
-                (funcall (mk-proj-get-config-val 'shutdown-hook))
-              (mapc 'funcall (mk-proj-get-config-val 'shutdown-hook))))
-          (run-hooks 'mk-proj-after-unload-hook))
-      (error nil)))
-  (add-to-list 'mk-proj-history mk-proj-name)
-  (setq mk-proj-name nil)
-  (when (and (buffer-file-name (current-buffer))
-             (file-exists-p (buffer-file-name (current-buffer))))
-    (cd (mk-proj-dirname (buffer-file-name (current-buffer)))))
-  (modify-frame-parameters (selected-frame) (list (cons 'name "Emacs")))
-  (setq compile-command nil)
-  (unless quiet (message "Project settings have been cleared")))
+  (let ((mk-proj-prevent-after-save-update t))
+    (when mk-proj-name
+      (condition-case nil
+          (progn
+            (unless quiet (message "Unloading project %s" mk-proj-name))
+            (run-hooks 'mk-proj-before-unload-hook)
+            (mk-proj-maybe-kill-buffer (mk-proj-fib-name))
+            (mk-proj-save-open-friends-info)
+            (mk-proj-save-open-file-info)
+            (run-hooks 'mk-proj-before-files-unload-hook)
+            (and (or (mk-proj-buffers) (mk-proj-friendly-buffers))
+                 (not quiet)
+                 (y-or-n-p (concat "Close all '" mk-proj-name "' project files? "))
+                 (project-close-friends)
+                 (project-close-files))
+            (when (mk-proj-get-config-val 'shutdown-hook)
+              (if (functionp (mk-proj-get-config-val 'shutdown-hook))
+                  (funcall (mk-proj-get-config-val 'shutdown-hook))
+                (mapc 'funcall (mk-proj-get-config-val 'shutdown-hook))))
+            (run-hooks 'mk-proj-after-unload-hook))
+        (error nil)))
+    (add-to-list 'mk-proj-history mk-proj-name)
+    (setq mk-proj-name nil)
+    (when (and (buffer-file-name (current-buffer))
+               (file-exists-p (buffer-file-name (current-buffer))))
+      (cd (mk-proj-dirname (buffer-file-name (current-buffer)))))
+    (modify-frame-parameters (selected-frame) (list (cons 'name "Emacs")))
+    (setq compile-command nil)
+    (unless quiet (message "Project settings have been cleared"))))
 
 (defun project-close-files ()
   "Close all unmodified files that reside in the project's basedir"
@@ -1919,7 +1467,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
             (forward-line)))))))
 
 ;; ---------------------------------------------------------------------
-;; Etags
+;; Tagging
 ;; ---------------------------------------------------------------------
 
 (defun mk-proj-file-truename (filenames)
@@ -1950,6 +1498,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 (defun project-update-tags (&optional proj-name files debug)
   "Create or update the projects TAG database."
   (interactive)
+  ;;(message "project-update-tags")
   (unless proj-name
     (mk-proj-assert-proj t)
     (setq proj-name mk-proj-name))
@@ -2004,7 +1553,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                                          ""))
                     (gtags-commands (make-hash-table)))
                (when (gethash 'gtags+rtags sys-files)
-                 ("rtags not implemented yet"))
+                 (message "rtags not implemented yet"))
                (when (gethash 'gtags sys-files)
                  (puthash 'gtags
                           (concat "cd " gtags-root "; "
@@ -2032,7 +1581,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
              (when (gethash 'rtags sys-files)
                (message "rtags not implemented yet")))))
     (mk-proj-update-imenu-completions-cache)
-    ))
+    (mk-proj-update-obarray-completions-cache)))
 
 ;;(project-update-tags "emacs-config")
 
@@ -2089,7 +1638,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 
 ;;(project-setup-tags)
 
-(defun mk-proj-jump-list (system index-item &rest args)
+(defun mk-proj-jump-list (system word &rest args)
   (let* ((basedir (if mk-proj-name (mk-proj-get-config-val 'basedir) default-directory))
          (default-directory basedir))
     (cond ((eq 'gtags system)
@@ -2103,46 +1652,48 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                                :system system)))
                      (split-string (condition-case nil (shell-command-to-string cmd) (error nil)) "\n" t))))
           ((eq 'rtags system)
-           (message "rtags"))
+           (message "rtags not implemented yet"))
           ((eq 'cscope system)
-           (message "cscope"))
+           (message "cscope not implemented yet"))
           ((eq 'find-function system)
-           (when (and (intern-soft index-item)
-                      (or (functionp (intern-soft index-item))
-                          (fboundp (intern-soft index-item)))
-                      (or (not (subrp (symbol-function (find-function-advised-original (intern-soft index-item)))))
+           (when (and (intern-soft word)
+                      (or (functionp (intern-soft word))
+                          (fboundp (intern-soft word)))
+                      (or (not (subrp (symbol-function (find-function-advised-original (intern-soft word)))))
                           find-function-C-source-directory))
              (save-excursion
                (let* ((zeitgeist-prevent-send t)
                       (continue-prevent-save t)
                       (continue-prevent-restore t)
                       (previous-buf-list (buffer-list))
-                      (tuple (find-definition-noselect (intern index-item) nil))
-                      (definition-buffer (car tuple))
-                      (definition-point (cdr tuple))
-                      (marker (with-current-buffer definition-buffer
-                                (save-excursion
-                                  (goto-char definition-point)
-                                  (point-marker))))
-                      (result (list (list :word index-item
-                                          :point-marker marker
-                                          :line-number (with-current-buffer (marker-buffer marker)
-                                                         (save-excursion
-                                                           (line-number-at-pos (marker-position marker))))
-                                          :file-path (buffer-file-name (marker-buffer marker))
-                                          :line-contents (with-current-buffer (marker-buffer marker)
-                                                           (save-excursion
-                                                             (goto-char (marker-position marker))
-                                                             (buffer-substring-no-properties (point-at-bol) (point-at-eol))))
-                                          :system system))))
-                 (unless (find definition-buffer previous-buf-list)
-                   (kill-buffer definition-buffer))
-                 result))))
+                      (tuple (condition-case nil (find-definition-noselect (intern word) nil) (error nil))))
+                 (when tuple
+                   (let* ((definition-buffer (car tuple))
+                          (definition-point (cdr tuple))
+                          (marker (with-current-buffer definition-buffer
+                                    (save-excursion
+                                      (goto-char definition-point)
+                                      (point-marker))))
+                          (result (list (list :word word
+                                              :point-marker marker
+                                              :line-number (with-current-buffer (marker-buffer marker)
+                                                             (save-excursion
+                                                               (line-number-at-pos (marker-position marker))))
+                                              :file-path (buffer-file-name (marker-buffer marker))
+                                              :line-contents (with-current-buffer (marker-buffer marker)
+                                                               (save-excursion
+                                                                 (goto-char (marker-position marker))
+                                                                 (buffer-substring-no-properties (point-at-bol) (point-at-eol))))
+                                              :system system))))
+                     (unless (find definition-buffer previous-buf-list)
+                       (kill-buffer definition-buffer))
+                     result))))))
           ((eq 'imenu system)
            (mapcan (lambda (item)
                      (cond ((listp (cdr item))
                             (mapcan (lambda (var)
-                                      (when (string-match index-item (car var))
+                                      (when (and (string-match word (car var))
+                                                 (buffer-file-name (marker-buffer (cdr var))))
                                         (list (list :word (match-string 0 (car var))
                                                     :point-marker (cdr var)
                                                     :line-number (with-current-buffer (marker-buffer (cdr var))
@@ -2156,7 +1707,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                                                     :system system))))
                                     (cdr item)))
                            ((and (markerp (cdr item))
-                                 (string-match index-item (car item)))
+                                 (string-match word (car item))
+                                 (buffer-file-name (marker-buffer (cdr item))))
                             (list (list :word (match-string 0 (car item))
                                         :point-marker (cdr item)
                                         :line-number (with-current-buffer (marker-buffer (cdr item))
@@ -2184,7 +1736,6 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 ;; pick file with the highest scoring jump as first
 ;; if two files have equally high scoring jumps, pick the one which has less jumps in it
 (defun mk-proj-score-jumps (jumps regexp buffer)
-  (message "score-jumps")
   (let ((file-map (make-hash-table :test 'equal))
         (file-score-map (make-hash-table))
         (buffer-languages (mk-proj-src-pattern-languages (when (buffer-file-name buffer) (list (buffer-file-name buffer)))))
@@ -2215,7 +1766,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
             (setq score (+ score inc)))
           (when (and jump-word
                      (> score 0)
-                     (string-match-p (concat "^" regexp "$") jump-word))
+                     (string-match-p (concat "^" regexp) jump-word))
             (setq score (+ score inc)))
           (when (and (buffer-file-name buffer)
                      (mk-proj-path-equal jump-path buffer-path))
@@ -2223,7 +1774,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
           (when (and mk-proj-name
                      (mk-proj-path-equal jump-path basedir-path))
             (setq score (+ score inc)))
-          (when (boundp 'ido-buffer-history)
+          (when (and (boundp 'ido-buffer-history)
+                     (find-buffer-visiting jump-path))
             (let ((buffer-position (or (gethash jump-path buffer-position-cache)
                                        (puthash jump-path (condition-case nil (position (buffer-name (find-buffer-visiting jump-path))
                                                                                         ido-buffer-history
@@ -2361,7 +1913,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   (let* ((marker nil)
          (continue-prevent-restore t))
     (with-current-buffer (find-file full-path)
-      (goto-line line-number)
+      (goto-char (point-min))
+      (forward-line (1- line-number))
       (when word
         (re-search-forward word (point-at-eol) t))
       (setq marker (point-marker)))
@@ -2389,37 +1942,51 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 
 (defvar mk-proj-jump-overlays nil)
 
-(defun mk-proj-jump-cleanup-highlight (&optional leave-buffer)
-  (mapcar (lambda (ov)
-            (when (overlay-buffer ov)
-              (with-current-buffer (overlay-buffer ov)
-                (when (overlay-get ov 'delete-buffer)
-                  (let ((zeitgeist-prevent-send t)
-                        (continue-prevent-save t))
-                    (unless leave-buffer
-                      (kill-buffer (current-buffer)))))
-                (delete-overlay ov))))
-          mk-proj-jump-overlays)
-  (setq mk-proj-jump-overlays nil))
+(defun mk-proj-jump-cleanup-highlight (&optional existing-buffer)
+  (let ((zeitgeist-prevent-send t)
+        (continue-prevent-save t)
+        (delete-buffer nil))
+    (mapcar (lambda (ov)
+              (when (overlay-buffer ov)
+                (with-current-buffer (overlay-buffer ov)
+                  (when (overlay-get ov 'delete-buffer)
+                    (setq delete-buffer (overlay-get ov 'delete-buffer))
+                    (unless (and (bufferp existing-buffer)
+                                 (eq delete-buffer existing-buffer))
+                      (kill-buffer delete-buffer)
+                      (setq delete-buffer nil)))
+                  (delete-overlay ov))))
+            mk-proj-jump-overlays)
+    (setq mk-proj-jump-overlays nil)
+    delete-buffer))
 
+;; existing-buffer=nil && delete-buffer=nil
+;; -> set delete-buffer in overlay to (current-buffer) to kill current buffer
+;; existing-buffer=<some buffer> && delete-buffer=nil
+;; -> don't set delete-buffer in overlay and don't kill any buffers
+;; existing-buffer=<some buffer> && delete-buffer=<some buffer>
+;; -> there have been jumps through delete-buffer so it exists, but needs to be killed
+;; existing-buffer=nil && delete-buffer=<some buffer>
+;; -> this should not happen, without an existing-buffer but an marked delete-buffer,
+;; cleanup-highlight should always kill delete-buffer and then return nil
 (defun mk-proj-jump-highlight (&optional existing-buffer marker)
-  (mk-proj-jump-cleanup-highlight)
-  (when (get-buffer mk-proj-jump-buffer)
-    (with-current-buffer (get-buffer mk-proj-jump-buffer)
-      (let ((ov (make-overlay (point-at-bol) (point-at-bol 2))))
-        (overlay-put ov 'face `((:background "#2f2f2f")))
-        (overlay-put ov 'jump-highlight t)
-        (push ov mk-proj-jump-overlays))))
-  (when marker
-    (with-current-buffer (marker-buffer marker)
-      (save-excursion
-        (goto-char (marker-position marker))
+  (let ((delete-buffer (mk-proj-jump-cleanup-highlight existing-buffer)))
+    (when (get-buffer mk-proj-jump-buffer)
+      (with-current-buffer (get-buffer mk-proj-jump-buffer)
         (let ((ov (make-overlay (point-at-bol) (point-at-bol 2))))
-          (unless existing-buffer
-            (overlay-put ov 'delete-buffer (current-buffer)))
           (overlay-put ov 'face `((:background "#2f2f2f")))
-          (overlay-put ov 'jump-highlight t)
-          (push ov mk-proj-jump-overlays))))))
+          (overlay-put ov 'jump-highlight 'select)
+          (push ov mk-proj-jump-overlays))))
+    (when marker
+      (with-current-buffer (marker-buffer marker)
+        (save-excursion
+          (goto-char (marker-position marker))
+          (let ((ov (make-overlay (point-at-bol) (point-at-bol 2))))
+            (when (or (not existing-buffer) delete-buffer)
+              (overlay-put ov 'delete-buffer (or delete-buffer (current-buffer))))
+            (overlay-put ov 'face `((:background "#2f2f2f")))
+            (overlay-put ov 'jump-highlight 'view)
+            (push ov mk-proj-jump-overlays)))))))
 
 (defun mk-proj-jump-next ()
   (interactive)
@@ -2451,8 +2018,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
     (delete-window (get-buffer-window mk-proj-jump-buffer)))
   (when (get-buffer mk-proj-jump-buffer)
     (kill-buffer mk-proj-jump-buffer))
-  (mk-proj-jump-cleanup-highlight)
-  (pop-tag-mark))
+  (pop-tag-mark)
+  (mk-proj-jump-cleanup-highlight))
 
 (defun mk-proj-jump-quit ()
   (interactive)
@@ -2460,11 +2027,9 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
     (delete-window (get-buffer-window mk-proj-jump-buffer)))
   (when (get-buffer mk-proj-jump-buffer)
     (kill-buffer mk-proj-jump-buffer))
-  (mk-proj-jump-cleanup-highlight 'leave-buffer))
+  (mk-proj-jump-cleanup-highlight (current-buffer)))
 
 (defun mk-proj-jump-pre-command-trigger ())
-
-(add-hook 'pre-command-hook 'mk-proj-jump-pre-command-trigger)
 
 (define-derived-mode mk-proj-jump-list-mode tabulated-list-mode "Mk-Project jumps"
   (setq tabulated-list-format [("Word" 20 t)
@@ -2489,61 +2054,62 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 
 (defvar mk-proj-thing-selector 'symbol)
 
-(defvar mk-proj-completions-cache (make-hash-table))
+(defvar mk-proj-completions-cache (make-hash-table :test 'equal))
 
-(defun mk-proj-update-gtags-completions-cache ()
-  (let ((completions-map (make-hash-table :test 'equal))
-        (unique-completions '()))
-    (mapc (lambda (completion)
-            (puthash completion t completions-map))
-          (split-string (condition-case nil
-                            (shell-command-to-string "global --match-part first -c") (error "")) "\n" t))
-    (when (> (hash-table-count completions-map) 0)
-      (maphash (lambda (k v) (push k unique-completions)) completions-map)
-      (puthash 'gtags unique-completions mk-proj-completions-cache)))
-  ;; (puthash 'gtags (split-string (condition-case nil
-  ;;                                   (shell-command-to-string "global --match-part first -c") (error "")) "\n" t)
-  ;;          mk-proj-completions-cache)
-  )
+(defun mk-proj-update-gtags-completions-cache (&rest args)
+  (mapc (lambda (completion)
+          (puthash completion nil mk-proj-completions-cache))
+        (split-string (condition-case nil
+                          (shell-command-to-string "global --match-part first -c") (error "")) "\n" t)))
 
-(defun mk-proj-update-imenu-completions-cache ()
-  (let ((completions (mapcar (lambda (jump) (plist-get jump :word))
-                             (mk-proj-jump-list 'imenu (concat ".*")))))
-    (when completions
-      (puthash 'imenu completions mk-proj-completions-cache))))
+(defun mk-proj-update-imenu-completions-cache (&rest args)
+  (mapc (lambda (jump) (puthash (plist-get jump :word) nil mk-proj-completions-cache))
+        (mk-proj-jump-list 'imenu (concat ".*"))))
+
+(defun mk-proj-update-obarray-completions-cache (&rest args)
+  (do-all-symbols (sym)
+    (when (and (or (functionp sym)
+                   (fboundp sym))
+               (or (not (subrp (symbol-function (find-function-advised-original sym))))
+                   find-function-C-source-directory))
+      (puthash (symbol-name sym) nil mk-proj-completions-cache))))
 
 ;;(mk-proj-update-gtags-completions-cache)
 ;;(mk-proj-update-imenu-completions-cache)
 
-(defun mk-proj-completions (&optional prefix word buffer)
+(defun mk-proj-completions (&optional prefix buffer)
   (unless buffer
     (setq buffer (current-buffer)))
-  (unless word
-    (setq word (substring-no-properties (or (thing-at-point mk-proj-thing-selector) ""))))
   (unless prefix
-    (setq prefix ""))
-  
-  (let ((jump-map (make-hash-table :test 'equal))
-        (unique-completions '())
-        (gtags-cache (gethash 'gtags mk-proj-completions-cache))
-        (imenu-cache (gethash 'imenu mk-proj-completions-cache)))
-    (if (and gtags-cache (string-equal prefix ""))
-        (setq unique-completions (append unique-completions (reverse gtags-cache)))
+    (setq prefix ""))  
+  (let ((completions-map (make-hash-table :test 'equal))
+        (unique-completions '()))
+    (if (and (> (hash-table-count mk-proj-completions-cache) 0)
+             (string-equal prefix ""))
+        (progn
+          (maphash (lambda (k v) (unless (gethash k mk-proj-completions-cache)
+                                   (puthash k v mk-proj-completions-cache)))
+                   completions-map)
+          (setq completions-map mk-proj-completions-cache))
+      (do-all-symbols (sym)
+        (when (and (or (functionp sym)
+                       (fboundp sym))
+                   (or (not (subrp (symbol-function (find-function-advised-original sym))))
+                       find-function-C-source-directory))
+          (unless (gethash (symbol-name sym) completions-map)
+            (puthash (symbol-name sym) nil completions-map))))
       (mapc (lambda (jump)
-              (unless (gethash (plist-get jump :word) jump-map)
-                (puthash (plist-get jump :word) nil jump-map)))
+              (unless (gethash (plist-get jump :word) completions-map)
+                (puthash (plist-get jump :word) nil completions-map)))
+            (mk-proj-jump-list 'imenu (concat "^" prefix ".*$")))
+      (mapc (lambda (jump)
+              (unless (gethash (plist-get jump :word) completions-map)
+                (puthash (plist-get jump :word) nil completions-map)))
             (mk-proj-jump-list 'gtags prefix (concat "global --match-part first -c " (prin1-to-string prefix)))))
-    (mapc (lambda (jump)
-            (unless (gethash (plist-get jump :word) jump-map)
-              (puthash (plist-get jump :word) nil jump-map)))
-          (append (mk-proj-jump-list 'find-function prefix) (mk-proj-jump-list 'find-function word)))
-    (if (and imenu-cache (string-equal prefix ""))
-        (setq unique-completions (append unique-completions (reverse imenu-cache)))
-      (mapc (lambda (jump)
-              (unless (gethash (plist-get jump :word) jump-map)
-                (puthash (plist-get jump :word) nil jump-map)))
-            (mk-proj-jump-list 'imenu (concat "^" prefix ".*$"))))
-    (maphash (lambda (k v) (push k unique-completions)) jump-map)
+    (when (or (> (hash-table-count mk-proj-completions-cache) 0)
+              (string-equal prefix ""))
+      (setq mk-proj-completions-cache completions-map))
+    (maphash (lambda (k v) (push k unique-completions)) completions-map)
     (reverse unique-completions)))
 
 ;;(append (mk-proj-jump-list 'find-function "") (mk-proj-jump-list 'find-function "find-function-C-source"))
@@ -2576,10 +2142,12 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   )
 
 (defun project-jump-regexp (regexp &optional buffer)
-  (interactive "sRegexp: ")
+  (interactive (list (let ((ido-enable-flex-matching t))
+                       (substring-no-properties (ido-completing-read "Match: "
+                                                                     (mk-proj-completions))))))
   (unless buffer
     (setq buffer (current-buffer)))
-  (let ((jumps (mk-proj-jump-list 'gtags regexp (concat "global -x -e " (prin1-to-string regexp)))))
+  (let ((jumps (mk-proj-jump-list 'gtags regexp (concat "global -x -e " (prin1-to-string (concat regexp ".*"))))))
     (mk-proj-select-jumps (mk-proj-score-jumps jumps regexp buffer))))
 
 ;; (project-jump-regexp "mk-proj-.*")
@@ -2587,30 +2155,6 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 ;; ---------------------------------------------------------------------
 ;; Grep
 ;; ---------------------------------------------------------------------
-
-(defun mk-proj-find-cmd-src-args (src-patterns &optional proj-name)
-  "Generate the ( -name <pat1> -o -name <pat2> ...) pattern for find cmd"
-  (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (if src-patterns
-      (let ((name-expr " \\(")
-            (regex-or-name-arg (if (mk-proj-get-config-val 'patterns-are-regex proj-name t)
-                                   "-regex"
-                                 "-name")))
-        (dolist (pat src-patterns)
-          (setq name-expr (concat name-expr " " regex-or-name-arg " \"" pat "\" -o ")))
-        (concat (mk-proj-replace-tail name-expr "-o " "") "\\) "))
-    ""))
-
-(defun mk-proj-find-cmd-ignore-args (ignore-patterns &optional proj-name)
-  "Generate the -not ( -name <pat1> -o -name <pat2> ...) pattern for find cmd"
-  (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (if ignore-patterns
-      (concat " -not " (mk-proj-find-cmd-src-args ignore-patterns proj-name))
-    ""))
 
 (defun project-grep (&optional phrase from-current-dir)
   "Run find-grep on the project's basedir, excluding files in
@@ -2735,20 +2279,10 @@ With C-u prefix act as `project-ack-with-friends'."
                                      (mk-proj-set-config-val 'compile-cmd (internal-compile))))))))
 
 ;; ---------------------------------------------------------------------
-;; Dired
+;; Files
 ;; ---------------------------------------------------------------------
 
-(defun project-dired ()
-  "Open dired in the project's basedir (or jump to the existing dired buffer)"
-  (interactive)
-  (mk-proj-assert-proj t)
-  (dired (mk-proj-get-config-val 'basedir)))
-
-;; ---------------------------------------------------------------------
-;; Find-file
-;; ---------------------------------------------------------------------
-
-(defun mk-proj-fib-init (&optional proj-name)
+(defun mk-proj-fib-init (&optional proj-name quiet)
   "Either load the *file-index* buffer from the file cache, or create it afresh."
   (if (and (mk-proj-get-config-val 'file-list-cache proj-name t)
            (file-readable-p (mk-proj-get-config-val 'file-list-cache proj-name t)))
@@ -2757,7 +2291,8 @@ With C-u prefix act as `project-ack-with-friends'."
           (with-current-buffer (rename-buffer (mk-proj-fib-name proj-name))
             (setq buffer-read-only t)
             (set-buffer-modified-p nil)
-            (message (concat "Loading " (mk-proj-fib-name proj-name) " from %s") (mk-proj-get-config-val 'file-list-cache proj-name t)))))
+            (unless quiet
+              (message (concat "Loading " (mk-proj-fib-name proj-name) " from %s") (mk-proj-get-config-val 'file-list-cache proj-name t))))))
     (project-index proj-name)))
 
 ;;(mk-proj-fib-init nil)
@@ -2772,10 +2307,11 @@ With C-u prefix act as `project-ack-with-friends'."
     (when buf
       (with-current-buffer buf
         (setq buffer-read-only nil)
-        (kill-region (point-min) (point-max))
+        (delete-region (point-min) (point-max))
+        (set-buffer-modified-p nil)
         (setq buffer-read-only t)))))
 
-(defun mk-proj-fib-cb (process event &optional proj-name)
+(defun mk-proj-fib-cb (process event &optional proj-name quiet)
   "Handle failure to complete fib building"
   (unless proj-name
     (mk-proj-assert-proj)
@@ -2787,42 +2323,91 @@ With C-u prefix act as `project-ack-with-friends'."
         (setq buffer-read-only t)
         (when (mk-proj-get-config-val 'file-list-cache proj-name t)
           (write-file (mk-proj-get-config-val 'file-list-cache proj-name t))
-          (rename-buffer (mk-proj-fib-name proj-name)))))
-    (message "Refreshing %s buffer...done" (mk-proj-fib-name proj-name)))
+          (rename-buffer (mk-proj-fib-name proj-name))
+          (set-buffer-modified-p nil))))
+    (unless quiet
+      (message "Refreshing %s buffer...done" (mk-proj-fib-name proj-name))))
    (t
     (mk-proj-fib-clear proj-name)
-    (message "Failed to generate the %s buffer!" (mk-proj-fib-name proj-name)))))
+    (unless quiet
+      (message "Failed to generate the %s buffer!" (mk-proj-fib-name proj-name))))))
 
-(defun project-index (&optional proj-name)
+(defun mk-proj-find-cmd-src-args (src-patterns &optional proj-name)
+  "Generate the ( -name <pat1> -o -name <pat2> ...) pattern for find cmd"
+  (unless proj-name
+    (mk-proj-assert-proj)
+    (setq proj-name mk-proj-name))
+  (if src-patterns
+      (let ((name-expr " \\(")
+            (regex-or-name-arg (if (mk-proj-get-config-val 'patterns-are-regex proj-name t)
+                                   "-regex"
+                                 "-name")))
+        (dolist (pat src-patterns)
+          (setq name-expr (concat name-expr " " regex-or-name-arg " \"" pat "\" -o ")))
+        (concat (mk-proj-replace-tail name-expr "-o " "") "\\) "))
+    ""))
+
+(defun mk-proj-find-cmd-ignore-args (ignore-patterns &optional proj-name)
+  "Generate the -not ( -name <pat1> -o -name <pat2> ...) pattern for find cmd"
+  (unless proj-name
+    (mk-proj-assert-proj)
+    (setq proj-name mk-proj-name))
+  (concat " -not " (mk-proj-find-cmd-src-args (append ignore-patterns (list ".*/flycheck_.*")) proj-name)))
+
+(defvar mk-proj-index-processes (make-hash-table))
+
+(defun* project-index (&optional proj-name (async t) (do-friends nil) (quiet nil) (terminator nil) (parent nil))
   "Regenerate the *file-index* buffer that is used for project-find-file"
   (interactive)
   (unless proj-name
     (mk-proj-assert-proj t)
     (setq proj-name mk-proj-name))
-  (when (mk-proj-get-config-val 'file-list-cache proj-name t)
-    (mk-proj-fib-clear proj-name)
-    (let* ((default-directory (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t)))
-           (start-dir (if mk-proj-file-index-relative-paths
-                          "."
-                        (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t))))
-           (find-cmd (concat "find '" start-dir "' -type f "
-                             (mk-proj-find-cmd-src-args (mk-proj-get-config-val 'src-patterns proj-name t) proj-name)
-                             (mk-proj-find-cmd-ignore-args (mk-proj-get-config-val 'ignore-patterns proj-name t) proj-name)))
-           (proc-name (concat "index-process-" proj-name)))
+  (unless do-friends
+    (setq do-friends (and (string-equal proj-name mk-proj-name)
+                          (mk-proj-has-univ-arg))))
+  (let* ((process)
+         (friends (mk-proj-get-config-val 'friends proj-name))
+         (default-directory (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t)))
+         (start-dir (if mk-proj-file-index-relative-paths
+                        "."
+                      (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t))))
+         (find-cmd (concat "find '" start-dir "' -type f "
+                           (mk-proj-find-cmd-src-args (mk-proj-get-config-val 'src-patterns proj-name t) proj-name)
+                           (mk-proj-find-cmd-ignore-args (mk-proj-get-config-val 'ignore-patterns proj-name t) proj-name)))
+         (proc-name (concat "index-process-" proj-name)))
+    (when (mk-proj-get-config-val 'file-list-cache proj-name t)
+      (mk-proj-fib-clear proj-name)
       (when (mk-proj-get-vcs-path proj-name)
         (setq find-cmd (concat find-cmd " -not -path " (concat "'*/" (mk-proj-get-vcs-path proj-name) "/*'"))))
       (setq find-cmd (or (mk-proj-find-cmd-val 'index proj-name) find-cmd))
       (with-current-buffer (get-buffer-create (mk-proj-fib-name proj-name))
         (buffer-disable-undo) ;; this is a large change we don't need to undo
         (setq buffer-read-only nil))
-      (message "project-index cmd: \"%s\"" find-cmd)
-      (message "Refreshing %s buffer..." (mk-proj-fib-name proj-name))
-      (start-process-shell-command proc-name (mk-proj-fib-name proj-name) find-cmd)
-      (set-process-sentinel (get-process proc-name) `(lambda (p e) (mk-proj-fib-cb p e ,proj-name)))))
-  (when (and (string-equal proj-name mk-proj-name)
-             (mk-proj-has-univ-arg))
-    (dolist (friend (mk-proj-get-config-val 'friends proj-name))
-      (project-index friend))))
+      (unless quiet
+        (message "project-index cmd: \"%s\"" find-cmd)
+        (message "Refreshing %s buffer..." (mk-proj-fib-name proj-name)))
+      (setq process (start-process-shell-command proc-name (mk-proj-fib-name proj-name) find-cmd))
+      (if parent
+          (push process (cadr (gethash parent mk-proj-index-processes)))
+        (puthash process (list (length friends) nil) mk-proj-index-processes)
+        (setq parent process))
+      (set-process-sentinel (get-process proc-name) `(lambda (p e)
+                                                       (mk-proj-fib-cb p e ,proj-name ,quiet)
+                                                       (let ((tuple (gethash ,parent mk-proj-index-processes)))
+                                                         (when (and tuple (quote ,terminator))
+                                                           (let ((friends-num (nth 0 tuple))
+                                                                 (friends-list (nth 1 tuple)))
+                                                             (when (and (eq (process-status ,parent) 'exit)
+                                                                        (= friends-num (length friends-list))
+                                                                        (every (lambda (o) (eq (process-status o) 'exit)) friends-list))
+                                                               (remhash ,parent mk-proj-index-processes)
+                                                               (funcall (quote ,terminator))))))))
+      (unless async
+        (while (string-equal (process-status process) "run")
+          (sleep-for 0 2)))
+      (when do-friends
+        (dolist (friend friends)
+          (project-index friend async nil quiet terminator parent))))))
 
 (defun mk-proj-fib-matches (&optional regex proj-name)
   "Return list of files in *file-index* matching regex.
@@ -2884,68 +2469,11 @@ Returned file paths are relative to the project's basedir."
                                  (mk-proj-get-config-val 'friends proj-name t))))
     friendly-files))
 
-(defun mk-proj-normalize-drive-letter (file)
-  "Convert drive letters to lowercase to be compatible with
-file-relative-name, file-name-as-directory"
-  (if (or (null file) (< (length file) 2))
-      file
-    (let ((c1 (aref file 0))
-          (c2 (aref file 1)))
-      (if (and (= (aref ":" 0) c2)
-               (and (>= c1 (aref "A" 0)) (<= c1 (aref "Z" 0))))
-          (concat (char-to-string (+ c1 32)) (substring file 1))
-        file))))
-
-(defun* project-match-file (regex)
-  "Ask for REGEX and match files in project accordingly."
-  (interactive "sFind file in project matching: ")
-  (project-find-file regex))
-
-(defun* project-find-file (&optional regex)
-  "Find file in the current project.
-
-The files listed in buffer *file-index* are scanned for REGEX
-matches. If only one match is found, the file is opened
-automatically. If more than one match is found, prompt for
-completion.
-
-If REGEX is nil all project files are matched.
-
-See also: `project-index', `project-find-file-ido'."
-  (mk-proj-assert-proj t)
-  (unless (get-buffer (mk-proj-fib-name))
-    (message "Please use project-index to create the index before running project-find-file")
-    (return-from "project-find-file" nil))
-  (let* ((matches (mk-proj-fib-matches (or regex ".*")))
-         (match-cnt (length matches)))
-    (cond
-     ((= 0 match-cnt)
-      (message "No matches for \"%s\" in this project" regex))
-     ((= 1 match-cnt )
-      (find-file (car matches)))
-     (t
-      (let ((file (if (mk-proj-use-ido)
-                      (ido-completing-read "Select match (ido): " matches)
-                    (completing-read "Select match: " matches))))
-        (when file
-          (find-file (concat (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t)) file))))))))
-
-(defun* project-find-file-ido ()
-  "Find file in the current project using 'ido'.
-
-Choose a file to open from among the files listed in buffer
-*file-index*.  The ordinary 'ido' methods allow advanced
-selection of the file. See also: `project-index',
-`project-find-file'."
+(defun project-dired ()
+  "Open dired in the project's basedir (or jump to the existing dired buffer)"
   (interactive)
   (mk-proj-assert-proj t)
-  (unless (get-buffer (mk-proj-fib-name))
-    (message "Please use project-index to create the index before running project-find-file-ido")
-    (return-from "project-find-file-ido" nil))
-  (let ((file (ido-completing-read "Find file in project matching (ido): "
-                                   (mk-proj-fib-matches))))
-    (when file
-      (find-file (concat (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t)) file)))))
+  (dired (mk-proj-get-config-val 'basedir)))
 
 (defun project-multi-occur (regex)
   "Search all open project files for 'regex' using `multi-occur'.
@@ -2954,7 +2482,7 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
   (interactive "sRegex: ")
   (mk-proj-assert-proj t)
   (if (mk-proj-has-univ-arg)
-      (project-multi-occur-with-friends)
+      (project-multi-occur-with-friends regex)
     (multi-occur (mk-proj-filter (lambda (b) (if (buffer-file-name b) b nil))
                                  (mk-proj-buffers))
                  regex)))
@@ -3147,7 +2675,9 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
          (default-directory (file-name-as-directory (mk-proj-get-config-val 'basedir))))
     (compilation-start confirmed-cmd 'ack-and-a-half-mode)))
 
-;;(defun mk-proj-find-projects-owning-file (file))
+;; ---------------------------------------------------------------------
+;; After saving
+;; ---------------------------------------------------------------------
 
 (defun mk-proj-after-save-add-pattern ()
   (when mk-proj-name
@@ -3159,27 +2689,489 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                  (or (string-match (concat "^" (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t)))) file-name)
                      (string-match (concat "^" (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t)))) (file-truename file-name)))
                  (not (some (lambda (pattern) (string-match pattern file-name)) src-patterns)))
-        (mk-proj-set-config-val 'src-patterns (add-to-list 'src-patterns new-pattern))
-        (project-index)))))
+        (mk-proj-set-config-val 'src-patterns (add-to-list 'src-patterns new-pattern))))))
 
-(defun mk-proj-after-save-update-tags ()
+(defun mk-proj-after-save-update ()
   (when mk-proj-name
-    (project-update-tags)))
+    (unless (or mk-proj-prevent-after-save-update
+                (string-match ".*recentf.*" (buffer-name (current-buffer)))
+                (string-match ".*file-list-cache.*" (buffer-name (current-buffer)))
+                (string-match ".*sourcemarker-db.*" (buffer-name (current-buffer)))
+                (string-match ".*continue-db.*" (buffer-name (current-buffer)))
+                (not (mk-proj-buffer-p (current-buffer))))
+      ;;(message "after-save-update in %s" (buffer-name (current-buffer)))
+      (mk-proj-after-save-add-pattern)
+      (project-index nil t t t 'project-update-tags)
+      )))
 
 (eval-after-load "mk-project"
   '(progn
      (run-with-idle-timer 90 t 'mk-proj-save-state)
-     (add-hook 'after-save-hook 'mk-proj-after-save-add-pattern)
-     (add-hook 'after-save-hook 'mk-proj-after-save-update-tags)))
+     (add-hook 'find-file-hook 'mk-proj-update-imenu-completions-cache)
+     (add-hook 'after-load-functions 'mk-proj-update-obarray-completions-cache)
+     (add-hook 'after-save-hook 'mk-proj-after-save-update)
+     (add-hook 'pre-command-hook 'mk-proj-jump-pre-command-trigger)))
+
+;; ---------------------------------------------------------------------
+;; Guessing
+;; ---------------------------------------------------------------------
+
+(defun mk-proj-find-projects-matching-patterns (test-patterns &optional name-list)
+  (let ((results nil))
+    (maphash (lambda (k v)
+               (let ((proj-patterns))
+                 (when (and (setq proj-patterns (cadr (assoc 'src-patterns v)))
+                            (loop for tp in test-patterns
+                                  for pp in proj-patterns
+                                  if (string-match tp pp)
+                                  return t
+                                  finally return nil))
+                   (add-to-list 'results k))))
+             (or (and name-list
+                      (let ((temp-hash (make-hash-table :test 'equal)))
+                        (mapc (lambda (name) (puthash name (gethash name mk-proj-list) temp-hash)) name-list)
+                        temp-hash))
+                 mk-proj-list))
+    results))
+
+;;(mk-proj-find-projects-matching-patterns '(".*\\.el") (mk-proj-find-projects-matching-patterns '(".*\\.el") ))
+
+(defun* mk-proj-find-projects-in-directory (path &optional name-list)
+  (let ((results nil))
+    (maphash (lambda (k v)
+               (when (string-equal (expand-file-name (concat path "/"))
+                                   (expand-file-name (concat (mk-proj-get-config-val 'basedir k t) "")))
+                 (add-to-list 'results k)))
+             (or (and name-list
+                      (let ((temp-hash (make-hash-table :test 'equal)))
+                        (mapc (lambda (name) (puthash name (gethash name mk-proj-list) temp-hash)) name-list)
+                        temp-hash))
+                 mk-proj-list))
+    results))
+
+;; (mk-proj-find-projects-in-directory "~/.emacs.d" '("emacs-config"))
+
+;; (mk-proj-guess-alist)
+
+;; (define-minor-mode mk-project)
+
+(defun mk-proj-find-projects-owning-buffer (buf &optional name-list)
+  (let ((projects nil))
+    (maphash (lambda (k v)
+               (when (and (buffer-file-name buf)
+                          (mk-proj-get-config-val 'basedir k t)
+                          (mk-proj-path-equal (buffer-file-name buf) (mk-proj-get-config-val 'basedir k t))
+                          (some (lambda (re) (string-match re (buffer-file-name buf))) (mk-proj-get-config-val 'src-patterns k t)))
+                 (add-to-list 'projects k)))
+             (or (and name-list
+                      (let ((temp-hash (make-hash-table :test 'equal)))
+                        (mapcar (lambda (name) (puthash name (gethash name mk-proj-list) temp-hash)) name-list)
+                        temp-hash))
+                 mk-proj-list))
+    projects))
+
+;; (mk-proj-find-projects-owning-buffer (current-buffer))
+
+(defun mk-proj-find-unique-paths (paths)
+  (let ((result '()))
+    (dolist (path paths result)
+      (unless (some (lambda (a) (mk-proj-path-equal path a)) (mk-proj-filter (lambda (p) (not (string-equal p path))) paths))
+        (add-to-list 'result path)))))
+
+;;(mk-proj-find-unique-paths '( "/home/rakete/.emacs.d/" "/home/rakete/testlab" "/home/rakete/Documents" "/home/rakete/.emacs.d/mk-project"))
+
+(defun mk-proj-find-common-path-of-buffers (&optional buffers ignore-paths)
+  (let* ((common-path 'undefined)
+         (result (dolist (buf
+                          (or buffers (buffer-list))
+                          ;; at the end of the dolist loop over the buffers transform the of strings in common-path
+                          ;; into a real path by interspersing "/" between then, then returning it as result
+                          (unless (or (eq common-path 'undefined)
+                                      (null common-path))
+                            (apply 'concat (mapcar (lambda (s) (concat "/" s)) common-path))))
+                   (when (buffer-file-name buf)
+                     (if (eq common-path 'undefined)
+                         ;; set common-path on first iteration if it is undefined, we'll be unecessarily
+                         ;; checking it against itself once
+                         (setq common-path (split-string (mk-proj-dirname (buffer-file-name buf)) "/" t))
+                       ;; we split both paths by "/" and create a zipper from the resulting lists
+                       ;; /foo/bar     -> '("foo" "bar")
+                       ;; /foo/bar/bla -> '("foo" "bar" "bla")
+                       ;; -> '(("foo" "foo") ("bar" "bar") (nil "bla"))
+                       ;; then walking over the zipper while both tuple's strings match, stopping at a mismatch
+                       ;; and collecting matching strings on the way along
+                       (let ((tuples (mk-proj-zip common-path (split-string (buffer-file-name buf) "/" t)))
+                             (temp-path '()))
+                         (while (string-equal (first (car tuples)) (second (car tuples)))
+                           (add-to-list 'temp-path (first (car tuples)))
+                           (setq tuples (cdr tuples)))
+                         ;; we'll set the new common-path before the next iteration, but only if it wouldn't be
+                         ;; 'equal' (see mk-proj-path-equal) to any of the ignore-paths
+                         (unless (loop for ig in ignore-paths
+                                       if (mk-proj-path-equal ig (apply 'concat (mapcar (lambda (s) (concat "/" s)) (reverse temp-path))))
+                                       return t
+                                       finally return nil)
+                           (setq common-path (reverse temp-path)))))))))
+    result))
+
+;; (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers (current-buffer)
+;;                                             mk-proj-incubator-paths)
+;;                      mk-proj-incubator-paths)
+
+(defun* mk-proj-guess-buffers (&optional test-buffer ignore-paths mode)
+  (unless test-buffer
+    (setq test-buffer (current-buffer)))
+  (let ((buffers (buffer-list)))
+    (while (and (not (buffer-file-name test-buffer))
+                buffers)
+      (setq test-buffer (car buffers)
+            buffers (cdr buffers))))
+  (unless (buffer-file-name test-buffer)
+    (return-from "mk-proj-guess-buffers" nil))
+  (let* ((ignore-paths (sort ignore-paths (lambda (a b) (> (length a) (length b)))))
+         (test-mode (with-current-buffer test-buffer major-mode))
+         (test-path (or (mk-proj-dirname (buffer-file-name test-buffer))
+                        default-directory))
+         (buffer-projects (mk-proj-find-projects-owning-buffer test-buffer))
+         result)
+    (setq result (remove-if-not 'identity
+                                (mapcar (lambda (buf)
+                                          (let (buf-projects)
+                                            (when (and (buffer-file-name buf)
+                                                       (mk-proj-path-complement (mk-proj-dirname (buffer-file-name buf)) test-path)
+                                                       ;; same projects for all buffers considered, all guessed buffers must belong to the
+                                                       ;; same projects as test-buffer, even if test-buffer belongs to multiple projects
+                                                       (or (mk-proj-path-equal test-path (mk-proj-dirname (buffer-file-name buf)) t)
+                                                           (loop for ig in ignore-paths
+                                                                 if (mk-proj-path-equal ig (mk-proj-dirname (buffer-file-name buf)) t)
+                                                                 return nil
+                                                                 finally return t))
+                                                       (equal (setq buf-projects (mk-proj-find-projects-owning-buffer buf)) buffer-projects))
+                                              ;; special treatment for buffers when a project is loaded, exclude project buffers of loaded
+                                              ;; project if test-buffer does not belong to loaded project, exclude buffers that do not
+                                              ;; belong to loaded project when test-buffer belongs to the loaded project
+                                              (unless (or (and (boundp 'mk-proj-name)
+                                                               mk-proj-name
+                                                               (not (some (lambda (p) (string-equal p mk-proj-name)) buffer-projects))
+                                                               (some (lambda (p) (string-equal p mk-proj-name)) buf-projects))
+                                                          (and (boundp 'mk-proj-name)
+                                                               mk-proj-name
+                                                               (not (eq buf test-buffer))
+                                                               (not (some (lambda (p) (string-equal p mk-proj-name)) buffer-projects))
+                                                               (mk-proj-friendly-buffer-p buf mk-proj-name)))
+                                                buf))))
+                                        (if mode
+                                            (remove-if-not (lambda (b) (eq (with-current-buffer b major-mode) mode)) (buffer-list))
+                                          (buffer-list)))))
+    result))
+
+;; (mk-proj-guess-buffers (current-buffer) mk-proj-incubator-paths)
+
+(defun mk-proj-src-pattern-languages (src-patterns)
+  (let ((lang nil)
+        (languages nil))
+    (loop for pattern in src-patterns
+          do (setq lang (cadr (assoc (car (last (split-string pattern "\\." t))) mk-proj-src-pattern-table)))
+          if (not (eq lang nil))
+          do (add-to-list 'languages lang))
+    (if (and (find 'cpp languages)
+             (not (some (lambda (file-name) (string-match ".*\\.c$" file-name)) (mk-proj-files))))
+        (remove-if (lambda (lang) (eq lang 'c)) languages)
+      languages)))
+
+;;(mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns))
+
+(defvar mk-proj-guess-functions '((buffer . ((()
+                                              `(1 . ,(current-buffer)))))
+                                  (mode . (((buffer)
+                                            `(1 . ,(with-current-buffer buffer major-mode)))))
+                                  (basedir . (;; default-directory
+                                              (()
+                                               `(1 . ,(expand-file-name default-directory)))
+                                              ;; buffer-file-name
+                                              ((buffer)
+                                               (when (buffer-file-name buffer)
+                                                 `(10 . ,(mk-proj-dirname (buffer-file-name buffer)))))
+                                              ;; longest-common-path of buffers with same mode
+                                              ((mode buffer)
+                                               (let ((found-path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths mode))))
+                                                 (when (and found-path
+                                                            (not (string-equal (expand-file-name "~") found-path)))
+                                                   `(50 . ,found-path))))
+                                              ;; find directory that is not a common project subdir
+                                              ((buffer)
+                                               (let* ((path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths)))
+                                                      (splitted-path (split-string path "/")))
+                                                 (while (and path
+                                                             splitted-path
+                                                             (not (some (lambda (incubator-path) (mk-proj-path-equal incubator-path path))
+                                                                        mk-proj-incubator-paths))
+                                                             (some (lambda (dir) (string-equal dir (car (last splitted-path))))
+                                                                   mk-proj-common-project-subdir-names))
+                                                   (setq splitted-path (butlast splitted-path)
+                                                         path (reduce (lambda (a b) (concat a "/" b)) splitted-path)))
+                                                 (when path
+                                                   `(100 . ,path))))
+                                              ;; find basedir by searching for buildsystem patterns
+                                              ((buffer)
+                                               (let ((path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths))))
+                                                 (when path
+                                                   (let ((found-paths (sort (loop for re in (mk-proj-buildsystem-patterns)
+                                                                                  collect (mk-proj-search-path re path mk-proj-incubator-paths mk-proj-common-project-subdir-names))
+                                                                            (lambda (a b) (> (length a) (length b))))))
+                                                     (when (car found-paths)
+                                                       `(200 . ,(car found-paths)))))))
+                                              ;; find basedir by searching for vcs pattern
+                                              ((buffer)
+                                               (let* ((filename (buffer-file-name buffer))
+                                                      (found-paths (when filename
+                                                                     (sort (loop for re in (mapcar 'regexp-quote (mapcar 'cdr mk-proj-vcs-path))
+                                                                                 collect (mk-proj-search-path re (file-name-directory filename) mk-proj-incubator-paths mk-proj-common-project-subdir-names))
+                                                                           (lambda (a b) (> (length a) (length b)))))))
+                                                 (if (car found-paths)
+                                                     `(500 . ,(car found-paths))
+                                                   (let ((path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths))))
+                                                     (when path
+                                                       (let ((found-paths (sort (loop for re in (mapcar 'regexp-quote (mapcar 'cdr mk-proj-vcs-path))
+                                                                                      collect (mk-proj-search-path re path mk-proj-incubator-paths mk-proj-common-project-subdir-names))
+                                                                                (lambda (a b) (> (length a) (length b))))))
+                                                         (when (car found-paths)
+                                                           `(300 . ,(car found-paths)))))))))
+                                              ;; find basedir by trying to match buffers directory to project basedirs
+                                              ((buffer)
+                                               (let ((basedirs '()))
+                                                 (dolist (proj-name (mk-proj-find-projects-owning-buffer buffer))
+                                                   (let ((basedir (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t))))
+                                                     (unless (some (apply-partially 'string-equal basedir) basedirs)
+                                                       (add-to-list 'basedirs basedir))))
+                                                 (let ((basedirs-without-incubators (remove-if (lambda (dir)
+                                                                                                 (some (lambda (incubator)
+                                                                                                         (string-equal (file-name-as-directory dir)
+                                                                                                                       (file-name-as-directory incubator)))
+                                                                                                       mk-proj-incubator-paths))
+                                                                                               basedirs)))
+                                                   (if (and (eq (length basedirs) 1)
+                                                            (eq (length basedirs-without-incubators) 1))
+                                                       `(400 . ,(car basedirs))
+                                                     (if (eq (length basedirs-without-incubators) 1)
+                                                         `(250 . ,(car basedirs-without-incubators))
+                                                       (if (> (length basedirs-without-incubators) 1)
+                                                           `(25 . ,(car basedirs-without-incubators))
+                                                         (if (> (length basedirs) 1)
+                                                             `(10 . ,(car basedirs)))))))))))
+                                  (name . (((buffer)
+                                            (progn
+                                              (unless buffer
+                                                (setq buffer (current-buffer)))
+                                              (when (buffer-file-name buffer)
+                                                `(10 . ,(car (split-string (file-name-nondirectory (buffer-file-name buffer)) "\\."))))))
+                                           ((basedir)
+                                            (let ((pname (car (reverse (split-string basedir "/" t)))))
+                                              (when (loop for ig in mk-proj-incubator-paths
+                                                          if (mk-proj-path-equal ig basedir)
+                                                          return nil
+                                                          finally return t)
+                                                `(100 . ,pname))))))
+                                  (src-patterns . (((basedir mode)
+                                                    (let* ((all-incubator 'undefined)
+                                                           ;; guess buffers, collect files and set all-incubator, files from incubator
+                                                           ;; roots are ignored except the current buffers file, if all relevant files
+                                                           ;; we found are from incubator roots all-incubator will be true
+                                                           (files (loop for buf in (mk-proj-guess-buffers (current-buffer) nil mode)
+                                                                        do (cond ((and (some (lambda (ig)
+                                                                                               (mk-proj-path-equal (mk-proj-dirname (buffer-file-name buf)) ig t))
+                                                                                             mk-proj-incubator-paths)
+                                                                                       all-incubator)
+                                                                                  (setq all-incubator t))
+                                                                                 (t
+                                                                                  (setq all-incubator nil)))
+                                                                        if (and (buffer-file-name buf)
+                                                                                (string-match (regexp-quote basedir) (buffer-file-name buf))
+                                                                                (or (eq (current-buffer) buf)
+                                                                                    (not (some (lambda (ig)
+                                                                                                 (mk-proj-path-equal (mk-proj-dirname (buffer-file-name buf)) ig t))
+                                                                                               mk-proj-incubator-paths))))
+                                                                        append (list (file-name-nondirectory (buffer-file-name buf)))))
+                                                           patterns)
+                                                      ;; get unique file endings from filenames and make regexp patterns
+                                                      (unless (and (= (length files) 1)
+                                                                   all-incubator)
+                                                        (loop for f in files
+                                                              if (let ((splits (split-string f "\\." t)))
+                                                                   (and (last splits)
+                                                                        (> (length splits) 1)))
+                                                              do (let ((file-ending (car (last (split-string f "\\." t)))))
+                                                                   ;;(add-to-list 'patterns (concat ".*\\." (regexp-quote file-ending)))
+                                                                   (mapc (lambda (s)
+                                                                           (add-to-list 'patterns s))
+                                                                         (cddr (assoc file-ending mk-proj-src-pattern-table))))
+                                                              else
+                                                              do (add-to-list 'patterns (regexp-quote f))))
+                                                      (when files
+                                                        ;; add files full names as well to the pattern list
+                                                        (mapc (apply-partially 'add-to-list 'patterns)
+                                                              (mapcar (lambda (fname) (concat ".*" (regexp-quote fname))) files))
+                                                        ;; patterns might look something like this: "foo\\.el" "bar\\.el" "*\\.el
+                                                        `(100 . ,patterns))))))
+                                  (patterns-are-regex . ((nil
+                                                          '(10 . t))))
+                                  (compile-cmd . ((nil
+                                                   (when (and (boundp 'compile-command)
+                                                              compile-command)
+                                                     `(50 . ,compile-command)))
+                                                  ((basedir)
+                                                   (let ((bsystem))
+                                                     (loop for filename in (directory-files basedir)
+                                                           until (let ((r nil))
+                                                                   (loop for bs in mk-proj-buildsystems
+                                                                         until (setq r (when (assoc 'files (cadr bs))
+                                                                                         (some (apply-partially 'string-equal filename) (cadr (assoc 'files (cadr bs))))))
+                                                                         finally return (when r
+                                                                                          (setq bsystem bs)))))
+                                                     (cond ((and bsystem
+                                                                 (assoc 'build (cadr bsystem)))
+                                                            `(100 . ,(cadr (assoc 'build (cadr bsystem)))))
+                                                           ((and (boundp 'compile-command)
+                                                                 compile-command)
+                                                            `(100 . ,compile-command)))
+                                                     ))))
+                                  (vcs . (((basedir)
+                                           (let ((r nil))
+                                             (loop for f in (directory-files basedir)
+                                                   if (some (lambda (y)
+                                                              (string-equal (cdr y) f)) mk-proj-vcs-path)
+                                                   return `(10 . ,(car (rassoc f mk-proj-vcs-path))))))))
+                                  (languages . (((src-patterns)
+                                                 (let ((languages (mk-proj-src-pattern-languages src-patterns)))
+                                                   (when languages
+                                                     `(10 . ,languages))))))
+                                  (ack-args . (((languages)
+                                                (let ((args nil))
+                                                  (dolist (lang languages)
+                                                    (cond ((eq lang 'c)
+                                                           (add-to-list 'args "--cc"))
+                                                          ((eq lang 'cpp)
+                                                           (add-to-list 'args "--cpp"))
+                                                          ((eq lang 'elisp)
+                                                           (add-to-list 'args "--el"))
+                                                          ((eq lang 'perl)
+                                                           (add-to-list 'args "--perl"))
+                                                          ((eq lang 'python)
+                                                           (add-to-list 'args "--python"))
+                                                          ((eq lang 'lisp)
+                                                           (add-to-list 'args "--lisp"))
+                                                          ((eq lang 'scheme)
+                                                           (add-to-list 'args "--scheme"))
+                                                          ((eq lang 'shell)
+                                                           (add-to-list 'args "--shell"))
+                                                          ((eq lang 'haskell)
+                                                           (add-to-list 'args "--haskell"))))
+                                                  (when args
+                                                    `(10 . ,(reduce (lambda (a b) (concat a " " b))
+                                                                    args)))))))))
+
+(defun* mk-proj-guess-alist (&optional ask-basedir ask-name guess-args)
+  ;; go through mk-proj-guess-functions and collect all symbols that are used
+  ;; as arguments, we'll bind those in a closure around the execution
+  ;; of the function bodies
+  (let ((guess-args (let (symbols)
+                      (dolist (element mk-proj-guess-functions)
+                        (add-to-list 'symbols `(,(car element) 'undefined))
+                        (dolist (token (cdr element))
+                          (dolist (arg (car token))
+                            (add-to-list 'symbols `(,arg 'undefined)))))
+                      symbols))
+        (result '())
+        (start-time (current-time)))
+    ;; we define a macro that takes the list of guess-args we constructed from mk-proj-guess-functions
+    ;; and makes a let clause out of them, thus binding them in the scope of body
+    (macrolet ((alet (&rest body) `(let ,guess-args  ,@body)))
+      (alet
+       (cl-labels ((best-result (rs)
+                                (let (bestscore bestresult)
+                                  (dolist (tuple rs bestresult)
+                                    (when (or (not bestscore)
+                                              (> (car tuple) bestscore))
+                                      (setq bestscore (car tuple)
+                                            bestresult (cdr tuple))))))
+                   (guess-symbol (sym)
+                                 ;;(message (concat (format-time-string "%H:%M:%S" (current-time)) " " (prin1-to-string sym)))
+                                 (let ((scores '()))
+                                   (dolist (flist (cdr (assoc sym mk-proj-guess-functions)) (best-result scores))
+                                     (let ((args (first flist))
+                                           (expr (second flist)))
+                                       (dolist (arg args)
+                                         ;; check if neccessary symbols are set, this sets a symbol after guessing it so
+                                         ;; we do not have to guess something twice
+                                         (when (eq (symbol-value arg) 'undefined)
+                                           ;;(message "setting symbol %S" arg)
+                                           (setf (symbol-value arg) (guess-symbol arg))
+                                           ))
+                                       (let ((r (condition-case e (eval expr)
+                                                  (error (message "error while guessing %S: %S in %s" sym e (prin1-to-string expr))))))
+                                         (when r (add-to-list 'scores r))))))))
+         ;;(message (concat (format-time-string "%H:%M:%S" (current-time)) " start"))
+         (dolist (varchecks (append mk-proj-required-vars mk-proj-optional-vars))
+           ;; for each var check if it is already set, if not use guess-symbol to guess it
+           ;; since only args from mk-proj-guess-functions are defined by the alet, not all
+           ;; possible project symbols, we have to check if a var is bound before setting it
+           ;; with setf or returning its value if it is not 'undefined, default is to just
+           ;; guess and not set anything
+           (let* ((var (car varchecks))
+                  (checks (cdr varchecks))
+                  (gv (cond ((and ask-basedir
+                                  (boundp var)
+                                  (eq var 'basedir))
+                             (progn
+                               (interactive)
+                               (setf (symbol-value var)
+                                     (let ((guessed-dir (guess-symbol var)))
+                                       (ido-read-directory-name (format "Continue with this basedir? (%s): " guessed-dir)
+                                                                guessed-dir
+                                                                nil
+                                                                t)))))
+                            ((and ask-name
+                                  (boundp var)
+                                  (eq var 'name))
+                             (progn
+                               (interactive)
+                               (setf (symbol-value var)
+                                     (let ((guessed-name (guess-symbol var)))
+                                       (read-input (format "Use this name? (%s): " guessed-name)
+                                                   nil
+                                                   nil
+                                                   guessed-name)))))
+                            ((and (boundp var)
+                                  (not (eq (symbol-value var) 'undefined)))
+                             (symbol-value var))
+                            ((and (boundp var)
+                                  (eq (symbol-value var) 'undefined))
+                             (setf (symbol-value var) (guess-symbol var)))
+                            (t (guess-symbol var)))))
+             (if gv
+                 (add-to-list 'result `(,var ,gv))
+               ;; when a required var couldn't be found, abort
+               (when (some (apply-partially 'eq var) mk-proj-required-vars)
+                 (return-from "mk-proj-guess-alist" nil)))))
+         ;; find already defined project that fits the guessed project so well that we'll use that instead
+         ;; creates list of all projects in same basedir, then selects those matching the same src-patterns
+         ;; as the guessed, uses the first of those if multiple match
+         (let ((already-defined (or (and (buffer-file-name (current-buffer))
+                                         (mk-proj-find-projects-in-directory (mk-proj-dirname (buffer-file-name (current-buffer)))))
+                                    (mk-proj-find-projects-in-directory (cadr (assoc 'basedir result)))))
+               (pattern-projects nil))
+           (if already-defined
+               (loop for proj-name in already-defined
+                     if (setq pattern-projects
+                              (mk-proj-find-projects-matching-patterns (mk-proj-get-config-val 'src-patterns proj-name t)
+                                                                       already-defined))
+                     return (let ((already-defined-result (gethash (car pattern-projects) mk-proj-list)))
+                              ;; add name if it does not already exist to alist, doubles functionality in project-def
+                              (unless (assoc 'name already-defined-result)
+                                (add-to-list 'already-defined-result `(name ,(car pattern-projects))))
+                              already-defined-result))
+             result)))))))
 
 (provide 'mk-project)
-
-
-
-
-
-
-
-
 
 ;;; mk-project.el ends here
