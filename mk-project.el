@@ -2874,10 +2874,7 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
           do (setq lang (cadr (assoc (car (last (split-string pattern "\\." t))) mk-proj-src-pattern-table)))
           if (not (eq lang nil))
           do (add-to-list 'languages lang))
-    (if (and (find 'cpp languages)
-             (not (some (lambda (file-name) (string-match ".*\\.c$" file-name)) (mk-proj-files))))
-        (remove-if (lambda (lang) (eq lang 'c)) languages)
-      languages)))
+    languages))
 
 ;;(mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns))
 
