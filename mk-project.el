@@ -1318,6 +1318,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
       (cd (mk-proj-dirname (buffer-file-name (current-buffer)))))
     (modify-frame-parameters (selected-frame) (list (cons 'name "Emacs")))
     (setq compile-command nil)
+    (setq mk-proj-completions-cache (make-hash-table :test 'equal))
     (unless quiet (message "Project settings have been cleared"))))
 
 (defun project-close-files ()
