@@ -2147,7 +2147,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                                                                      (mk-proj-completions))))))
   (unless buffer
     (setq buffer (current-buffer)))
-  (let ((jumps (mk-proj-jump-list 'gtags regexp (concat "global -x -e " (prin1-to-string (concat regexp ".*"))))))
+  (let ((jumps (append (mk-proj-jump-list 'gtags regexp (concat "global -x -e " (prin1-to-string (concat regexp ".*"))))
+                       (mk-proj-jump-list 'imenu regexp))))
     (mk-proj-select-jumps (mk-proj-score-jumps jumps regexp buffer))))
 
 ;; (project-jump-regexp "mk-proj-.*")
