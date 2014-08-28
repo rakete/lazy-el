@@ -2691,25 +2691,28 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                  (not (some (lambda (pattern) (string-match pattern file-name)) src-patterns)))
         (mk-proj-set-config-val 'src-patterns (add-to-list 'src-patterns new-pattern))))))
 
-(defun mk-proj-after-save-update ()
+(defun project-after-save-update (&optional p)
+  (interactive "p")
   (when mk-proj-name
-    (unless (or mk-proj-prevent-after-save-update
-                (string-match ".*recentf.*" (buffer-name (current-buffer)))
-                (string-match ".*file-list-cache.*" (buffer-name (current-buffer)))
-                (string-match ".*sourcemarker-db.*" (buffer-name (current-buffer)))
-                (string-match ".*continue-db.*" (buffer-name (current-buffer)))
-                (not (mk-proj-buffer-p (current-buffer))))
-      ;;(message "after-save-update in %s" (buffer-name (current-buffer)))
-      (mk-proj-after-save-add-pattern)
-      (project-index nil t t t 'project-update-tags)
-      )))
+    (when (and (not (or mk-proj-prevent-after-save-update
+                        (string-match ".*recentf.*" (buffer-name (current-buffer)))
+                        (string-match ".*file-list-cache.*" (buffer-name (current-buffer)))
+                        (string-match ".*sourcemarker-db.*" (buffer-name (current-buffer)))
+                        (string-match ".*continue-db.*" (buffer-name (current-buffer)))
+                        (string-match ".*archive-contents.*" (buffer-name (current-buffer)))
+                        (string-match ".*\*http .*\*" (buffer-name (current-buffer)))
+                        ))
+               (or p (mk-proj-buffer-p (current-buffer)) (mk-proj-friendly-buffer-p (current-buffer))))
+      (when (buffer-file-name (current-buffer))
+        (mk-proj-after-save-add-pattern))
+      (project-index nil t t t 'project-update-tags))))
 
 (eval-after-load "mk-project"
   '(progn
      (run-with-idle-timer 90 t 'mk-proj-save-state)
      (add-hook 'find-file-hook 'mk-proj-update-imenu-completions-cache)
      (add-hook 'after-load-functions 'mk-proj-update-obarray-completions-cache)
-     (add-hook 'after-save-hook 'mk-proj-after-save-update)
+     (add-hook 'after-save-hook 'project-after-save-update)
      (add-hook 'pre-command-hook 'mk-proj-jump-pre-command-trigger)))
 
 ;; ---------------------------------------------------------------------
