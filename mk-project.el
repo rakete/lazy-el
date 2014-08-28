@@ -298,6 +298,11 @@ See also `mk-proj-config-save-location'")
                                        (javascript . (tern jsctags))
                                        (yacc . (gtags))))
 
+(defvar mk-proj-thing-selector 'symbol)
+
+(defvar mk-proj-completions-cache (make-hash-table :test 'equal))
+
+(defvar mk-proj-list (make-hash-table :test 'equal))
 
 ;; ---------------------------------------------------------------------
 ;; Customization
@@ -612,8 +617,6 @@ Examples:
 ;; ---------------------------------------------------------------------
 ;; Project Configuration
 ;; ---------------------------------------------------------------------
-
-(defvar mk-proj-list (make-hash-table :test 'equal))
 
 (defun* mk-proj-find-config (&optional proj-name (inherit t))
   "Get a projects config-alist from the global projects hashmap."
@@ -2051,10 +2054,6 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   (tabulated-list-init-header))
 
 ;;(define-key tabulated-list-mode-map (kbd "q") nil)
-
-(defvar mk-proj-thing-selector 'symbol)
-
-(defvar mk-proj-completions-cache (make-hash-table :test 'equal))
 
 (defun mk-proj-update-gtags-completions-cache (&rest args)
   (mapc (lambda (completion)
