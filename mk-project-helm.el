@@ -191,7 +191,7 @@
      . "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer"))
   "All special buffers of the currently active project." )
 
-(defun helm-mkproject ()
+(defun project-helm ()
   (interactive)
   (helm :sources '(helm-c-source-mk-project-files
                    helm-c-source-mk-project-friendly-files
