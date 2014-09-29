@@ -2826,7 +2826,7 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                                                               do (add-to-list 'patterns (regexp-quote f))))
                                                       (when files
                                                         ;; add files full names as well to the pattern list
-                                                        (mapc (apply-partially 'add-to-list 'patterns)
+                                                        (mapc (lambda (name) (add-to-list 'patterns name))
                                                               (mapcar (lambda (fname) (concat ".*" (regexp-quote fname))) files))
                                                         ;; patterns might look something like this: "foo\\.el" "bar\\.el" "*\\.el
                                                         `(100 . ,patterns))))))
@@ -2887,108 +2887,102 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                                                     `(10 . ,(reduce (lambda (a b) (concat a " " b))
                                                                     args)))))))))
 
-(defun* mk-proj-guess-alist (&optional ask-basedir ask-name guess-args)
+(defun mk-proj-guess-alist (&optional ask-basedir ask-name)
   ;; go through mk-proj-guess-functions and collect all symbols that are used
   ;; as arguments, we'll bind those in a closure around the execution
   ;; of the function bodies
-  (let ((guess-args (let (symbols)
-                      (dolist (element mk-proj-guess-functions)
-                        (add-to-list 'symbols `(,(car element) 'undefined))
-                        (dolist (token (cdr element))
-                          (dolist (arg (car token))
-                            (add-to-list 'symbols `(,arg 'undefined)))))
-                      symbols))
+  (let ((ack-args 'undefined)
+        (languages 'undefined)
+        (compile-cmd 'undefined)
+        (vcs 'undefined)
+        (patterns-are-regex 'undefined)
+        (src-patterns 'undefined)
+        (name 'undefined)
+        (basedir 'undefined)
+        (mode 'undefined)
+        (buffer 'undefined)
         (result '())
         (start-time (current-time)))
-    ;; we define a macro that takes the list of guess-args we constructed from mk-proj-guess-functions
-    ;; and makes a let clause out of them, thus binding them in the scope of body
-    (macrolet ((alet (&rest body) `(let ,guess-args  ,@body)))
-      (alet
-       (cl-labels ((best-result (rs)
-                                (let (bestscore bestresult)
-                                  (dolist (tuple rs bestresult)
-                                    (when (or (not bestscore)
-                                              (> (car tuple) bestscore))
-                                      (setq bestscore (car tuple)
-                                            bestresult (cdr tuple))))))
-                   (guess-symbol (sym)
-                                 ;;(message (concat (format-time-string "%H:%M:%S" (current-time)) " " (prin1-to-string sym)))
-                                 (let ((scores '()))
-                                   (dolist (flist (cdr (assoc sym mk-proj-guess-functions)) (best-result scores))
-                                     (let ((args (first flist))
-                                           (expr (second flist)))
-                                       (dolist (arg args)
-                                         ;; check if neccessary symbols are set, this sets a symbol after guessing it so
-                                         ;; we do not have to guess something twice
-                                         (when (eq (symbol-value arg) 'undefined)
-                                           ;;(message "setting symbol %S" arg)
-                                           (setf (symbol-value arg) (guess-symbol arg))
-                                           ))
-                                       (let ((r (condition-case e (eval expr)
-                                                  (error (message "error while guessing %S: %S in %s" sym e (prin1-to-string expr))))))
-                                         (when r (add-to-list 'scores r))))))))
-         ;;(message (concat (format-time-string "%H:%M:%S" (current-time)) " start"))
-         (dolist (varchecks (append mk-proj-required-vars mk-proj-optional-vars))
-           ;; for each var check if it is already set, if not use guess-symbol to guess it
-           ;; since only args from mk-proj-guess-functions are defined by the alet, not all
-           ;; possible project symbols, we have to check if a var is bound before setting it
-           ;; with setf or returning its value if it is not 'undefined, default is to just
-           ;; guess and not set anything
-           (let* ((var (car varchecks))
-                  (checks (cdr varchecks))
-                  (gv (cond ((and ask-basedir
-                                  (boundp var)
-                                  (eq var 'basedir))
-                             (progn
-                               (interactive)
-                               (setf (symbol-value var)
-                                     (let ((guessed-dir (guess-symbol var)))
-                                       (ido-read-directory-name (format "Continue with this basedir? (%s): " guessed-dir)
-                                                                guessed-dir
-                                                                nil
-                                                                t)))))
-                            ((and ask-name
-                                  (boundp var)
-                                  (eq var 'name))
-                             (progn
-                               (interactive)
-                               (setf (symbol-value var)
-                                     (let ((guessed-name (guess-symbol var)))
-                                       (read-input (format "Use this name? (%s): " guessed-name)
-                                                   nil
-                                                   nil
-                                                   guessed-name)))))
-                            ((and (boundp var)
-                                  (not (eq (symbol-value var) 'undefined)))
-                             (symbol-value var))
-                            ((and (boundp var)
-                                  (eq (symbol-value var) 'undefined))
-                             (setf (symbol-value var) (guess-symbol var)))
-                            (t (guess-symbol var)))))
-             (if gv
-                 (add-to-list 'result `(,var ,gv))
-               ;; when a required var couldn't be found, abort
-               (when (some (apply-partially 'eq var) mk-proj-required-vars)
-                 (return-from "mk-proj-guess-alist" nil)))))
-         ;; find already defined project that fits the guessed project so well that we'll use that instead
-         ;; creates list of all projects in same basedir, then selects those matching the same src-patterns
-         ;; as the guessed, uses the first of those if multiple match
-         (let ((already-defined (or (and (buffer-file-name (current-buffer))
-                                         (mk-proj-find-projects-in-directory (mk-proj-dirname (buffer-file-name (current-buffer)))))
-                                    (mk-proj-find-projects-in-directory (cadr (assoc 'basedir result)))))
-               (pattern-projects nil))
-           (if already-defined
-               (loop for proj-name in already-defined
-                     if (setq pattern-projects
-                              (mk-proj-find-projects-matching-patterns (mk-proj-get-config-val 'src-patterns proj-name t)
-                                                                       already-defined))
-                     return (let ((already-defined-result (gethash (car pattern-projects) mk-proj-list)))
-                              ;; add name if it does not already exist to alist, doubles functionality in project-def
-                              (unless (assoc 'name already-defined-result)
-                                (add-to-list 'already-defined-result `(name ,(car pattern-projects))))
-                              already-defined-result))
-             result)))))))
+    (cl-labels ((best-result (rs)
+                             (let (bestscore bestresult)
+                               (dolist (tuple rs bestresult)
+                                 (when (or (not bestscore)
+                                           (> (car tuple) bestscore))
+                                   (setq bestscore (car tuple)
+                                         bestresult (cdr tuple))))))
+                (guess-symbol (sym)
+                              (let ((scores '()))
+                                (dolist (flist (cdr (assoc sym mk-proj-guess-functions)) (best-result scores))
+                                  (let ((args (first flist))
+                                        (expr (second flist)))
+                                    (dolist (arg args)
+                                      ;; check if neccessary symbols are set, this sets a symbol after guessing it so
+                                      ;; we do not have to guess something twice
+                                      (when (eq (symbol-value arg) 'undefined)
+                                        (setf (symbol-value arg) (guess-symbol arg))
+                                        ))
+                                    (let ((r (condition-case e (eval expr)
+                                               (error (message "error while guessing %S: %S in %s" sym e (prin1-to-string expr))))))
+                                      (when r (add-to-list 'scores r))))))))
+      (dolist (varchecks (append mk-proj-required-vars mk-proj-optional-vars))
+        ;; for each var check if it is already set, if not use guess-symbol to guess it
+        ;; since only args from mk-proj-guess-functions are defined by the alet, not all
+        ;; possible project symbols, we have to check if a var is bound before setting it
+        ;; with setf or returning its value if it is not 'undefined, default is to just
+        ;; guess and not set anything
+        (let* ((var (car varchecks))
+               (checks (cdr varchecks))
+               (gv (cond ((and ask-basedir
+                               (boundp var)
+                               (eq var 'basedir))
+                          (progn
+                            (setf (symbol-value var)
+                                  (let ((guessed-dir (guess-symbol var)))
+                                    (ido-read-directory-name (format "Continue with this basedir? (%s): " guessed-dir)
+                                                             guessed-dir
+                                                             nil
+                                                             t)))))
+                         ((and ask-name
+                               (boundp var)
+                               (eq var 'name))
+                          (progn
+                            (setf (symbol-value var)
+                                  (let ((guessed-name (guess-symbol var)))
+                                    (read-string (format "Use this name? (%s): " guessed-name)
+                                                 nil
+                                                 nil
+                                                 guessed-name)))))
+                         ((and (boundp var)
+                               (not (eq (symbol-value var) 'undefined)))
+                          (symbol-value var))
+                         ((and (boundp var)
+                               (eq (symbol-value var) 'undefined))
+                          (setf (symbol-value var) (guess-symbol var)))
+                         (t (guess-symbol var)))))
+          (if gv
+              (add-to-list 'result `(,var ,gv))
+            ;; when a required var couldn't be found, abort
+            (when (some (apply-partially 'eq var) mk-proj-required-vars)
+              (return-from "mk-proj-guess-alist" nil)))))
+      ;; find already defined project that fits the guessed project so well that we'll use that instead
+      ;; creates list of all projects in same basedir, then selects those matching the same src-patterns
+      ;; as the guessed, uses the first of those if multiple match
+      (let ((already-defined (or (and (buffer-file-name (current-buffer))
+                                      (mk-proj-find-projects-in-directory (mk-proj-dirname (buffer-file-name (current-buffer)))))
+                                 (mk-proj-find-projects-in-directory (cadr (assoc 'basedir result)))))
+            (pattern-projects nil))
+        (if already-defined
+            (loop for proj-name in already-defined
+                  if (setq pattern-projects
+                           (mk-proj-find-projects-matching-patterns (mk-proj-get-config-val 'src-patterns proj-name t)
+                                                                    already-defined))
+                  return (let ((already-defined-result (gethash (car pattern-projects) mk-proj-list)))
+                           ;; add name if it does not already exist to alist, doubles functionality in project-def
+                           (unless (assoc 'name already-defined-result)
+                             (add-to-list 'already-defined-result `(name ,(car pattern-projects))))
+                           already-defined-result))
+          result)))))
 
 (provide 'mk-project)
 
-;;; mk-project.el ends here
+;; mk-project.el ends here
