@@ -193,31 +193,10 @@ See also `mk-proj-get-config-val'.")
 
 (defvar mk-proj-history '())
 
-(defun mk-proj-cmake-build (&optional opts)
-  (interactive)
-  (mk-proj-assert-proj)
-  (when (file-exists-p (expand-file-name (concat (mk-proj-get-config-val 'basedir) "/CMakeLists.txt")))
-    (let ((dir (cond ((file-exists-p (expand-file-name (concat (mk-proj-get-config-val 'basedir) "/build")))
-                      (expand-file-name (concat (mk-proj-get-config-val 'basedir) "/build")))
-                     ((file-exists-p (expand-file-name (concat (mk-proj-get-config-val 'basedir) "/cmake")))
-                      (expand-file-name (concat (mk-proj-get-config-val 'basedir) "/cmake")))
-                     ((y-or-n-p (concat "Create " (expand-file-name (concat (mk-proj-get-config-val 'basedir) "/build")) "?"))
-                      (make-directory (expand-file-name (concat (mk-proj-get-config-val 'basedir) "/build")))
-                      (expand-file-name (concat (mk-proj-get-config-val 'basedir) "/build")))
-                     (t nil))))
-      (when dir
-        (mk-proj-with-directory
-         dir
-         (if (file-exists-p "Makefile")
-             (compile (concat "pushd " dir "; make " opts))
-           (if (> (shell-command "cmake ..") 0)
-               (error "cmake failed")
-             (compile (concat "pushd " dir "; make " opts)))))))))
-
 (defvar mk-proj-buildsystems '((gnu-make ((files ("autogen.sh" "configure" "Makefile"))
-                                          (build "make $MK_BUILD_OPTS")))
+                                          (build "make")))
                                (cmake ((files ("CMakeLists.txt"))
-                                       (build (lambda () (mk-proj-cmake-build)))))
+                                       (build "mkdir -p build; cd build; cmake ..; make")))
                                (cabal ((files ("Setup.lhs"))
                                        (build "runhaskell Setup.lhs build $MK_BUILD_OPTS")))
                                (python ((files ("setup.py"))
@@ -347,8 +326,7 @@ load time. See also `project-menu-remove'."
   (mk-proj-save-open-friends-info))
 
 (defun mk-proj-zip (&rest lists)
-  (let* (;;(lists (append (list a) rest))
-         (n (- (length lists) 1))
+  (let* ((n (- (length lists) 1))
          (i 0)
          (rs '()))
     (while (some 'identity (mapcar (lambda (l) (> (length l) i)) lists))
@@ -521,8 +499,6 @@ equal this will return t."
                               nil)
                              (t (apply #'concat (mapcar (lambda (s) (concat s "/")) (cond (x x) (y y))))))))
 
-;; (mk-proj-path-complement "/home/me/blah/blubber" "/home/me/blah/blubber/")
-
 (defun* mk-proj-path-equal (a b &optional string-equal)
   "If path B is equal to or fully contained in path A, this will be true.
 
@@ -560,11 +536,6 @@ Examples:
      ((and (not (null a)) (not (null b)))
       nil))))
 
-;; (mk-proj-path-equal "/foo/bar" "/foo/bar/")
-;; (mk-proj-path-equal "/foo/bar" "/foo/" t)
-;; (mk-proj-path-equal "/foo/bar" "/foo/bar/blah")
-;; (mk-proj-path-equal "/foo/bar" "/foo/blah/bar")
-
 (defun* mk-proj-search-path (re path &optional stop-paths ignore-paths)
   (let ((xs (reverse (split-string path "/" t))))
     (while (and (cdr xs)
@@ -576,13 +547,6 @@ Examples:
                  (not (some (lambda (re) (string-match re (car xs))) ignore-paths)))
         (return-from "mk-proj-search-path" (apply 'concat (mapcar (lambda (s) (concat "/" s)) (reverse xs)))))
       (setq xs (cdr xs)))))
-
-;; (mk-proj-search-path (regexp-quote ".git")
-;;                      (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers (current-buffer) mk-proj-incubator-paths)
-;;                                           mk-proj-incubator-paths)
-;;                     mk-proj-incubator-paths)
-
-;; (mk-proj-search-path (regexp-quote ".bzr") "/home/rakete/ubuntu/compiz-grid-plugin/src" mk-proj-incubator-paths)
 
 (defun mk-proj-join (delimiter strings)
   (reduce (lambda (a b)
@@ -650,8 +614,6 @@ for the KEY and the first value that is found is returned."
                        (mk-proj-get-config-val key parent t))))))
     (if fn (funcall fn key val proj-name proj-alist) val)))
 
-;;(mk-proj-get-config-val 'file-list-cache "pcl" nil)
-
 (defalias 'mk-proj-config-val 'mk-proj-get-config-val
   "Alias for `mk-proj-get-config-val' to ensure backward compatibility.")
 
@@ -671,11 +633,6 @@ for the KEY and the first value that is found is returned."
         (mk-proj-backend-funcall (mk-proj-detect-backend proj-name)
                                  'save proj-name new-alist)))))
 
-;; (mk-proj-get-config-val 'org-file "emacs-config")
-;; (mk-proj-detect-backend "emacs-config")
-;; (mk-proj-set-config-val 'vcs 'git "emacs-config")
-;; (project-status "emacs-config")
-
 (defun* mk-proj-eval-alist (proj-name &optional config-alist)
   (interactive)
   (let* ((evaluated-config-alist `((name ,proj-name)))
@@ -691,7 +648,6 @@ for the KEY and the first value that is found is returned."
                            (unless (eq key 'name)
                              (add-to-list 'evaluated-config-alist `(,key ,value)))))))
     (when (gethash proj-name mk-proj-list)
-      ;;(message "union with %s" proj-name)
       (setq result-alist (mk-proj-alist-union (gethash proj-name mk-proj-list) result-alist)))
     (loop for varchecks in (append mk-proj-required-vars mk-proj-optional-vars)
           if (or (and (assoc (car varchecks) mk-proj-required-vars)
@@ -860,8 +816,6 @@ find command will be used and the `mk-proj-ignore-patterns' and
           (when (re-search-backward (regexp-quote "(project-def") (save-excursion (re-search-backward ")" nil t)) t)
             (return-from "while-search-loop" (point))))))))
 
-;; (mk-proj-find-project-elisp-configuration-in-buffer "mk-project" (find-file-noselect "~/.emacs.d/init-mkproject.el"))
-
 (defun mk-proj-find-save-location-marker (&optional proj-name config-alist)
   "This tries to find a suitable location to save the projects configuration.
 
@@ -897,9 +851,6 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
       (point-marker)))
    ;; no suitable location found
    (t (error "mk-proj: could not find a location to save %s, see mk-proj-config-save-location" proj-name))))
-
-;; (setq mk-proj-config-save-location "~/.emacs.d/")
-;; (mk-proj-find-save-location-marker "new-project")
 
 
 
@@ -948,8 +899,6 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                    (save-buffer)
                    (set-buffer-modified-p mod)))))
 
-;; (mk-proj-config-save "mk-project" (mk-proj-find-config "mk-project"))
-
 (defun* mk-proj-config-buffer (&optional (state :create) proj-name config-alist)
   (case state
     (:create
@@ -997,8 +946,6 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                (project-def mk-proj-name edited-alist)))))))))
 
 
-;; (mk-proj-with-current-project "emacs-config" (project-status))
-
 
 
 
@@ -1023,8 +970,6 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 (defun mk-proj-backend-funcall (backend sym &rest args)
   (apply (cdr (assoc sym (gethash backend mk-proj-backend-list))) args))
 
-;; (cdr (assoc 'save (gethash (mk-proj-detect-backend "emacs-config") mk-proj-backend-list)))
-
 (defun* mk-proj-detect-backend (&optional proj-name config-alist)
   (if (and (condition-case nil (mk-proj-assert-proj) (error t))
            (not proj-name))
@@ -1038,8 +983,6 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                  (when (funcall (cdr (assoc 'test v)) config-alist)
                    (return-from "mk-proj-detect-backend" k)))) mk-proj-backend-list)
     'elisp))
-
-;; (mk-proj-with-current-project nil (mk-proj-detect-backend))
 
 (defun project-save ()
   (interactive)
@@ -1183,8 +1126,6 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
              (or (mk-proj-get-config-val symbol (mk-proj-get-config-val 'parent proj-name nil) nil)
                  (mk-proj-get-cache-file symbol (mk-proj-get-config-val 'parent proj-name nil) t)))
             (t r)))))
-
-;;(mk-proj-get-cache-file 'file-list-cache mk-proj-name t)
 
 (defun mk-proj-get-root-cache-dir (&optional dirname proj-name)
   (unless proj-name
@@ -1474,29 +1415,6 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 ;; Tagging
 ;; ---------------------------------------------------------------------
 
-(defun mk-proj-file-truename (filenames)
-  (let ((truenames ())
-        (cmd "")
-        (single-result (not (listp filenames))))
-    (unless (listp filenames)
-      (setq filenames (list filenames)))
-    (dolist (filename filenames )
-      (when (file-exists-p filename)
-        (if (executable-find "pwd")
-            (let ((dir (if (file-directory-p filename) filename (file-name-directory filename)))
-                  (file (if (file-directory-p filename) "" (file-name-nondirectory filename))))
-              (setq cmd (concat cmd "cd " dir "; echo \"$(pwd -P)/" file "\"; ")))
-          (setq truenames (append truenames (list (file-truename filename)))))))
-    (let ((result (if (executable-find "pwd")
-                      (with-temp-buffer
-                        (shell-command cmd (current-buffer))
-                        (split-string (buffer-substring-no-properties (point-min) (point-max)) "\n" t))
-                    truenames)))
-      (if single-result (car-safe result) result))))
-
-;; (mk-proj-file-truename '("/home/rakete/.emacs.d/mk-project/mk-project.el"))
-;; (mk-proj-file-truename "/home/rakete/.emacs.d/mk-project/mk-project.el")
-
 (defvar mk-proj-default-gtags-config nil)
 
 (defun project-update-tags (&optional proj-name files debug)
@@ -1604,20 +1522,12 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
     (when terminator
       (funcall terminator))))
 
-;; (let ((process (start-process-shell-command "foo" "foo" "cd /tmp; mv GRTAGS GRTAGS.backup; gtags -v -f -; mv GRTAGS.backup GRTAGS")))
-;;   (process-send-string process "test.c\n")
-;;   (process-send-eof process))
-
-;; (mk-proj-process-group "testor" (list "cat" "cat") (list "foo\nbar\n" "blubber\n") t)
-
 (defun mk-proj-src-pattern-tag-systems (src-patterns)
   (let ((systems '()))
     (dolist (lang (mk-proj-src-pattern-languages src-patterns))
       (dolist (sys (cdr (assoc lang mk-proj-language-tag-systems)))
         (add-to-list 'systems sys)))
     systems))
-
-;;(mk-proj-src-pattern-tag-systems (mk-proj-unique-files "emacs-config"))
 
 (defun project-setup-tags (&optional proj-name)
   "Setup environment for existing TAG database."
@@ -1639,8 +1549,6 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                  (setenv "GTAGSROOT" gtags-root)
                  (add-to-list 'available-systems 'gtags))))))
     available-systems))
-
-;;(project-setup-tags)
 
 (defun mk-proj-jump-list (system word &rest args)
   (let* ((basedir (if mk-proj-name (mk-proj-get-config-val 'basedir) default-directory))
@@ -1836,8 +1744,6 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 (defun mk-proj-sort-jumps (jump-list)
   (message "sort-jumps")
   (sort jump-list 'mk-proj-compare-jumps))
-
-;; (mk-proj-sort-jumps (make-hash-table) 'foo 'bar)
 
 (defconst mk-proj-jump-buffer "*mk-proj: jumps*")
 
@@ -2153,74 +2059,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 
 ;; (project-jump-regexp "mk-proj-.*")
 
-;; ---------------------------------------------------------------------
-;; Grep
-;; ---------------------------------------------------------------------
 
-(defun project-grep (&optional phrase from-current-dir)
-  "Run find-grep on the project's basedir, excluding files in
-mk-proj-ignore-patterns, tag files, etc.
-
-If the phrase argument is not included, it will prompt for a
-search phrase.  If the from-current-dir argument is true, or with
-C-u prefix, start from the current directory."
-  (interactive)
-  (mk-proj-assert-proj t)
-  (let* ((wap (word-at-point))
-         (regex (or phrase
-                    (if wap (read-string (concat "Grep project for (default \"" wap "\"): ") nil nil wap)
-                      (read-string "Grep project for: "))))
-         (find-cmd "find . -type f")
-         (grep-cmd (concat "grep -i -n \"" regex "\""))
-         (default-directory (file-name-as-directory
-                             (if (or from-current-dir (mk-proj-has-univ-arg))
-                                 default-directory
-                               (mk-proj-get-config-val 'basedir)))))
-    (when (mk-proj-get-config-val 'ignore-patterns)
-      (setq find-cmd (concat find-cmd (mk-proj-find-cmd-ignore-args (mk-proj-get-config-val 'ignore-patterns)))))
-    (when (mk-proj-get-config-val 'etags-file)
-      (setq find-cmd (concat find-cmd " -not -name 'TAGS'")))
-    (when (mk-proj-get-vcs-path)
-      (setq find-cmd (concat find-cmd " -not -path " (concat "'*/" (mk-proj-get-vcs-path) "/*'"))))
-    (let* ((whole-cmd (concat (or (mk-proj-find-cmd-val 'grep)
-                                  (concat find-cmd " -print0"))
-                              " | xargs -0 -e " grep-cmd))
-           (confirmed-cmd (read-string "Grep command: " whole-cmd nil whole-cmd)))
-      (message "project-grep cmd: \"%s\"" confirmed-cmd)
-      (grep-find confirmed-cmd))))
-
-;; ---------------------------------------------------------------------
-;; Ack (betterthangrep.com)
-;; ---------------------------------------------------------------------
-
-(define-compilation-mode ack-mode "Ack" "Ack compilation mode." nil)
-
-(defvar mk-proj-ack-default-args "--nocolor --nogroup --column")
-
-(defun mk-proj-ack-cmd (regex)
-  "Generate the ack command string given a regex to search for."
-  (concat mk-proj-ack-cmd " "
-          mk-proj-ack-default-args " "
-          (if (and mk-proj-ack-respect-case-fold case-fold-search) "-i " "")
-          (mk-proj-get-config-val 'ack-args) " "
-          regex))
-
-(defun project-ack (&optional phrase from-current-dir)
-  "Run ack from project's basedir, using the `ack-args' configuration.
-With C-u prefix act as `project-ack-with-friends'."
-  (interactive)
-  (mk-proj-assert-proj t)
-  (if (mk-proj-has-univ-arg)
-      (project-ack-with-friends)
-    (let* ((wap (thing-at-point mk-proj-thing-selector))
-           (regex (or phrase
-                      (if wap (read-string (concat "Ack project for (default \"" wap "\"): ") nil nil wap)
-                        (read-string "Ack project for: "))))
-           (path (file-name-as-directory (mk-proj-get-config-val 'basedir)))
-           (whole-cmd (concat (mk-proj-ack-cmd regex) " " path))
-           (confirmed-cmd (read-string "Ack command: " whole-cmd nil whole-cmd))
-           (default-directory (file-name-as-directory (mk-proj-get-config-val 'basedir))))
-      (compilation-start confirmed-cmd 'ack-and-a-half-mode))))
 
 ;; ---------------------------------------------------------------------
 ;; Compile
@@ -2295,9 +2134,6 @@ With C-u prefix act as `project-ack-with-friends'."
             (unless quiet
               (message (concat "Loading " (mk-proj-fib-name proj-name) " from %s") (mk-proj-get-config-val 'file-list-cache proj-name t))))))
     (project-index proj-name)))
-
-;;(mk-proj-fib-init nil)
-;;(setq proj-name nil)
 
 (defun mk-proj-fib-clear (&optional proj-name)
   "Clear the contents of the fib buffer"
@@ -2738,7 +2574,6 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                  mk-proj-list))
     results))
 
-;;(mk-proj-find-projects-matching-patterns '(".*\\.el") (mk-proj-find-projects-matching-patterns '(".*\\.el") ))
 
 (defun* mk-proj-find-projects-in-directory (path &optional name-list)
   (let ((results nil))
@@ -2752,12 +2587,6 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                         temp-hash))
                  mk-proj-list))
     results))
-
-;; (mk-proj-find-projects-in-directory "~/.emacs.d" '("emacs-config"))
-
-;; (mk-proj-guess-alist)
-
-;; (define-minor-mode mk-project)
 
 (defun mk-proj-find-projects-owning-buffer (buf &optional name-list)
   (let ((projects nil))
@@ -2774,15 +2603,11 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                  mk-proj-list))
     projects))
 
-;; (mk-proj-find-projects-owning-buffer (current-buffer))
-
 (defun mk-proj-find-unique-paths (paths)
   (let ((result '()))
     (dolist (path paths result)
       (unless (some (lambda (a) (mk-proj-path-equal path a)) (mk-proj-filter (lambda (p) (not (string-equal p path))) paths))
         (add-to-list 'result path)))))
-
-;;(mk-proj-find-unique-paths '( "/home/rakete/.emacs.d/" "/home/rakete/testlab" "/home/rakete/Documents" "/home/rakete/.emacs.d/mk-project"))
 
 (defun mk-proj-find-common-path-of-buffers (&optional buffers ignore-paths)
   (let* ((common-path 'undefined)
@@ -2817,10 +2642,6 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                                        finally return nil)
                            (setq common-path (reverse temp-path)))))))))
     result))
-
-;; (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers (current-buffer)
-;;                                             mk-proj-incubator-paths)
-;;                      mk-proj-incubator-paths)
 
 (defun* mk-proj-guess-buffers (&optional test-buffer ignore-paths mode)
   (unless test-buffer
@@ -2869,8 +2690,6 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                                           (buffer-list)))))
     result))
 
-;; (mk-proj-guess-buffers (current-buffer) mk-proj-incubator-paths)
-
 (defun mk-proj-src-pattern-languages (src-patterns)
   (let ((lang nil)
         (languages nil))
@@ -2879,8 +2698,6 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
           if (not (eq lang nil))
           do (add-to-list 'languages lang))
     languages))
-
-;;(mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns))
 
 (defvar mk-proj-guess-functions '((buffer . ((()
                                               `(1 . ,(current-buffer)))))
@@ -3002,7 +2819,6 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                                                                    (and (last splits)
                                                                         (> (length splits) 1)))
                                                               do (let ((file-ending (car (last (split-string f "\\." t)))))
-                                                                   ;;(add-to-list 'patterns (concat ".*\\." (regexp-quote file-ending)))
                                                                    (mapc (lambda (s)
                                                                            (add-to-list 'patterns s))
                                                                          (cddr (assoc file-ending mk-proj-src-pattern-table))))
