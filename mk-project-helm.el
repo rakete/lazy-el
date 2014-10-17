@@ -23,6 +23,7 @@
 (require 'helm-locate)
 (require 'helm-buffers)
 (require 'helm-files)
+(require 'helm-ag)
 
 (defvar helm-c-source-mk-project-projects
   '((name . "Mk-Project projects")
