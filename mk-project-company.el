@@ -11,12 +11,9 @@
 (defvar mk-company-project-name nil)
 
 (defun mk-company-gtags (prefix)
-  (let* ((cmd (concat "global --match-part=first -Gq -c \"\""))
+  (let* ((cmd (concat "global --match-part=first -Gq -c \"" prefix "\""))
          (completions (split-string (condition-case nil (shell-command-to-string cmd) (error nil)) "\n" t)))
-    (when completions
-      (loop for completion in completions
-            if (string-match (concat "^" prefix) completion)
-            collect completion))))
+    completions))
 
 (defun mk-company-imenu (prefix)
   (let* ((imenu-alist (condition-case nil
@@ -27,18 +24,21 @@
          (marker-list (append (cdr (assoc "Types" imenu-alist))
                               (cdr (assoc "Variables" imenu-alist))
                               (nthcdr 3 imenu-alist))))
-    (loop for tuple in marker-list
-          if (string-match (concat "^" prefix) (car tuple))
-          collect (car tuple))))
+    (let ((case-fold-search nil))
+      (loop for tuple in marker-list
+            if (string-match (concat "^" prefix) (car tuple))
+            collect (car tuple)))))
 
 (defun mk-company-obarray (prefix)
-  (let (results)
-    (do-all-symbols (sym results)
-      (when (or (fboundp sym)
-                (boundp sym))
-        (let* ((completion (symbol-name sym)))
-          (when (string-match (concat "^" prefix) completion)
-            (push completion results)))))))
+  (when (derived-mode-p 'emacs-lisp-mode 'inferior-emacs-lisp-mode)
+    (let (results)
+      (do-all-symbols (sym results)
+        (when (or (fboundp sym)
+                  (boundp sym))
+          (let* ((completion (symbol-name sym))
+                 (case-fold-search nil))
+            (when (string-match (concat "^" prefix) completion)
+              (push completion results))))))))
 
 ;;;###autoload
 (defun company-project-runtime (command &optional arg &rest ignored)
@@ -58,7 +58,8 @@
                  (company-grab-symbol)))
     (candidates (append (mk-company-gtags arg)
                         (mk-company-imenu arg)
-                        (mk-company-obarray arg)))
+                        (when (find 'elisp (mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns mk-company-project-name)))
+                          (mk-company-obarray arg))))
     (meta (let* ((cache (gethash arg mk-proj-definitions-cache))
                  (definition (plist-get cache :definition))
                  (docstring (plist-get cache :docstring))
