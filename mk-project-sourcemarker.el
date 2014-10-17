@@ -59,7 +59,7 @@
                                                    (dolist (buf (append (mk-proj-file-buffers proj-name)))
                                                      (when buf
                                                        (with-current-buffer buf
-                                                         (continue-save)))))
+                                                         (mk-sourcemarker-save)))))
                                                  (mk-sourcemarker-load-project-db)
                                                  ))
      (add-hook 'mk-proj-after-load-hook (lambda ()
@@ -173,10 +173,11 @@
     (let ((display-buffer-reuse-frames nil))
       (let ((buffer (or buffer (car (mk-proj-file-buffers))))
             (window (get-buffer-window buffer 'visible)))
-        (if window
-            (raise-frame (window-frame window))
-          (display-buffer buffer))
-        (with-current-buffer buffer (recenter))))
+        (when buffer
+          (if window
+              (raise-frame (window-frame window))
+            (display-buffer buffer))
+          (with-current-buffer buffer (recenter)))))
     ))
 
 ;;(sort '((0 . "foo") (1 . "bar")) (lambda (a b) (> (car a) (car b))))
