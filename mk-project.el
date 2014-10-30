@@ -2810,12 +2810,20 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
            (extension (car (last (split-string file-name "\\."))))
            (new-pattern (concat ".*\\." extension))
            (src-patterns (mk-proj-get-config-val 'src-patterns mk-proj-name t))
-           (case-fold-search nil))
+           (case-fold-search nil)
+           (buildsystem-files (loop for bs in mk-proj-buildsystems
+                                    append (cadr (assoc 'files (cadr bs)))))
+           (buildsystem-file-found (some (lambda (buildsystem-file)
+                                           (when (string-match (concat (regexp-quote buildsystem-file) "$") file-name)
+                                             buildsystem-file)) buildsystem-files)))
       (when (and (assoc extension mk-proj-src-pattern-table)
                  (or (string-match (concat "^" (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t)))) file-name)
                      (string-match (concat "^" (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t)))) (file-truename file-name)))
                  (not (some (lambda (pattern) (string-match pattern file-name)) src-patterns)))
-        (mk-proj-set-config-val 'src-patterns (add-to-list 'src-patterns new-pattern))))))
+        (mk-proj-set-config-val 'src-patterns (add-to-list 'src-patterns new-pattern)))
+      (when (and buildsystem-file-found
+                 (not (some (lambda (pattern) (string-match pattern buildsystem-file-found)) src-patterns)))
+        (mk-proj-set-config-val 'src-patterns (add-to-list 'src-patterns (concat ".*" (regexp-quote buildsystem-file-found) "$")))))))
 
 
 (defun mk-proj-after-save-update (&optional proj-name)
