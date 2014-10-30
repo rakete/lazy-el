@@ -25,9 +25,12 @@
                               (cdr (assoc "Variables" imenu-alist))
                               (nthcdr 3 imenu-alist))))
     (let ((case-fold-search nil))
-      (loop for tuple in marker-list
-            if (string-match (concat "^" prefix) (car tuple))
-            collect (car tuple)))))
+      (remove-duplicates
+       (loop for tuple in marker-list
+             if (or (string-match (concat "[^ (]* \\(" prefix "[^ ]*\\)[ ]*(" ) (car tuple))
+                    (string-match (concat "^\\(" prefix "[^ ]*\\)") (car tuple)))
+             collect (match-string 1 (car tuple)))
+       :test 'equal))))
 
 (defun mk-company-obarray (prefix)
   (when (derived-mode-p 'emacs-lisp-mode 'inferior-emacs-lisp-mode)

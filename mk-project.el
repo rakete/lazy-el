@@ -1656,8 +1656,9 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                                        (cdr (assoc "Variables" imenu-alist))
                                        (nthcdr 3 imenu-alist))))
              (loop for item in marker-list
-                   if (string-match regexp (car item))
-                   collect (list :word (car item)
+                   if (or (string-match (concat "[^ (]*\\(" regexp "[^ ]*\\)[ ]*(" ) (car item))
+                          (string-match (concat "\\(" regexp "[^ ]*\\)") (car item)))
+                   collect (list :word (match-string 1 (car item))
                                  :line-number (with-current-buffer (marker-buffer (cdr item))
                                                 (save-excursion
                                                   (line-number-at-pos (marker-position (cdr item)))))
@@ -2072,51 +2073,58 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                         nil
                         completions-cache)))))
 
-(defun mk-proj-update-imenu-definitions-cache (proj-name)
-  (let* ((imenu-alist (condition-case nil
-                          (if (functionp 'imenu--make-many-index-alist)
-                              (imenu--make-many-index-alist)
-                            (imenu--make-index-alist))
-                        (error nil)))
-         (marker-list (append (cdr (assoc "Types" imenu-alist))
-                              (cdr (assoc "Variables" imenu-alist))
-                              (nthcdr 3 imenu-alist))))
-    (loop for tuple in marker-list
-          do (let* ((completion (car tuple))
-                    (marker (cdr tuple))
-                    (line-number nil)
-                    (file-path nil)
-                    (definition nil)
-                    (cached-definition (gethash completion mk-proj-definitions-cache)))
-               (with-current-buffer (marker-buffer marker)
-                 (save-excursion
-                   (goto-char (marker-position marker))
-                   (setq file-path (buffer-file-name (marker-buffer marker))
-                         line-number (line-number-at-pos (marker-position marker))
-                         definition (buffer-substring-no-properties (point-at-bol) (point-at-eol))))
-                 (plist-put cached-definition :file-path file-path)
-                 (plist-put cached-definition :line-number line-number)
-                 (plist-put cached-definition :definition definition)
-                 (unless cached-definition
-                   (puthash completion
-                            cached-definition
-                            mk-proj-definitions-cache)))))))
+;; (defun mk-proj-update-imenu-definitions-cache (proj-name)
+;;   (let* ((imenu-alist (condition-case nil
+;;                           (if (functionp 'imenu--make-many-index-alist)
+;;                               (imenu--make-many-index-alist)
+;;                             (imenu--make-index-alist))
+;;                         (error nil)))
+;;          (marker-list (append (cdr (assoc "Types" imenu-alist))
+;;                               (cdr (assoc "Variables" imenu-alist))
+;;                               (nthcdr 3 imenu-alist))))
+;;     (loop for tuple in marker-list
+;;           do (let* ((completion (cond ((or (string-match (concat "[^ (]*\\(" "[^ ]*\\)[ ]*(" ) (car tuple))
+;;                                            (string-match (concat "^\\(" "[^ ]*\\)") (car tuple)))
+;;                                        (match-string 1 (car tuple)))
+;;                                       (t (car tuple))))
+;;                     (marker (cdr tuple))
+;;                     (line-number nil)
+;;                     (file-path nil)
+;;                     (definition nil)
+;;                     (cached-definition (gethash completion mk-proj-definitions-cache)))
+;;                (with-current-buffer (marker-buffer marker)
+;;                  (save-excursion
+;;                    (goto-char (marker-position marker))
+;;                    (setq file-path (buffer-file-name (marker-buffer marker))
+;;                          line-number (line-number-at-pos (marker-position marker))
+;;                          definition (buffer-substring-no-properties (point-at-bol) (point-at-eol))))
+;;                  (plist-put cached-definition :file-path file-path)
+;;                  (plist-put cached-definition :line-number line-number)
+;;                  (plist-put cached-definition :definition definition)
+;;                  (unless cached-definition
+;;                    (puthash completion
+;;                             cached-definition
+;;                             mk-proj-definitions-cache)))))))
 
-(defun mk-proj-update-imenu-completions-cache (proj-name)
-  (let* ((imenu-alist (condition-case nil
-                          (if (functionp 'imenu--make-many-index-alist)
-                              (imenu--make-many-index-alist)
-                            (imenu--make-index-alist))
-                        (error nil)))
-         (marker-list (append (cdr (assoc "Types" imenu-alist))
-                              (cdr (assoc "Variables" imenu-alist))
-                              (nthcdr 3 imenu-alist)))
-         (completions-cache (gethash proj-name mk-proj-completions-cache)))
-    (loop for tuple in marker-list
-          do (let* ((completion (car tuple)))
-               (puthash completion
-                        nil
-                        completions-cache)))))
+;; (defun mk-proj-update-imenu-completions-cache (proj-name)
+;;   (let* ((imenu-alist (condition-case nil
+;;                           (if (functionp 'imenu--make-many-index-alist)
+;;                               (imenu--make-many-index-alist)
+;;                             (imenu--make-index-alist))
+;;                         (error nil)))
+;;          (marker-list (append (cdr (assoc "Types" imenu-alist))
+;;                               (cdr (assoc "Variables" imenu-alist))
+;;                               (nthcdr 3 imenu-alist)))
+;;          (completions-cache (gethash proj-name mk-proj-completions-cache)))
+;;     (loop for tuple in marker-list
+;;           do (let* ((completion (progn
+;;                                   (or (string-match (concat "[^ (]* \\(" "[^ ]*\\)[ ]*(" ) (car tuple))
+;;                                       (string-match (concat "^\\(" "[^ ]*\\)") (car tuple)))
+;;                                   (match-string 1 (car tuple)))))
+;;                (when completion
+;;                  (puthash completion
+;;                           nil
+;;                           completions-cache))))))
 
 (defun mk-proj-update-obarray-definitions-cache (proj-name)
   (do-all-symbols (sym)
