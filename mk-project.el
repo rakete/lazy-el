@@ -2022,8 +2022,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   (mk-proj-jump-quit))
 
 (define-derived-mode mk-proj-jump-list-mode tabulated-list-mode "Mk-Project jumps"
-  (setq tabulated-list-format [("Word" 42 t)
-                               ("File" 30 t)
+  (setq tabulated-list-format [("Word" 30 t)
+                               ("File" 70 t)
                                ("Score" 5 t)
                                ("Sys" 7 t)
                                ("Text" 0 nil)]
