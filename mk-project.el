@@ -2177,7 +2177,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
   (mk-proj-update-gtags-completions-cache proj-name)
   (unless (string-equal mk-proj-name proj-name)
     (project-setup-tags mk-proj-name))
-  (mk-proj-update-imenu-completions-cache proj-name)
+  ;; (mk-proj-update-imenu-completions-cache proj-name)
   (when (find 'elisp (mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns proj-name)))
     (mk-proj-update-obarray-completions-cache proj-name))
   (garbage-collect))
