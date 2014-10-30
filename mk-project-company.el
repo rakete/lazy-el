@@ -43,6 +43,14 @@
             (when (string-match (concat "^" prefix) completion)
               (push completion results))))))))
 
+(defun mk-company-dabbrev-candidates (arg)
+  (let ((default-case-fold-search company-dabbrev-code-ignore-case)
+        (project-completions (gethash mk-company-project-name mk-proj-completions-cache))
+        (dabbrevs (remove-duplicates (company-dabbrev-code 'candidates arg) :test 'equal)))
+    (loop for dab in dabbrevs
+          if (gethash dab project-completions t)
+          collect dab)))
+
 ;;;###autoload
 (defun company-project-runtime (command &optional arg &rest ignored)
   (interactive (list 'interactive))
@@ -62,7 +70,8 @@
     (candidates (append (mk-company-gtags arg)
                         (mk-company-imenu arg)
                         (when (find 'elisp (mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns mk-company-project-name)))
-                          (mk-company-obarray arg))))
+                          (mk-company-obarray arg))
+                        (mk-company-dabbrev-candidates arg)))
     (meta (let* ((cache (gethash arg mk-proj-definitions-cache))
                  (definition (plist-get cache :definition))
                  (docstring (plist-get cache :docstring))
@@ -83,7 +92,7 @@
     (interactive (company-begin-backend 'company-project))
     (no-cache nil)
     (sorted nil)
-    (duplicates t)
+    (duplicates nil)
     (prefix (and (not (company-in-string-or-comment))
                  (buffer-file-name (current-buffer))
                  (or mk-company-project-name
@@ -92,8 +101,8 @@
                      (find (or mk-proj-name
                                mk-company-project-name) mk-company-complete-in-projects))
                  (company-grab-symbol)))
-    (candidates (mk-proj-completions arg (or mk-proj-name
-                                             mk-company-project-name)))
+    (candidates (append (mk-proj-completions arg mk-company-project-name)
+                        (mk-company-dabbrev-candidates arg)))
     (meta (let* ((cache (gethash arg mk-proj-definitions-cache))
                  (definition (plist-get cache :definition))
                  (docstring (plist-get cache :docstring))
