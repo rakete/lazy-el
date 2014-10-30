@@ -2845,7 +2845,7 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
             (setq mk-proj-after-save-update-in-progress t
                   mk-proj-after-save-current-buffer (current-buffer)
                   mk-proj-after-save-current-project proj-name)
-            (project-after-save-update))))))
+            (run-with-idle-timer 10 nil 'project-after-save-update))))))
 
 (defun project-after-save-update (&optional p proj-name buffer)
   (interactive "p")
