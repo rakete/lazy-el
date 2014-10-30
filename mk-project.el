@@ -2322,6 +2322,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                                 result-compile-command)))
     (let ((cmd (mk-proj-get-config-val 'compile-cmd)))
       (mk-proj-with-directory (mk-proj-get-config-val 'basedir)
+                              (project-after-save-update)
                               (cond ((listp cmd)
                                      (let* ((lang (or (mk-proj-buffer-lang (current-buffer))
                                                       (dolist (prev (window-prev-buffers))
