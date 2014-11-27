@@ -141,7 +141,11 @@ See also `mk-proj-required-vars' `mk-proj-var-before-get-functions'")
                                                                    (if (and config-alist
                                                                             (not (assoc 'patterns-are-regex config-alist)))
                                                                        t
-                                                                     val))))
+                                                                     val)))
+                                           (friends . (lambda (var val &optional proj-name config-alist)
+                                                        (loop for friend in val
+                                                              if (gethash friend mk-proj-list)
+                                                              collect friend))))
   "Config vars from `mk-proj-required-vars' and `mk-proj-optional-vars' (except 'name')
 can be associated with a function in this association list, which will be
 applied to the value of the var right after it is taken from the config-alist.
