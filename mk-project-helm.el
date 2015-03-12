@@ -207,12 +207,10 @@
 
 (defun project-helm-do-ag (&optional basedir)
   (interactive)
-  (let ((helm-ag-default-directory (or basedir
-                                       (condition-case nil (mk-proj-get-config-val 'basedir) (error nil))
-                                       (cadr (assoc 'basedir (mk-proj-guess-alist)))
-                                       default-directory)))
-    (helm-ag-save-current-context)
-    (helm :sources '(helm-source-do-ag) :buffer "*helm-ag*"
-          :input (helm-ag--insert-thing-at-point helm-ag-insert-at-point))))
+  (let ((basedir (or basedir
+                     (condition-case nil (mk-proj-get-config-val 'basedir) (error nil))
+                     (cadr (assoc 'basedir (mk-proj-guess-alist)))
+                     default-directory)))
+    (helm-do-ag basedir)))
 
 (provide 'mk-project-helm)
