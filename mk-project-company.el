@@ -44,12 +44,14 @@
               (push completion results))))))))
 
 (defun mk-company-dabbrev-candidates (arg)
-  (let ((default-case-fold-search company-dabbrev-code-ignore-case)
-        (project-completions (gethash mk-company-project-name mk-proj-completions-cache))
-        (dabbrevs (remove-duplicates (company-dabbrev-code 'candidates arg) :test 'equal)))
-    (loop for dab in dabbrevs
-          if (gethash dab project-completions t)
-          collect dab)))
+  (if mk-company-project-name
+      (let ((default-case-fold-search company-dabbrev-code-ignore-case)
+            (project-completions (gethash mk-company-project-name mk-proj-completions-cache))
+            (dabbrevs (remove-duplicates (company-dabbrev-code 'candidates arg) :test 'equal)))
+        (loop for dab in dabbrevs
+              if (gethash dab project-completions t)
+              collect dab))
+    (company-dabbrev-code 'candidates arg)))
 
 ;;;###autoload
 (defun company-project-runtime (command &optional arg &rest ignored)
