@@ -2286,7 +2286,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
     (setq buffer (current-buffer)))
   (let ((jumps (mk-proj-merge-obarray-jumps (mk-proj-jump-list proj-name proj-alist 'obarray (concat "^" regexp))
                                             (or (mk-proj-jump-list proj-name proj-alist 'gtags regexp (concat "global -x -e " (prin1-to-string (concat regexp ".*"))))
-                                                (mk-proj-jump-list proj-name proj-alist 'gtags word (concat "global -x -s " (prin1-to-string (concat regexp ".*")))))
+                                                (mk-proj-jump-list proj-name proj-alist 'gtags regexp (concat "global -x -s " (prin1-to-string (concat regexp ".*")))))
                                             (mk-proj-jump-list proj-name proj-alist 'imenu regexp))))
     (mk-proj-select-jumps (mk-proj-score-jumps jumps regexp buffer))))
 
