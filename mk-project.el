@@ -2875,15 +2875,19 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                      (current-buffer))))
   (condition-case e
       (progn
-        (when (or p (mk-proj-buffer-p buffer proj-name) (mk-proj-friendly-buffer-p buffer proj-name))
-          (when (buffer-file-name buffer)
-            (mk-proj-after-save-add-pattern buffer))
-          (project-index proj-name nil t nil t
-                         (lambda (&optional proj-name proj-alist files debug)
-                           (project-update-tags proj-name proj-alist files debug)
-                           (setq mk-proj-after-save-update-in-progress nil
-                                 mk-proj-after-save-current-buffer nil
-                                 mk-proj-after-save-current-project nil)))))
+        (if (or p (mk-proj-buffer-p buffer proj-name) (mk-proj-friendly-buffer-p buffer proj-name))
+            (progn
+              (when (buffer-file-name buffer)
+                (mk-proj-after-save-add-pattern buffer))
+              (project-index proj-name nil t nil t
+                             (lambda (&optional proj-name proj-alist files debug)
+                               (project-update-tags proj-name proj-alist files debug)
+                               (setq mk-proj-after-save-update-in-progress nil
+                                     mk-proj-after-save-current-buffer nil
+                                     mk-proj-after-save-current-project nil))))
+          (setq mk-proj-after-save-update-in-progress nil
+                mk-proj-after-save-current-buffer nil
+                mk-proj-after-save-current-project nil)))
     (error (progn
              (setq mk-proj-after-save-update-in-progress nil
                    mk-proj-after-save-current-buffer nil
