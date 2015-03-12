@@ -76,7 +76,7 @@
                 ;; (unless (get-buffer (mk-proj-fib-name))
                 ;;   (mk-proj-fib-init))
                 ;;(insert-buffer (mk-proj-fib-name))
-                (loop for filename in (mk-proj-files)
+                (loop for filename in (reverse (mk-proj-files))
                       do (insert (concat (expand-file-name filename) "\n"))))))
     (candidates-in-buffer)
     (candidate-number-limit . 300)
