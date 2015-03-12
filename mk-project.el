@@ -1896,7 +1896,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
       (forward-line (1- line-number))
       (when word
         (re-search-forward word (point-at-eol) t))
-      (setq marker (point-marker)))
+      (setq marker (point-marker))
+      (recenter-top-bottom))
     (select-window (or (get-buffer-window mk-proj-jump-buffer) invoke-window))
     marker))
 
