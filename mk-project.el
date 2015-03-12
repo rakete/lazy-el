@@ -2895,12 +2895,24 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
              (message "error in project-after-save-update: %s" (prin1-to-string e)))))
   t)
 
+
+(defun mk-proj-pre-command-remove-jump-delete-buffer ()
+  (unless (or (eq this-command 'mk-proj-jump-next)
+              (eq this-command 'mk-proj-jump-prev)
+              (eq this-command 'mk-proj-jump-abort)
+              (eq this-command 'mk-proj-jump))
+    (mapc (lambda (ov)
+            (when (eq (overlay-buffer ov) (current-buffer))
+              (overlay-put ov 'delete-buffer nil)))
+          mk-proj-jump-overlays)))
+
 (eval-after-load "mk-project"
   '(progn
      (run-with-idle-timer 60 t 'mk-proj-save-state)
      (add-hook 'after-save-hook 'mk-proj-after-save-update)
      (add-hook 'after-load-hook 'mk-proj-after-save-update)
-     (add-hook 'after-save-hook 'mk-proj-jump-cleanup-highlight)))
+     (add-hook 'after-save-hook 'mk-proj-jump-cleanup-highlight)
+     (add-hook 'pre-command-hook 'mk-proj-pre-command-remove-jump-delete-buffer)))
 
 ;; ---------------------------------------------------------------------
 ;; Guessing
