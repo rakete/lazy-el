@@ -205,12 +205,34 @@
         :buffer "*helm mk-project*"
         :history 'helm-file-name-history))
 
+(defvar mk-proj-helm-ag-basedir (make-hash-table :test 'equal))
+
 (defun project-helm-do-ag (&optional basedir)
-  (interactive)
-  (let ((basedir (or basedir
-                     (condition-case nil (mk-proj-get-config-val 'basedir) (error nil))
-                     (cadr (assoc 'basedir (mk-proj-guess-alist)))
-                     default-directory)))
-    (helm-do-ag basedir)))
+  (interactive "P")
+  (require 'helm-mode)
+  (setq helm-ag--original-window (selected-window))
+  (helm-ag--clear-variables)
+  (let* ((helm-ag--default-directory default-directory)
+         (helm-do-ag--default-target (or (when (and mk-proj-name basedir (listp basedir) (eq (car-safe basedir) 4))
+                                           (puthash mk-proj-name
+                                                    (helm-read-file-name
+                                                     "Search in file(s): "
+                                                     :default default-directory
+                                                     :marked-candidates t :must-match t)
+                                                    mk-proj-helm-ag-basedir)
+                                           (gethash mk-proj-name mk-proj-helm-ag-basedir))
+                                         (and mk-proj-name (gethash mk-proj-name mk-proj-helm-ag-basedir))
+                                         basedir
+                                         (condition-case nil (mk-proj-get-config-val 'basedir) (error nil))
+                                         (cadr (assoc 'basedir (mk-proj-guess-alist)))
+                                         default-directory))
+         (helm-do-ag--extensions (helm-ag--do-ag-searched-extensions)))
+    (helm-ag--set-do-ag-option)
+    (helm-ag--save-current-context)
+    (helm-attrset 'name (helm-ag--helm-header helm-ag--default-directory)
+                  helm-source-do-ag)
+    (helm :sources '(helm-source-do-ag) :buffer "*helm-ag*"
+          :input (helm-ag--insert-thing-at-point helm-ag-insert-at-point)
+          :keymap helm-do-ag-map)))
 
 (provide 'mk-project-helm)
