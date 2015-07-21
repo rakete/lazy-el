@@ -1421,9 +1421,35 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                     (enable-local-variables :safe))
                 (message "Attempting to open %s" line)
                 (if (file-exists-p line)
-                    (find-file-noselect line t)
+                    (unless (get-file-buffer line)
+                      (find-file-noselect line t t))
                   (kill-line))))
             (forward-line)))))))
+
+(defadvice switch-to-buffer (after mk-proj-switch-to-buffer-set-auto-mode)
+  (when (eq major-mode 'fundamental-mode)
+    (set-auto-mode)))
+(ad-activate 'switch-to-buffer)
+;;(ad-unadvise 'switch-to-buffer)
+
+(defadvice pop-to-buffer (after mk-proj-pop-to-buffer-set-auto-mode)
+  (when (eq major-mode 'fundamental-mode)
+    (set-auto-mode)))
+(ad-activate 'pop-to-buffer)
+;;(ad-unadvise 'pop-to-buffer)
+
+(defadvice display-buffer (after mk-proj-display-buffer-set-auto-mode)
+  (with-current-buffer (ad-get-arg 0)
+    (when (eq major-mode 'fundamental-mode)
+      (set-auto-mode))))
+(ad-activate 'display-buffer)
+
+;; (defadvice display-buffer (after mk-proj-display-buffer-set-default-directory)
+;;   (with-current-buffer (ad-get-arg 0)
+;;     (when (not mk-proj-name)
+;;       (setq default-directory (file-name-directory (buffer-file-name (current-buffer)))))))
+;; (ad-activate 'display-buffer)
+;;(ad-unadvise 'display-buffer)
 
 ;; ---------------------------------------------------------------------
 ;; Tagging
