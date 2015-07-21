@@ -2021,11 +2021,12 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 ;; -> this should not happen, without an existing-buffer but an marked delete-buffer,
 ;; cleanup-highlight should always kill delete-buffer and then return nil
 (defun mk-proj-jump-highlight (&optional existing-buffer marker final)
-  (let ((delete-buffer (mk-proj-jump-cleanup-highlight existing-buffer)))
+  (let ((delete-buffer (mk-proj-jump-cleanup-highlight existing-buffer))
+        (highlight-color (color-darken-name (face-attribute 'default :background) 10)))
     (when (get-buffer mk-proj-jump-buffer)
       (with-current-buffer (get-buffer mk-proj-jump-buffer)
         (let ((ov (make-overlay (point-at-bol) (point-at-bol 2))))
-          (overlay-put ov 'face `((:background "#2f2f2f")))
+          (overlay-put ov 'face `((:background ,highlight-color)))
           (overlay-put ov 'jump-highlight 'select)
           (push ov mk-proj-jump-overlays))))
     (when marker
@@ -2036,7 +2037,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
             (when (or (not existing-buffer) delete-buffer)
               (overlay-put ov 'delete-buffer (or delete-buffer (current-buffer))))
             (overlay-put ov 'pop-tag-marker (ring-ref find-tag-marker-ring 0))
-            (overlay-put ov 'face `((:background "#2f2f2f")))
+            (overlay-put ov 'face `((:background ,highlight-color)))
             (overlay-put ov 'jump-highlight 'view)
             (push ov mk-proj-jump-overlays)))))))
 
