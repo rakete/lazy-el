@@ -1451,6 +1451,29 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
       (set-auto-mode))))
 (ad-activate 'display-buffer)
 
+(defvar mk-proj-suppress-y-or-n-p-patterns (list "Do you want to revisit the file normally now"
+                                                 "Do you want to revisit the file literally now"))
+
+(defadvice y-or-n-p (around mk-proj-y-or-n-p)
+  (let ((prompt (ad-get-arg 0))
+        (suppress nil))
+    (loop for pattern in mk-proj-suppress-y-or-n-p-patterns
+          until (setq suppress (string-match pattern prompt)))
+    (setq ad-return-value (or (and suppress t) ad-do-it))))
+(ad-activate 'y-or-n-p)
+;;(ad-unadvise 'y-or-n-p)
+
+;; (defadvice find-file-noselect (around mk-proj-find-file-noselect-suppress-y-or-n-p)
+;;   (let ((mk-proj-suppress-y-or-n-p-patterns (list "Do you want to revisit the file normally now")))
+;;     ad-do-it))
+;; (ad-activate 'find-file-noselect)
+;;(ad-unadvise 'find-file-noselect)
+
+;; (flet ((builtin-y-or-n-p (lambda (prompt) (y-or-n-p prompt))))
+;;   (flet ((y-or-n-p (prompt) (or (string-match revisit-question prompt) (builtin-y-or-n-p prompt))))
+;;     ad-do-it))
+
+
 ;; (defadvice display-buffer (after mk-proj-display-buffer-set-default-directory)
 ;;   (with-current-buffer (ad-get-arg 0)
 ;;     (when (not mk-proj-name)
