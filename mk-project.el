@@ -2797,10 +2797,13 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
             (let ((start (point)))
               (while (not (eolp)) (forward-char)) ; goto end of line
               (let ((line (buffer-substring start (point)))
-                    (enable-local-variables nil))
+                    (enable-local-variables nil)
+                    (continue-prevent-restore t)
+                    (zeitgeist-prevent-send t))
                 (message "Attempting to open %s" line)
                 (if (file-exists-p line)
-                    (find-file-noselect line t)
+                    (unless (get-file-buffer line)
+                      (find-file-noselect line t t))
                   (kill-line))))
             (forward-line)))))))
 
