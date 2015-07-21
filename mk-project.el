@@ -66,7 +66,10 @@ used by `project-find-file' to quickly locate project files."
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  (concat "*" proj-name " file-index*"))
+  (let ((top-level-parent (mk-proj-get-config-val 'parent proj-name)))
+    (while (and top-level-parent (mk-proj-get-config-val 'parent top-level-parent))
+      (setq top-level-parent (mk-proj-get-config-val 'parent top-level-parent)))
+    (concat "*" (or top-level-parent proj-name) " file-index*")))
 
 (defconst mk-proj-vcs-path '((git . ".git")
                              (cvs . ".CVS")
