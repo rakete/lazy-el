@@ -2453,11 +2453,11 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
    ((string= event "finished\n")
     (let ((zeitgeist-prevent-send t))
       (with-current-buffer (get-buffer (mk-proj-fib-name proj-name))
-        (setq buffer-read-only t)
         (when (mk-proj-get-config-val 'file-list-cache proj-name t proj-alist)
           (write-file (mk-proj-get-config-val 'file-list-cache proj-name t proj-alist))
           (rename-buffer (mk-proj-fib-name proj-name))
-          (set-buffer-modified-p nil))))
+          (set-buffer-modified-p nil))
+        (setq buffer-read-only t)))
     (unless quiet
       (message "Refreshing %s buffer...done" (mk-proj-fib-name proj-name))))
    (t
@@ -2551,8 +2551,9 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                                                                (remhash ,parent mk-proj-index-processes)
                                                                (funcall (quote ,terminator) ,proj-name (quote ,proj-alist))))))))
       (unless async
-        (while (string-equal (process-status process) "run")
-          (sleep-for 0 2)))
+        (while (or (string-equal (process-status process) "run")
+                   (equal (process-status process) 'run))
+          (sleep-for 0 4)))
       (when do-friends
         (dolist (friend friends)
           (let ((friend-alist (mk-proj-find-config friend)))
