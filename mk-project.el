@@ -332,8 +332,9 @@ load time. See also `project-menu-remove'."
 ;; ---------------------------------------------------------------------
 
 (defun mk-proj-save-state ()
-  (mk-proj-save-open-file-info)
-  (mk-proj-save-open-friends-info))
+  (when mk-proj-name
+    (mk-proj-save-open-file-info)
+    (mk-proj-save-open-friends-info)))
 
 (defun mk-proj-zip (&rest lists)
   (let* ((n (- (length lists) 1))
