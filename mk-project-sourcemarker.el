@@ -99,9 +99,9 @@
 
 (defun mk-sourcemarker-write-project-db ()
   (interactive)
-  (mk-proj-assert-proj)
-  (mk-sourcemarker-with-project-db
-   (continue-write-db)))
+  (when mk-proj-name
+    (mk-sourcemarker-with-project-db
+     (continue-write-db))))
 
 (defun mk-sourcemarker-restore ()
   (interactive)
