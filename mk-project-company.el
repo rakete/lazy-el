@@ -10,12 +10,28 @@
 
 (defvar mk-company-project-name nil)
 
-(defun mk-company-gtags (prefix)
+(defvar mk-company-history (make-hash-table :test 'equal))
+(defvar mk-company-history-length 20)
+
+(defun mk-company-add-history (proj-name)
+  (let ((completion (substring-no-properties (nth company-selection company-candidates))))
+    (let ((history (gethash proj-name mk-company-history)))
+      (setq history (remove-if (lambda (last) (string-equal last completion)) history))
+      (when (eq (length history) mk-company-history-length)
+        (setq history (butlast history 1)))
+      (push completion history)
+      (puthash proj-name history mk-company-history))))
+
+(defun mk-company-history-candidates (prefix proj-name)
+  (remove-if-not 'identity (mapcar (lambda (last) (when (string-match prefix last) last))
+                                   (gethash proj-name mk-company-history))))
+
+(defun mk-company-gtags-candidates (prefix)
   (let* ((cmd (concat "global --match-part=first -Gq -c \"" prefix "\""))
          (completions (split-string (condition-case nil (shell-command-to-string cmd) (error nil)) "\n" t)))
     completions))
 
-(defun mk-company-imenu (prefix)
+(defun mk-company-imenu-candidates (prefix)
   (let* ((imenu-alist (condition-case nil
                           (if (functionp 'imenu--make-many-index-alist)
                               (imenu--make-many-index-alist)
@@ -32,7 +48,7 @@
              collect (match-string 1 (car tuple)))
        :test 'equal))))
 
-(defun mk-company-obarray (prefix)
+(defun mk-company-obarray-candidates (prefix)
   (when (derived-mode-p 'emacs-lisp-mode 'inferior-emacs-lisp-mode)
     (let (results)
       (do-all-symbols (sym results)
@@ -53,6 +69,37 @@
               collect dab))
     (company-dabbrev-code 'candidates arg)))
 
+
+(defun company-project-history (command &optional arg &rest ignored)
+  (interactive (list 'interactive))
+  (cl-case command
+    (interactive (company-begin-backend 'company-project))
+    (no-cache nil)
+    (sorted nil)
+    (duplicates nil)
+    (prefix (and (not (company-in-string-or-comment))
+                 (buffer-file-name (current-buffer))
+                 (or mk-proj-name
+                     mk-company-project-name)
+                 (or (eq mk-company-complete-in-projects t)
+                     (find (or mk-proj-name
+                               mk-company-project-name) mk-company-complete-in-projects))
+                 (company-grab-symbol)))
+    (candidates (mk-company-history-candidates arg mk-company-project-name))
+    (meta (let* ((cache (gethash arg mk-proj-definitions-cache))
+                 (definition (plist-get cache :definition))
+                 (docstring (plist-get cache :docstring))
+                 (meta nil))
+            (when docstring
+              (push docstring meta))
+            (when definition
+              (push definition meta))
+            (when meta
+              (mapconcat 'identity meta ": "))))
+    (post-completion (mk-company-add-history mk-company-project-name))
+    ;;(location (mk-company-get-jump arg 'location))
+    (init (setq-local mk-company-project-name (or mk-company-project-name (cadr (assoc 'name (mk-proj-guess-alist))))))))
+
 ;;;###autoload
 (defun company-project-runtime (command &optional arg &rest ignored)
   (interactive (list 'interactive))
@@ -69,10 +116,10 @@
                      (find (or mk-proj-name
                                mk-company-project-name) mk-company-complete-in-projects))
                  (company-grab-symbol)))
-    (candidates (append (mk-company-gtags arg)
-                        (mk-company-imenu arg)
+    (candidates (append (mk-company-gtags-candidates arg)
+                        (mk-company-imenu-candidates arg)
                         (when (find 'elisp (mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns mk-company-project-name)))
-                          (mk-company-obarray arg))
+                          (mk-company-obarray-candidates arg))
                         (mk-company-dabbrev-candidates arg)))
     (meta (let* ((cache (gethash arg mk-proj-definitions-cache))
                  (definition (plist-get cache :definition))
@@ -84,6 +131,7 @@
               (push definition meta))
             (when meta
               (mapconcat 'identity meta ": "))))
+    (post-completion (mk-company-add-history mk-company-project-name))
     ;;(location (mk-company-get-jump arg 'location))
     (init (setq-local mk-company-project-name (or mk-company-project-name (cadr (assoc 'name (mk-proj-guess-alist))))))))
 
@@ -115,8 +163,26 @@
               (push definition meta))
             (when meta
               (mapconcat 'identity meta ": "))))
+    (post-completion (mk-company-add-history mk-company-project-name))
     ;;(location (mk-company-get-jump arg 'location))
     (init (setq-local mk-company-project-name (or mk-company-project-name (cadr (assoc 'name (mk-proj-guess-alist))))))))
+
+(defun mk-company-transform-history-to-front (candidates)
+  (if (functionp company-backend)
+      candidates
+    (let ((low-priority (cdr (memq :with company-backend))))
+      (if (null low-priority)
+          candidates
+        (let ((history (gethash mk-company-project-name mk-company-history))
+              (history-candidates)
+              (other-candidates))
+          (dolist (c (reverse candidates))
+            (if (memq c history)
+                (push c history-candidates)
+              (push c other-candidates)
+              ))
+          (setq history-candidates (sort history-candidates (lambda (a b) (< (position a history :test 'equal) (position b history :test 'equal)))))
+          (append history-candidates other-candidates))))))
 
 (provide 'mk-project-company)
 
