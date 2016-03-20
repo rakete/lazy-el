@@ -2332,7 +2332,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                                               (old-cmd (car cmd))
                                               (new-cmd (internal-compile old-cmd)))
                                          (unless (string-equal old-cmd new-cmd)
-                                           (mk-proj-set-config-val 'compile-cmd (append cmd (remove-duplicates (append (list new-cmd) old-history) :test 'equal :from-end t))))))
+                                           (mk-proj-set-config-val 'compile-cmd (remove-duplicates (append (list new-cmd) old-history) :test 'equal :from-end t)))))
                                       ((stringp cmd)
                                        (let* ((old-cmd cmd)
                                               (new-cmd (internal-compile old-cmd))
