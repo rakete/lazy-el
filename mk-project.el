@@ -1246,7 +1246,8 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
 (defun project-unload (&optional quiet)
   "Unload the current project's settings after running the shutdown hook."
   (interactive "P")
-  (let ((mk-proj-prevent-after-save-update t))
+  (let ((mk-proj-prevent-after-save-update t)
+        (close-files (when mk-proj-name (y-or-n-p (concat "Close all '" mk-proj-name "' project files? ")))))
     (when mk-proj-name
       (condition-case nil
           (progn
@@ -1258,7 +1259,7 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
             (run-hooks 'mk-proj-before-files-unload-hook)
             (and (or (mk-proj-buffers) (mk-proj-friendly-buffers))
                  (not quiet)
-                 (y-or-n-p (concat "Close all '" mk-proj-name "' project files? "))
+                 close-files
                  (project-close-friends)
                  (project-close-files))
             (when (mk-proj-get-config-val 'shutdown-hook)
