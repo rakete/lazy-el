@@ -347,14 +347,10 @@ load time. See also `project-menu-remove'."
     rs))
 
 (defun mk-proj-dirname (path)
+  "Take a path and return the directory only, without filename."
   (apply #'concat (reverse (mapcar (lambda (s)
-                                     (concat s "/"))
+                                     (file-name-as-directory s))
                                    (cdr (reverse (split-string path "/")))))))
-
-(defun mk-proj-replace-tail (str tail-str replacement)
-  (if (string-match (concat tail-str "$")  str)
-    (replace-match replacement t t str)
-    str))
 
 (defun mk-proj-assert-proj (&optional try-guessing)
   (unless mk-proj-name
@@ -1494,9 +1490,13 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
         (gtags-executable (executable-find "gtags"))
         (global-executable (executable-find "global"))
         (rtags-executable (executable-find "rtags"))
-        (ctags-exuberant-executable (executable-find "ctags-exuberant"))
+        (ctags-exuberant-executable (or (executable-find "ctags-exuberant") (executable-find "ctags.exe")))
         (sys-files (make-hash-table))
         (languages '()))
+    ;; - go through all project files, decide which tagging system to use for each individual file
+    ;; and put the file in tagging system bins (the sys-files hashmap)
+    ;; - the nested loops look like the could be switched, but the language of a file needs to detected
+    ;; first, so that we can then decide which tagging systems to use for that language
     (dolist (f files)
       (let ((lang (car-safe (mk-proj-src-pattern-languages (list f)))))
         (push lang languages)
@@ -1523,67 +1523,94 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
                       gtags-executable
                       global-executable
                       ctags-exuberant-executable)
+                 ;; - I had a fallback to gtags here if exuberant is not found, but removed it,
+                 ;; it does not make sense, while exuberant can parse many languages, gtags alone
+                 ;; can only parse a few
                  (return (puthash 'gtags+exuberant-ctags
                                   (append (list f) (gethash 'gtags+exuberant-ctags sys-files))
                                   sys-files)))))))
-    (puthash 'gtags (append (gethash 'gtags+exuberant-ctags sys-files)
-                            (gethash 'gtags sys-files))
-             sys-files)
-    (dolist (group (list 'gtags 'rtags 'cscope 'ctags))
-      (cond ((eq group 'gtags)
-             (let* ((gtags-root "/")
-                    (gtags-dbpath (file-truename (mk-proj-get-root-cache-dir nil proj-name)))
-                    (gtags-config (or (let ((c (mk-proj-get-config-val 'gtags-config proj-name nil proj-alist)))
-                                        (when (and c
-                                                   (file-exists-p c))
-                                          c))
-                                      (let ((c (concat (mk-proj-get-config-val 'basedir proj-name nil proj-alist) "/.globalrc")))
-                                        (when (file-exists-p c)
-                                          c))
-                                      (when (and mk-proj-c++-gtags-config
-                                                 (find 'cpp languages)
-                                                 (file-exists-p mk-proj-c++-gtags-config))
-                                        mk-proj-c++-gtags-config)
-                                      mk-proj-default-gtags-config
-                                      (let ((c (expand-file-name "~/.globalrc")))
-                                        (when (file-exists-p c)
-                                          c))
-                                      ""))
-                    (gtags-arguments (or (mk-proj-get-config-val 'gtags-arguments proj-name nil proj-alist)
-                                         ""))
-                    (gtags-commands (make-hash-table)))
-               (when (gethash 'gtags+rtags sys-files)
-                 (message "rtags not implemented yet"))
-               (when (gethash 'gtags sys-files)
-                 (puthash 'gtags
-                          (concat "cd " gtags-root "; "
-                                  "env GTAGSROOT=" gtags-root " "
-                                  "GTAGSCONF=" gtags-config " "
-                                  "gtags " gtags-dbpath " -i -v -f - " gtags-arguments ";")
-                          gtags-commands))
-               (when (gethash 'gtags+exuberant-ctags sys-files)
-                 (puthash 'gtags+exuberant-ctags
-                          (concat "cd " gtags-root "; "
-                                  "env GTAGSLABEL=exuberant-ctags "
-                                  "GTAGSCONF=" gtags-config " "
-                                  "GTAGSROOT=" gtags-root " "
-                                  "gtags " gtags-dbpath " -i -v -f - " gtags-arguments ";")
-                          gtags-commands))
-               (let* ((ordering (list 'gtags+exuberant-ctags 'gtags+rtags 'gtags))
-                      (commands (loop for sys in ordering
-                                      if (gethash sys gtags-commands)
-                                      collect (gethash sys gtags-commands)))
-                      (inputs (loop for sys in ordering
-                                    if (gethash sys gtags-commands)
-                                    collect (concat (mapconcat #'identity (gethash sys sys-files) "\n") "\n"))))
-                 (mk-proj-process-group "gtags" commands inputs 'mk-proj-update-completions-cache (list proj-name) nil)
-                 )))
-            ((eq group 'rtags)
-             (when (gethash 'rtags sys-files)
-               (message "rtags not implemented yet"))))))
+    ;; - why did I do this, I don't know anymore
+    ;; - it looks like it was supposed to make sure everything that scanned with either gtags
+    ;; or gtags+exuberant-ctags is guaranteed to be scanned by both, but I can't remember
+    ;; why I thought this makes sense, right now it just seems like a waste of cpu cycles
+    ;; (puthash 'gtags (append (gethash 'gtags+exuberant-ctags sys-files)
+    ;;                         (gethash 'gtags sys-files))
+    ;;          sys-files)
+
+    ;; - for each tagging system we'll have a section where we check if there are any files for
+    ;; that system, then build the appropriate commands to scan those file and create the tag database
+    ;; - here, we do all gtags (gtags, gtags+rtags and gtags+exuberant-ctags) systems first
+    (let* ((gtags-root "/")
+           ;; - I am a setting gtags-root to / and then just make it scan all project files and friendly files,
+           ;; that way I can get tags and completions for everything related to this project, I just have to
+           ;; set the root again when building the query command
+           ;; - the database is stored in the dbpath, that should be ~/.mk-project/project
+           (gtags-dbpath (file-name-as-directory (file-truename (mk-proj-get-root-cache-dir nil proj-name))))
+           (gtags-config (or (let ((c (mk-proj-get-config-val 'gtags-config proj-name nil proj-alist)))
+                               (when (and c
+                                          (file-exists-p c))
+                                 c))
+                             (let ((c (concat (mk-proj-get-config-val 'basedir proj-name nil proj-alist) "/.globalrc")))
+                               (when (file-exists-p c)
+                                 c))
+                             (when (and mk-proj-c++-gtags-config
+                                        (find 'cpp languages)
+                                        (file-exists-p (expand-file-name mk-proj-c++-gtags-config)))
+                               (expand-file-name mk-proj-c++-gtags-config))
+                             (expand-file-name mk-proj-default-gtags-config)
+                             (let ((c (expand-file-name "~/.globalrc")))
+                               (when (file-exists-p c)
+                                 c))
+                             ""))
+           (gtags-arguments (or (mk-proj-get-config-val 'gtags-arguments proj-name nil proj-alist)
+                                ""))
+           (gtags-commands (make-hash-table))
+           (cmd-seperator (if (eq system-type 'windows-nt) " & " " ; ")))
+      ;; - hack, gnu global under windows has problems with directories that have a trailing slash
+      ;; so this just removes the last slash from the path
+      (when (eq system-type 'windows-nt)
+        (string-match "\\(.*\\)/" gtags-dbpath)
+        (setq gtags-dbpath (match-string 1 gtags-dbpath)))
+      (when (gethash 'gtags sys-files)
+        (puthash 'gtags
+                 (concat "cd " gtags-root cmd-seperator
+                         "env GTAGSROOT=" gtags-root " "
+                         "GTAGSCONF=" gtags-config " "
+                         "gtags " gtags-dbpath " -i -v -f - " gtags-arguments cmd-seperator)
+                 gtags-commands))
+      (when (gethash 'gtags+exuberant-ctags sys-files)
+        (puthash 'gtags+exuberant-ctags
+                 (concat "cd " gtags-root cmd-seperator
+                         "env GTAGSLABEL=exuberant-ctags "
+                         "GTAGSCONF=" gtags-config " "
+                         "GTAGSROOT=" gtags-root " "
+                         "gtags " gtags-dbpath " -i -v -f - " gtags-arguments cmd-seperator)
+                 gtags-commands))
+      (let* ((ordering (list 'gtags+exuberant-ctags 'gtags))
+             (commands (loop for sys in ordering
+                             if (gethash sys gtags-commands)
+                             collect (gethash sys gtags-commands)))
+             (inputs (loop for sys in ordering
+                           if (gethash sys gtags-commands)
+                           collect (concat (mapconcat #'identity (gethash sys sys-files) "\n") "\n"))))
+        (mk-proj-process-group "gtags" commands inputs 'mk-proj-update-completions-cache (list proj-name) nil)
+        ))
+    ;; - if I'd ever implement rtags, or any other system really, then this would become another section
+    (when (gethash 'rtags sys-files)
+      (message "rtags not implemented yet")))
+  ;; - after updating the tag databases we may as well setup the env variables again, just to be sure
   (project-setup-tags proj-name))
 
 (defun mk-proj-process-group (name commands inputs &optional terminator terminator-args debug n process event)
+  "Create a process group with NAME, that runs all COMMANDS with INPUTS after each other
+and the calls TERMINATOR with TERMINATOR-ARGS.
+
+If DEBUG is true it will leave behind buffers named name-0, name-1 and so on for all commands
+in COMMANDS.
+
+This function is called recursivly as process sentinel when a command finishes, increasing N to
+indicate which command to run next, and PROCESS and EVENT are the arguments this function
+recieves when it acts as process sentinel."
   (unless n (setq n 0))
   (if (and (nth n commands)
            (or (not event)
@@ -1623,6 +1650,11 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
         (cond ((file-exists-p gtags-file)
                (let ((gtags-dbpath (mk-proj-dirname gtags-file))
                      (gtags-root "/"))
+                 ;; - hack, gnu global under windows has problems with directories that have a trailing slash
+                 ;; so this just removes the last slash from the path
+                 (when (eq system-type 'windows-nt)
+                   (string-match "\\(.*\\)/" gtags-dbpath)
+                   (setq gtags-dbpath (match-string 1 gtags-dbpath)))
                  (setenv "GTAGSDBPATH" gtags-dbpath)
                  (setenv "GTAGSROOT" gtags-root)
                  (add-to-list 'available-systems 'gtags))))))
@@ -2418,13 +2450,18 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
   (if src-patterns
-      (let ((name-expr " \\(")
+      (let ((name-expr (if (eq system-type 'windows-nt) " \(" " \\("))
             (regex-or-name-arg (if (mk-proj-get-config-val 'patterns-are-regex proj-name t proj-alist)
                                    "-regex"
                                  "-name")))
         (dolist (pat src-patterns)
           (setq name-expr (concat name-expr " " regex-or-name-arg " \"" pat "\" -o ")))
-        (concat (mk-proj-replace-tail name-expr "-o " "") "\\) "))
+        (concat (if (string-match "-o $"  name-expr)
+                    (replace-match "" t t name-expr)
+                  name-expr)
+                (if (eq system-type 'windows-nt)
+                    "\) "
+                  "\\) ")))
     ""))
 
 (defun mk-proj-find-cmd-ignore-args (ignore-patterns &optional proj-name proj-alist)
@@ -2460,15 +2497,20 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
          (start-dir (if mk-proj-file-index-relative-paths
                         "."
                       (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t proj-alist))))
-         (find-cmd (concat "find '" start-dir "' -type f "
+         (find-exe (or (executable-find "gfind.exe")
+                       (executable-find "find")))
+         (find-cmd (concat "\"" find-exe "\" \"" start-dir "\" -type f "
                            (mk-proj-find-cmd-src-args (mk-proj-get-config-val 'src-patterns proj-name t proj-alist) proj-name proj-alist)
-                           (mk-proj-find-cmd-ignore-args (mk-proj-get-config-val 'ignore-patterns proj-name t proj-alist) proj-name proj-alist)))
+                           (mk-proj-find-cmd-ignore-args (mk-proj-get-config-val 'ignore-patterns proj-name t proj-alist) proj-name proj-alist)
+                           ;; - had a problem under windows where gfind could not read some file and then always exit with error, this hack
+                           ;; works around that and makes the command always exit with 0, may be neccessary on linux at some point too
+                           (when (eq system-type 'windows-nt)
+                               " 2> nul & exit /b 0")))
          (proc-name (concat "index-process-" proj-name)))
     (when (mk-proj-get-config-val 'file-list-cache proj-name t proj-alist)
       (mk-proj-fib-clear proj-name)
       (when (mk-proj-get-vcs-path proj-name)
         (setq find-cmd (concat find-cmd " -not -path " (concat "'*/" (mk-proj-get-vcs-path proj-name) "/*'"))))
-      (setq find-cmd (or (mk-proj-find-cmd-val 'index proj-name) find-cmd))
       (with-current-buffer (get-buffer-create (mk-proj-fib-name proj-name))
         (buffer-disable-undo) ;; this is a large change we don't need to undo
         (setq buffer-read-only nil))
@@ -2975,19 +3017,19 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                           ;; into a real path by interspersing "/" between then, then returning it as result
                           (unless (or (eq common-path 'undefined)
                                       (null common-path))
-                            (apply 'concat (mapcar (lambda (s) (concat "/" s)) common-path))))
+                            (expand-file-name (apply 'concat (mapcar 'file-name-as-directory common-path)))))
                    (when (buffer-file-name buf)
                      (if (eq common-path 'undefined)
                          ;; set common-path on first iteration if it is undefined, we'll be unecessarily
                          ;; checking it against itself once
-                         (setq common-path (split-string (mk-proj-dirname (buffer-file-name buf)) "/" t))
+                         (setq common-path (split-string (mk-proj-dirname (buffer-file-name buf)) "/"))
                        ;; we split both paths by "/" and create a zipper from the resulting lists
                        ;; /foo/bar     -> '\("foo" "bar"\)
                        ;; /foo/bar/bla -> '\("foo" "bar" "bla"\)
                        ;; -> '\(\("foo" "foo"\) \("bar" "bar"\) \(nil "bla"\)\)
                        ;; then walking over the zipper while both tuple's strings match, stopping at a mismatch
                        ;; and collecting matching strings on the way along
-                       (let ((tuples (mk-proj-zip common-path (split-string (buffer-file-name buf) "/" t)))
+                       (let ((tuples (mk-proj-zip common-path (split-string (buffer-file-name buf) "/")))
                              (temp-path '()))
                          (while (string-equal (first (car tuples)) (second (car tuples)))
                            (add-to-list 'temp-path (first (car tuples)))
@@ -2995,7 +3037,8 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                          ;; we'll set the new common-path before the next iteration, but only if it wouldn't be
                          ;; 'equal' (see mk-proj-path-equal) to any of the ignore-paths
                          (unless (loop for ig in ignore-paths
-                                       if (mk-proj-path-equal ig (apply 'concat (mapcar (lambda (s) (concat "/" s)) (reverse temp-path))))
+                                       if (mk-proj-path-equal (file-name-as-directory ig)
+                                                              (expand-file-name (apply 'concat (mapcar 'file-name-as-directory (reverse temp-path)))))
                                        return t
                                        finally return nil)
                            (setq common-path (reverse temp-path)))))))))
