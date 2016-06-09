@@ -78,30 +78,24 @@ used by `project-find-file' to quickly locate project files."
                              (hg  . ".hg")
                              (darcs . "_darcs"))
   "When `mk-proj-vcs' is one of the VCS types listed here, ignore
-the associated paths when greping or indexing the project. This
-value is not used if a custom find command is set in
-`mk-proj-grep-find-cmd' or `mk-proj-index-find-cmd'")
+the associated paths when greping or indexing the project.")
 
 (defvar mk-proj-required-vars '((name . (stringp))
                                 (basedir . (stringp)))
   "Project config vars that are required in every project.
 
-See also `mk-proj-optional-vars' `mk-proj-var-before-get-functions'")
+See also `mk-proj-optional-vars' `mk-proj-var-before-get-functions'.")
 
 (defvar mk-proj-optional-vars '((parent . (stringp)) ;; parent needs to come first!
                                 (languages . (listp))
                                 (src-patterns . (listp))
                                 (ignore-patterns . (listp))
-                                (ack-args . (stringp))
                                 (vcs . (symbolp))
                                 (compile-cmd . (functionp commandp stringp listp))
                                 (startup-hook . (functionp commandp stringp listp))
                                 (shutdown-hook . (functionp commandp stringp listp))
                                 (file-list-cache . (stringp))
                                 (open-files-cache . (stringp))
-                                (src-find-cmd . (stringp))
-                                (grep-find-cmd . (stringp))
-                                (index-find-cmd . (stringp))
                                 (patterns-are-regex . (symbolp))
                                 (friends . (listp))
                                 (open-friends-cache . (stringp))
@@ -109,30 +103,51 @@ See also `mk-proj-optional-vars' `mk-proj-var-before-get-functions'")
                                 (gtags-arguments . (stringp)))
   "Project config vars that are optional.
 
+parent            : a project name that acts as parent to this one
+languages         : a list of languages that are used in this project
+src-patterns      : file patterns that match files that should belong to this project
+ignore-patterns   : file patterns that match files that should be ignored by this
+                    project
+vcs               : a symbol that specifies which vcs is used for this project, this
+                    has no real function other then being helpful for basedir detection
+compile-cmd       : compile commands, can be a history list or a single string
+startup-hook      : functions to be called when project is loaded
+shutdown-hook     : functions to be called when project is unloaded
+file-list-cache   : filesystem location of the file index cache
+open-files-cache  : filesystem location of the open files cache
+patterns-are-regex: legacy, when src and ignore-patterns are not regex, but instead
+                    just a simple file pattern
+friends           : friends are other projects that are relevant to this project, they
+                    will be included when browsing for files, updating the tag database
+                    and when completing symbols
+open-friends-cache: filesystem location for open files from friend projects
+gtags-config      : gtags config file that should be used
+gtags-arguments   : additional gtags arguments
+
 See also `mk-proj-required-vars' `mk-proj-var-before-get-functions'")
 
 (defvar mk-proj-internal-vars '()
   "Project config vars that are ignored when saving the project config.")
 
-(defun mk-proj-var-expand (var val &optional proj-name config-alist)
-  (when (stringp val)
-    (expand-file-name val)))
-
 (defun mk-proj-basedir-expand (var val &optional proj-name config-alist)
+  "Helper used in `mk-proj-var-before-get-functions' to expand basedir."
   (when (stringp val)
     (file-name-as-directory (expand-file-name val))))
 
 (defun mk-proj-var-get-open-file-cache (var val &optional proj-name config-alist)
+  "Helper used in `mk-proj-var-before-get-functions' to find cache location."
   (if val
       (expand-file-name val)
     (mk-proj-get-cache-file var proj-name nil)))
 
 (defun mk-proj-var-get-file-list-cache (var val &optional proj-name config-alist)
+  "Helper used in `mk-proj-var-before-get-functions' to find cache location."
   (if val
       (expand-file-name val)
     (mk-proj-get-cache-file var proj-name t)))
 
 (defun mk-proj-var-guess-languages (var val &optional proj-name config-alist)
+  "Helper used in `mk-proj-var-before-get-functions' to guess project languages."
   (or val (mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns proj-name))))
 
 (defvar mk-proj-var-before-get-functions '((basedir . mk-proj-basedir-expand)
@@ -181,15 +196,14 @@ See also `mk-proj-get-config-val'.")
                                                                  else
                                                                  collect p into xs
                                                                  finally return xs))))
-                                    (ack-args . (lambda ()
-                                                  (read-string "Ack arguments: " super)))
                                     (vcs . (lambda ()
                                              (loop for v = (read-string "vcs: " super) then (read-string "vcs: " super)
                                                    until (some (lambda (x) (eq (car x) (read v))) mk-proj-vcs-path)
                                                    finally return (read v))))
                                     (compile-cmd . (lambda ()
                                                      (read-string "Compile command: " super)))
-                                    (patterns-are-regex . (lambda () t))))
+                                    (patterns-are-regex . (lambda () t)))
+  "Functions that are used to ask the user about what a vars value should be.")
 
 (defvar mk-proj-before-load-hook '())
 (defvar mk-proj-before-files-load-hook '())
@@ -210,20 +224,6 @@ See also `mk-proj-get-config-val'.")
                                (python ((files ("setup.py"))
                                         (build "python setup.py build $MK_BUILD_OPTS"))))
   "Used when guessing a project root or its compile-cmd.")
-
-(defvar mk-proj-incubator-paths `(,(expand-file-name "~"))
-  "An incubator is a location where multiple projects are kept. These will be
-ignored when guessing a projects basedir thus giving preference to subdirectories
-within it.
-
-It is not impossible for an incubator path to be guessed as project basedir though.
-If you'll guess while in a buffer with a file from an incubator root open, that
-incubator root could be guessed as basedir.")
-
-(defvar mk-proj-common-project-subdir-names '("src" "include" "demo[?s]" "example[?s]" "doc[?s]" "build" "tool[?s]" "test[?s]" "misc")
-  "Common subdirectory names found in projects as regular expressions. These
-help guessing a projects basedir. Matching directory names will be ignored
-and their parent directory used as basedir.")
 
 (defvar mk-proj-src-pattern-table '(("h" . (c ".*\\.c" ".*\\.cpp" ".*\\.cc" ".*\\.h" ".*\\.hpp" ".*\\.hh"))
                                     ("hpp" . (cpp ".*\\.cpp" ".*\\.c" ".*\\.h" ".*\\.hh" ".*\\.hpp"))
@@ -267,24 +267,36 @@ can find it, if not it creates it at the end of the file).
 
 See also `mk-proj-config-save-location'")
 
-(defvar mk-proj-language-tag-systems '((c . (gtags+rtags rtags gtags cscope))
-                                       (cpp . (gtags+rtags rtags gtags cscope))
+(defvar mk-proj-language-tag-systems '((awk . (gtags+exuberant-ctags))
+                                       (batch . (gtags+exuberant-ctags))
+                                       (cobol . (gtags+exuberant-ctags))
+                                       (c . (gtags))
+                                       (cpp . (gtags))
                                        (csharp . (gtags+exuberant-ctags))
                                        (elisp . (gtags+exuberant-ctags))
                                        (erlang . (gtags+exuberant-ctags))
+                                       (fortran . (gtags+exuberant-ctags))
+                                       (haskell . ())
+                                       (java . (gtags))
+                                       (javascript . (gtags+exuberant-ctags))
                                        (lisp . (gtags+exuberant-ctags))
-                                       (scheme . (gtags+exuberant-ctags))
                                        (lua . (gtags+exuberant-ctags))
-                                       (haskell . (haskell-hothasktags haskell-ghc))
                                        (ocaml . (gtags+exuberant-ctags))
                                        (perl . (gtags+exuberant-ctags))
-                                       (python . (gtags+exuberant-ctags))
                                        (php . (gtags))
-                                       (shell . (gtags+exuberant-ctags))
+                                       (python . (gtags+exuberant-ctags))
                                        (ruby . (gtags+exuberant-ctags))
-                                       (java . (gtags))
-                                       (javascript . (tern jsctags))
-                                       (yacc . (gtags))))
+                                       (scheme . (gtags+exuberant-ctags))
+                                       (shell . (gtags+exuberant-ctags))
+                                       (tcl . (gtags+exuberant-ctags))
+                                       (tex . (gtags+exuberant-ctags))
+                                       (verilog . (gtags+exuberant-ctags))
+                                       (vhdl . (gtags+exuberant-ctags))
+                                       (vim . (gtags+exuberant-ctags))
+                                       (yacc . (gtags)))
+  "Defines which tagging system to use for which language.
+
+Only gtags and gtags+exuberant-ctags are implemented.")
 
 (defvar mk-proj-thing-selector 'symbol)
 
@@ -311,11 +323,6 @@ See also `mk-proj-config-save-location'")
   :type 'boolean
   :group 'mk-project)
 
-(defcustom mk-proj-ack-cmd (if (eq system-type 'windows-nt) "ack.pl" "ack-grep")
-  "Name of the ack program to run. Defaults to \"ack\" (or \"ack.pl\" on Windows)."
-  :type 'string
-  :group 'mk-project)
-
 (defcustom mk-proj-file-index-relative-paths t
   "If non-nil, generate relative path names in the file-index buffer"
   :type 'boolean
@@ -332,11 +339,13 @@ load time. See also `project-menu-remove'."
 ;; ---------------------------------------------------------------------
 
 (defun mk-proj-save-state ()
+  "Save the currently open project files."
   (when mk-proj-name
     (mk-proj-save-open-file-info)
     (mk-proj-save-open-friends-info)))
 
 (defun mk-proj-zip (&rest lists)
+  "A zipper takes lists like (1 2 3) (a b c) and produces a result like ((1 a) (2 b) (3 c))"
   (let* ((n (- (length lists) 1))
          (i 0)
          (rs '()))
@@ -404,20 +413,6 @@ load time. See also `project-menu-remove'."
 
 (defun mk-proj-use-ido ()
   (and (boundp 'ido-mode) mk-proj-use-ido-selection))
-
-(defun mk-proj-find-cmd-val (context &optional proj-name)
-  (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (let ((cmd (ecase context
-               ('src   (mk-proj-get-config-val 'src-find-cmd proj-name t))
-               ('grep  (mk-proj-get-config-val 'grep-find-cmd proj-name t))
-               ('index (mk-proj-get-config-val 'index-find-cmd proj-name t)))))
-    (if cmd
-        (cond ((stringp cmd) cmd)
-              ((functionp cmd) (funcall cmd context))
-              (t (error "find-cmd is neither a string or a function")))
-      nil)))
 
 (defun mk-proj-filter (condp lst)
   "Filter LST with CONDP. All elements for which CONDP returns t will be kept,
@@ -560,15 +555,6 @@ Examples:
             (concatenate 'string a delimiter b))
           strings))
 
-;; (defmacro mk-proj-with-directory (path &rest body)
-;;   `(let ((currentdir default-directory)
-;;          (inhibit-quit t))
-;;      (with-local-quit
-;;        (cd ,path)
-;;        (let ((result ,@body))
-;;          (cd currentdir)
-;;          result))))
-
 (defmacro mk-proj-with-directory (path &rest body)
   `(let ((default-directory ,path))
      (with-local-quit
@@ -608,10 +594,13 @@ Examples:
       alist)))
 
 (defun* mk-proj-get-config-val (key &optional proj-name (inherit t) (proj-alist nil))
-  "Finds the value associated with KEY. A project PROJ
-can optionally be specified.
+  "Finds the value associated with KEY. A project PROJ can optionally
+be specified.
+
 If the third argument INHERIT is non-nil, all parents will queried
-for the KEY and the first value that is found is returned."
+for the KEY and the first value that is found is returned.
+
+See also `mk-proj-var-before-get-functions'."
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
@@ -645,7 +634,12 @@ for the KEY and the first value that is found is returned."
         (mk-proj-backend-funcall (mk-proj-detect-backend proj-name)
                                  'save proj-name new-alist)))))
 
-(defun* mk-proj-eval-alist (proj-name &optional config-alist)
+(defun* mk-proj-eval-alist (proj-name config-alist)
+  "Evaluates a CONFIG-ALIST for PROJ-NAME by calling eval on every
+value.
+
+It then goes through all values and checks them with the functions
+from mk-proj-required-vars and mk-proj-optional-vars."
   (interactive)
   (let* ((evaluated-config-alist `((name ,proj-name)))
          (result-alist (dolist (cv config-alist evaluated-config-alist)
@@ -682,102 +676,7 @@ for the KEY and the first value that is found is returned."
 All values within CONFIG-ALIST will be evaluated when they look
 like a lisp expression or symbol. So make sure to quote lists!
 
-See also `project-undef'.
-
-basedir:
-Base directory of the current project. Required. Value is expanded with
-expand-file-name. Example: ~me/my-proj/.
-
-src-patterns:
-List of shell patterns to include in the TAGS file. Optional. Example:
-'(\"*.java\" \"*.jsp\").
-
-This value is not used when `mk-proj-src-find-cmd' is set.
-
-ignore-patterns:
-List of shell patterns to avoid searching for with project-find-file and
-project-grep. Optional. Example: '(\"*.class\").
-
-This value is not used in indexing when `mk-proj-index-find-cmd'
-is set -- or in grepping when `mk-proj-grep-find-cmd' is set.
-
-ack-args:
-String of arguments to pass to the `ack' command. Optional.
-Example: \"--java\".
-
-vcs:
-When set to one of the VCS types in `mk-proj-vcs-path', grep
-and index commands will ignore the VCS's private files (e.g.,
-.CVS/). Example: 'git.
-
-This value is not used in indexing when `mk-proj-index-find-cmd'
-is set -- or in grepping when `mk-proj-grep-find-cmd' is set.
-
-compile-cmd:
-Command to build the entire project. Can be either a string specifying
-a shell command or the name of a function. Optional. Example: make -k.
-
-startup-hook:
-Hook function to run after the project is loaded. Optional. Project
-variables (e.g. mk-proj-basedir) will be set and can be referenced from this
-function.
-
-shutdown-hook:
-Hook function to run after the project is unloaded. Optional.  Project
-variables (e.g. mk-proj-basedir) will still be set and can be referenced
-from this function.
-
-file-list-cache:
-Cache *file-index* buffer to this file. Optional. If set, the *file-index*
-buffer will take its initial value from this file and updates to the buffer
-via 'project-index' will save to this file. Value is expanded with
-expand-file-name.
-
-open-files-cache:
-Cache the names of open project files in this file. Optional. If set,
-project-load will open all files listed in this file and project-unload will
-write all open project files to this file. Value is expanded with
-expand-file-name.
-
-src-find-cmd:
-Specifies a custom \"find\" command to locate all files to be
-included in the TAGS file (see `project-tags'). Optional. The
-value is either a string or a function of one argument that
-returns a string. The argument to the function will be the symbol
-\"'src\".
-
-If non-null (or if the function returns non-null), the custom
-find command will be used and the `mk-proj-src-patterns' and
-`mk-proj-vcs' settings are ignored when finding files to include
-in TAGS.
-
-grep-find-cmd:
-Specifies a custom \"find\" command to use as the default when
-running `project-grep'. Optional. The value is either a string or
-a function of one argument that returns a string. The argument to
-the function will be the symbol \"'grep\". The string or returned
-string MUST use find's \"-print0\" argument as the results of
-this command are piped to \"xargs -0 ...\".
-
-If non-null (or if the function returns non-null), the custom
-find command will be used and the `mk-proj-ignore-patterns' and
-`mk-proj-vcs' settings will not be used in the grep command.
-
-The custom find command should use \".\" (current directory) as
-the path that find starts at -- this will allow the C-u argument
-to `project-grep' to run the command from the current buffer's
-directory.
-
-index-find-cmd:
-Specifies a custom \"find\" command to use when building an
-listing of all files in the project (to be used by
-`project-find-file'). Optional. The value is either a string or a
-function of one argument that returns a string. The argument to
-the function will be the symbol \"'index\".
-
-If non-null (or if the function returns non-null), the custom
-find command will be used and the `mk-proj-ignore-patterns' and
-`mk-proj-vcs' settings are not used when in the grep command."
+See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
   (interactive)
   (cond ((stringp proj-name)
          (let ((alist (mk-proj-eval-alist proj-name config-alist)))
@@ -1626,6 +1525,7 @@ recieves when it acts as process sentinel."
       (apply terminator terminator-args))))
 
 (defun mk-proj-src-pattern-tag-systems (src-patterns)
+  "Takes a list of src patterns (like \"*.cpp\") and returns tag systems that can parse those."
   (let ((systems '()))
     (dolist (lang (mk-proj-src-pattern-languages src-patterns))
       (dolist (sys (cdr (assoc lang mk-proj-language-tag-systems)))
@@ -1640,7 +1540,7 @@ recieves when it acts as process sentinel."
                       (cadr (assoc 'name (mk-proj-guess-alist)))))
   (unless proj-name
     (mk-proj-assert-proj))
-  (let ((proj-systems (mk-proj-src-pattern-tag-systems (mk-proj-unique-files proj-name)))
+  (let ((proj-systems (mk-proj-src-pattern-tag-systems (mk-proj-get-config-val 'src-patterns proj-name)))
         (available-systems '()))
     (when (or (find 'gtags proj-systems)
               (find 'gtags+rtags proj-systems)
@@ -2484,7 +2384,8 @@ recieves when it acts as process sentinel."
   (setq proj-alist (or proj-alist
                        (mk-proj-find-config proj-name)
                        (mk-proj-find-config mk-proj-name)
-                       (mk-proj-guess-alist)))
+                       (mk-proj-guess-alist)
+                       ))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
     (mk-proj-assert-proj))
@@ -2829,21 +2730,6 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
         (when (and f (mk-proj-config-val 'basedir f))
           (add-to-list 'basedirs (mk-proj-config-val 'basedir f)))))))
 
-(defun project-ack-with-friends ()
-  "Run ack with project's basedir and all friend basedirs as arguments, using the `ack-args' configuration."
-  (interactive)
-  (mk-proj-assert-proj t)
-  (let* ((wap (word-at-point))
-         (regex (if wap (read-string (concat "Ack project for (default \"" wap "\"): ") nil nil wap)
-                  (read-string "Ack project for: ")))
-         (paths (mk-proj-find-unique-paths (append (list (mk-proj-get-config-val 'basedir)) (mk-proj-friend-basedirs))))
-         (whole-cmd (concat (let ((s ""))
-                              (dolist (d paths s)
-                                (setq s (concat s (mk-proj-ack-cmd regex) " " d "; "))))))
-         (confirmed-cmd (read-string "Ack command: " whole-cmd nil whole-cmd))
-         (default-directory (file-name-as-directory (mk-proj-get-config-val 'basedir))))
-    (compilation-start confirmed-cmd 'ack-and-a-half-mode)))
-
 ;; ---------------------------------------------------------------------
 ;; After saving
 ;; ---------------------------------------------------------------------
@@ -3105,6 +2991,20 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
           do (add-to-list 'languages lang))
     languages))
 
+(defvar mk-proj-incubator-paths `(,(expand-file-name "~"))
+  "An incubator is a location where multiple projects are kept. These will be
+ignored when guessing a projects basedir thus giving preference to subdirectories
+within it.
+
+It is not impossible for an incubator path to be guessed as project basedir though.
+If you'll guess while in a buffer with a file from an incubator root open, that
+incubator root could be guessed as basedir.")
+
+(defvar mk-proj-common-project-subdir-names '("src" "include" "demo[?s]" "example[?s]" "doc[?s]" "build" "tool[?s]" "test[?s]" "misc")
+  "Common subdirectory names found in projects as regular expressions. These
+help guessing a projects basedir. Matching directory names will be ignored
+and their parent directory used as basedir.")
+
 (defvar mk-proj-guess-functions '((buffer . ((()
                                               `(1 . ,(current-buffer)))))
                                   (mode . (((buffer)
@@ -3268,38 +3168,13 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                                   (languages . (((src-patterns)
                                                  (let ((languages (mk-proj-src-pattern-languages src-patterns)))
                                                    (when languages
-                                                     `(10 . ,languages))))))
-                                  (ack-args . (((languages)
-                                                (let ((args nil))
-                                                  (dolist (lang languages)
-                                                    (cond ((eq lang 'c)
-                                                           (add-to-list 'args "--cc"))
-                                                          ((eq lang 'cpp)
-                                                           (add-to-list 'args "--cpp"))
-                                                          ((eq lang 'elisp)
-                                                           (add-to-list 'args "--el"))
-                                                          ((eq lang 'perl)
-                                                           (add-to-list 'args "--perl"))
-                                                          ((eq lang 'python)
-                                                           (add-to-list 'args "--python"))
-                                                          ((eq lang 'lisp)
-                                                           (add-to-list 'args "--lisp"))
-                                                          ((eq lang 'scheme)
-                                                           (add-to-list 'args "--scheme"))
-                                                          ((eq lang 'shell)
-                                                           (add-to-list 'args "--shell"))
-                                                          ((eq lang 'haskell)
-                                                           (add-to-list 'args "--haskell"))))
-                                                  (when args
-                                                    `(10 . ,(reduce (lambda (a b) (concat a " " b))
-                                                                    args)))))))))
+                                                     `(10 . ,languages))))))))
 
 (defun mk-proj-guess-alist (&optional ask-basedir ask-name)
   ;; go through mk-proj-guess-functions and collect all symbols that are used
   ;; as arguments, we'll bind those in a closure around the execution
   ;; of the function bodies
-  (let ((ack-args 'undefined)
-        (languages 'undefined)
+  (let ((languages 'undefined)
         (compile-cmd 'undefined)
         (vcs 'undefined)
         (patterns-are-regex 'undefined)
