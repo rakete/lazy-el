@@ -33,13 +33,11 @@
 
 ;;; Code:
 
-(require 'grep)
 (require 'thingatpt)
 (require 'cl)
-(require 'xcscope)
 (require 'etags-table)
 
-(defvar mk-proj-version "1.6.0")
+(defvar mk-proj-version "2.0.0")
 
 (defvar mk-global-cache-root "~/.mk-project"
   "Root path under which to create files that contain project metadata like open
