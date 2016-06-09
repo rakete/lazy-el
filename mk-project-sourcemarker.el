@@ -170,14 +170,18 @@
                           (when timestamp
                             (add-to-list 'results `(,timestamp . ,buf)))))))
                    (cdar (sort results (lambda (a b) (> (car a) (car b))))))))
-    (let ((display-buffer-reuse-frames nil))
-      (let ((buffer (or buffer (car (mk-proj-file-buffers))))
-            (window (get-buffer-window buffer 'visible)))
-        (when buffer
+    (let* ((display-buffer-reuse-frames nil)
+           (buffer (or buffer (car (mk-proj-file-buffers))))
+           (window (get-buffer-window buffer 'visible))
+           (popwin-close 'popwin:close-popup-window))
+      (when buffer
+        (with-current-buffer buffer
+          (when (functionp popwin-close)
+            (funcall popwin-close))
           (if window
               (raise-frame (window-frame window))
-            (display-buffer buffer))
-          (with-current-buffer buffer (recenter)))))
+            (switch-to-buffer buffer))
+          (recenter))))
     ))
 
 ;;(sort '((0 . "foo") (1 . "bar")) (lambda (a b) (> (car a) (car b))))
