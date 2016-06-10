@@ -335,6 +335,10 @@ will be used internally. You can specify a MATCH to be used in that case with:
                                  (progn
                                    (message (format "mk-org: No such file %s" project-file))
                                    (return-from "mk-org-map-entries" nil))))
+        ;; - call set-auto-mode when buffer not in org-mode so that org-complex-heading-regexp-format
+        ;; gets defined
+        (unless (eq major-mode 'org-mode)
+          (set-auto-mode))
         (save-excursion
           (save-restriction
             (when widen (widen))
