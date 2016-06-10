@@ -356,7 +356,9 @@ load time. See also `project-menu-remove'."
 (defun mk-proj-dirname (path)
   "Take a path and return the directory only, without filename."
   (apply #'concat (reverse (mapcar (lambda (s)
-                                     (file-name-as-directory s))
+                                     (if (> (length s) 0)
+                                         (file-name-as-directory s)
+                                       (file-name-as-directory "/")))
                                    (cdr (reverse (split-string path "/")))))))
 
 (defun mk-proj-assert-proj (&optional try-guessing)
@@ -1472,14 +1474,14 @@ See also `mk-proj-config-save-section', `mk-proj-config-save-section'"
         (puthash 'gtags
                  (concat "cd " gtags-root cmd-seperator
                          "env GTAGSROOT=" gtags-root " "
-                         "GTAGSCONF=" gtags-config " "
+                         (when (file-exists-p gtags-config) (concat "GTAGSCONF=" gtags-config " "))
                          "gtags " gtags-dbpath " -i -v -f - " gtags-arguments cmd-seperator)
                  gtags-commands))
       (when (gethash 'gtags+exuberant-ctags sys-files)
         (puthash 'gtags+exuberant-ctags
                  (concat "cd " gtags-root cmd-seperator
                          "env GTAGSLABEL=exuberant-ctags "
-                         "GTAGSCONF=" gtags-config " "
+                         (when (file-exists-p gtags-config) (concat "GTAGSCONF=" gtags-config " "))
                          "GTAGSROOT=" gtags-root " "
                          "gtags " gtags-dbpath " -i -v -f - " gtags-arguments cmd-seperator)
                  gtags-commands))
@@ -2901,19 +2903,19 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                           ;; into a real path by interspersing "/" between then, then returning it as result
                           (unless (or (eq common-path 'undefined)
                                       (null common-path))
-                            (expand-file-name (apply 'concat (mapcar 'file-name-as-directory common-path)))))
+                            (expand-file-name (apply 'concat (unless (eq system-type 'windows-nt) "/") (mapcar 'file-name-as-directory common-path)))))
                    (when (buffer-file-name buf)
                      (if (eq common-path 'undefined)
                          ;; set common-path on first iteration if it is undefined, we'll be unecessarily
                          ;; checking it against itself once
-                         (setq common-path (split-string (mk-proj-dirname (buffer-file-name buf)) "/"))
+                         (setq common-path (split-string (mk-proj-dirname (buffer-file-name buf)) "/" (not (eq system-type 'windows-nt))))
                        ;; we split both paths by "/" and create a zipper from the resulting lists
                        ;; /foo/bar     -> '\("foo" "bar"\)
                        ;; /foo/bar/bla -> '\("foo" "bar" "bla"\)
                        ;; -> '\(\("foo" "foo"\) \("bar" "bar"\) \(nil "bla"\)\)
                        ;; then walking over the zipper while both tuple's strings match, stopping at a mismatch
                        ;; and collecting matching strings on the way along
-                       (let ((tuples (mk-proj-zip common-path (split-string (buffer-file-name buf) "/")))
+                       (let ((tuples (mk-proj-zip common-path (split-string (buffer-file-name buf) "/" (not (eq system-type 'windows-nt)))))
                              (temp-path '()))
                          (while (string-equal (first (car tuples)) (second (car tuples)))
                            (add-to-list 'temp-path (first (car tuples)))
