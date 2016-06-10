@@ -132,8 +132,20 @@
                         (mapc (lambda (line)
                                 (insert (concat (expand-file-name line (mk-proj-get-config-val 'basedir friend t)) "\n")))
                               (mk-proj-fib-matches nil friend))))))
-                (sort-subr nil 'forward-line 'end-of-line nil nil
-                           (lambda (a b) (string< a b))))))
+                (let ((recentf-table (make-hash-table :test 'equal)))
+                  (dolist (recentf-item recentf-list)
+                    (puthash recentf-item t recentf-table))
+                  (sort-subr nil 'forward-line 'end-of-line nil nil
+                             (lambda (a b)
+                               (cond (((and (gethash a recentf-table)
+                                            (not (gethash b recentf-table)))
+                                       t)
+                                      ((and (not (gethash a recentf-table))
+                                            (gethash b recentf-table))
+                                       nil)
+                                      (t
+                                       (string< a b))
+                                      ))))))))
     (candidates-in-buffer)
     (candidate-number-limit . 300)
     (keymap . ,helm-generic-files-map)
