@@ -1527,7 +1527,7 @@ recieves when it acts as process sentinel."
            (or (not event)
                (string-equal event "finished\n")))
       (let* ((proc-name (concat name "-" (prin1-to-string n)))
-             (shell-file-name "/bin/sh")
+             (shell-file-name (if (eq system-type 'windows-nt) (default-value 'shell-file-name) "/bin/sh"))
              (process (start-process-shell-command proc-name (when debug proc-name) (nth n commands)))
              (input (nth n inputs)))
         (set-process-sentinel process (apply-partially 'mk-proj-process-group name commands inputs terminator terminator-args debug (1+ n)))
