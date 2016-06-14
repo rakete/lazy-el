@@ -1597,7 +1597,8 @@ recieves when it acts as process sentinel."
                       (when proj-name (mk-proj-get-config-val 'basedir proj-name))
                       default-directory))
          (default-directory basedir)
-         (case-fold-search nil))
+         (case-fold-search nil)
+         (cmd-sep (if (eq system-type 'windows-nt) " & " " ; ")))
     (cond ((eq 'gtags system)
            (let ((cmd (nth 0 args)))
              (mapcar (lambda (line)
@@ -1608,7 +1609,7 @@ recieves when it acts as process sentinel."
                                :definition (mapconcat 'identity (nthcdr 3 tokens) " ")
                                :system system
                                :regexp regexp)))
-                     (split-string (condition-case nil (shell-command-to-string (concat "cd " default-directory "; " cmd)) (error "")) "\n" t))))
+                     (split-string (condition-case nil (shell-command-to-string (concat "cd " default-directory cmd-sep cmd)) (error "")) "\n" t))))
           ((eq 'rtags system)
            (message "rtags not implemented yet"))
           ((eq 'cscope system)
