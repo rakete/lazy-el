@@ -152,24 +152,24 @@ Also tries to find org files with projects in files from `recentf-list'."
                      (eq x nil)))
                (remove-duplicates
                 (append org-files (mk-org-concatl (mapcar (lambda (path)
-                                                     (let ((path (file-name-as-directory path)))
-                                                       (cond ((condition-case nil (directory-files path) (error nil))
-                                                              (let ((currentdir default-directory))
-                                                                (cd path)
-                                                                (let ((result (split-string (shell-command-to-string "grep -ls \"MKP_NAME\\|mkp_name\" *.org") "\n" t)))
-                                                                  (cd currentdir)
-                                                                  (mapcar (lambda (f) (expand-file-name (concat path f))) result))))
-                                                             ((file-exists-p path)
-                                                              `(,(expand-file-name path)))
-                                                             (t (file-expand-wildcards path)))))
-                                                   (append mk-org-project-search-files
-                                                           (let ((xs '()))
-                                                             (maphash (lambda (k v)
-                                                                        (let ((path (cadr (assoc 'basedir v))))
-                                                                          (when path
-                                                                            (add-to-list 'xs path))))
-                                                                      mk-proj-list)
-                                                             xs)))))
+                                                            (let ((path (file-name-as-directory path)))
+                                                              (cond ((condition-case nil (directory-files path) (error nil))
+                                                                     (let ((currentdir default-directory))
+                                                                       (cd path)
+                                                                       (let ((result (split-string (shell-command-to-string "grep -ls \"MKP_NAME\\|mkp_name\" *.org") "\n" t)))
+                                                                         (cd currentdir)
+                                                                         (mapcar (lambda (f) (expand-file-name (concat path f))) result))))
+                                                                    ((file-exists-p path)
+                                                                     `(,(expand-file-name path)))
+                                                                    (t (file-expand-wildcards path)))))
+                                                          (append mk-org-project-search-files
+                                                                  (let ((xs '()))
+                                                                    (maphash (lambda (k v)
+                                                                               (let ((path (cadr (assoc 'basedir v))))
+                                                                                 (when path
+                                                                                   (add-to-list 'xs path))))
+                                                                             mk-proj-list)
+                                                                    xs)))))
                 :test #'string-equal))))
 
 ;; (setq mk-org-project-search-files '("~/org/" "~/org/projects.org"))
@@ -1024,7 +1024,7 @@ See also `mk-org-entry-nearest-active'."
   (unless (eq major-mode 'org-mode)
     (error "mk-org: current buffer not in org-mode"))
   (unless proj-name
-    (setq proj-name (or (cadr (assoc 'name config-alist) headline) "NewProject")))
+    (setq proj-name (or (cadr (assoc 'name config-alist)) headline "NewProject")))
   (save-excursion
     (save-restriction
       (org-insert-heading)
