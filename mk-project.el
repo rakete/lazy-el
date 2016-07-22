@@ -2918,14 +2918,14 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                      (if (eq common-path 'undefined)
                          ;; set common-path on first iteration if it is undefined, we'll be unecessarily
                          ;; checking it against itself once
-                         (setq common-path (split-string (mk-proj-dirname (buffer-file-name buf)) "/" (not (eq system-type 'windows-nt))))
+                         (setq common-path (split-string (mk-proj-dirname (expand-file-name (buffer-file-name buf))) "/" (not (eq system-type 'windows-nt))))
                        ;; we split both paths by "/" and create a zipper from the resulting lists
                        ;; /foo/bar     -> '\("foo" "bar"\)
                        ;; /foo/bar/bla -> '\("foo" "bar" "bla"\)
                        ;; -> '\(\("foo" "foo"\) \("bar" "bar"\) \(nil "bla"\)\)
                        ;; then walking over the zipper while both tuple's strings match, stopping at a mismatch
                        ;; and collecting matching strings on the way along
-                       (let ((tuples (mk-proj-zip common-path (split-string (buffer-file-name buf) "/" (not (eq system-type 'windows-nt)))))
+                       (let ((tuples (mk-proj-zip common-path (split-string (expand-file-name (buffer-file-name buf)) "/" (not (eq system-type 'windows-nt)))))
                              (temp-path '()))
                          (while (string-equal (first (car tuples)) (second (car tuples)))
                            (add-to-list 'temp-path (first (car tuples)))
@@ -2933,7 +2933,7 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                          ;; we'll set the new common-path before the next iteration, but only if it wouldn't be
                          ;; 'equal' (see mk-proj-path-equal) to any of the ignore-paths
                          (unless (loop for ig in ignore-paths
-                                       if (mk-proj-path-equal (file-name-as-directory ig)
+                                       if (mk-proj-path-equal (file-name-as-directory (expand-file-name ig))
                                                               (expand-file-name (apply 'concat (mapcar 'file-name-as-directory (reverse temp-path)))))
                                        return t
                                        finally return nil)
