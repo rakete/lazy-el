@@ -3035,7 +3035,7 @@ and their parent directory used as basedir.")
                                               ;; find directory that is not a common project subdir
                                               ((buffer)
                                                (let* ((path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths)))
-                                                      (splitted-path (split-string path "/")))
+                                                      (splitted-path (when path (split-string path "/"))))
                                                  (while (and path
                                                              splitted-path
                                                              (not (some (lambda (incubator-path) (mk-proj-path-equal incubator-path path))
