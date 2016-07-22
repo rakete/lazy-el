@@ -1198,7 +1198,7 @@ This is taken almost directly from `org-babel-read'."
         (re-search-forward org-clock-string (save-excursion (org-end-of-subtree)) t)))))
 
 (defun mk-org-search-files (&rest search-files)
-  (unless mk-org-project-search-files
+  (unless (or search-files mk-org-project-search-files)
     (error "mk-org: could not find any projects, mk-org-project-search-files is not set"))
   (let ((buffer-with-projects nil)
         (pre-define-buffer-list (buffer-list))
