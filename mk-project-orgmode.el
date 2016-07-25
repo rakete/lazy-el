@@ -138,8 +138,13 @@ in which projects have been defined as well as the files specified by
 Also tries to find org files with projects in files from `recentf-list'."
   (let ((org-files '()))
     (maphash (lambda (k p)
-               (when (cdr (assoc 'org-file p))
-                 (add-to-list 'org-files (cadr (assoc 'org-file p)))))
+               ;; - first check for org-file config option
+               ;; - second check if a file named $projectname.org is in $basedir
+               (cond ((cdr (assoc 'org-file p))
+                      (add-to-list 'org-files (cadr (assoc 'org-file p))))
+                     ((let ((project-org-filename (concat (expand-file-name (cadr (assoc 'basedir p))) (cadr (assoc 'name p)) ".org")))
+                        (when (file-exists-p project-org-filename)
+                          (add-to-list 'org-files project-org-filename))))))
              mk-proj-list)
     (when (boundp 'recentf-list)
       (dolist (recent-file recentf-list)
@@ -162,6 +167,8 @@ Also tries to find org files with projects in files from `recentf-list'."
                                                                     ((file-exists-p path)
                                                                      `(,(expand-file-name path)))
                                                                     (t (file-expand-wildcards path)))))
+                                                          ;; - mk-org-project-search-files can contain directories, is appending here the right thing to do? have
+                                                          ;; I coded this so that somewhere down the line I check for directories? I hope so...
                                                           (append mk-org-project-search-files
                                                                   (let ((xs '()))
                                                                     (maphash (lambda (k v)
