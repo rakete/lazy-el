@@ -355,11 +355,11 @@ load time. See also `project-menu-remove'."
 
 (defun mk-proj-dirname (path)
   "Take a path and return the directory only, without filename."
-  (apply #'concat (reverse (mapcar (lambda (s)
-                                     (if (> (length s) 0)
-                                         (file-name-as-directory s)
-                                       (file-name-as-directory "/")))
-                                   (cdr (reverse (split-string path "/")))))))
+  (file-name-as-directory (apply #'concat (reverse (mapcar (lambda (s)
+                                                             (if (> (length s) 0)
+                                                                 (file-name-as-directory s)
+                                                               (file-name-as-directory "/")))
+                                                           (cdr (reverse (split-string (expand-file-name path) "/"))))))))
 
 (defun mk-proj-assert-proj (&optional try-guessing)
   (unless mk-proj-name
