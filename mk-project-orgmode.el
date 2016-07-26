@@ -98,7 +98,7 @@ a single org file is stored in the projects basedir.")
                                            (unless (mk-proj-get-config-val 'org-file proj-name)
                                              (let ((org-file (concat (mk-proj-get-config-val 'basedir proj-name) "/" proj-name ".org")))
                                                (when (file-exists-p org-file)
-                                                 (mk-org-search-files org-file))))))
+                                                 (mk-org-search-projects org-file))))))
      (add-hook 'mk-proj-after-load-hook (lambda ()
                                           (when (mk-proj-get-config-val 'org-file)
                                             (project-clock-in))))
@@ -119,7 +119,7 @@ a single org file is stored in the projects basedir.")
                    (mk-proj-get-config-val 'org-file)
                    (string-equal (file-truename filename)
                                  (file-truename (mk-proj-get-config-val 'org-file))))
-          (mk-org-search-files filename))))))
+          (mk-org-search-projects filename))))))
 
 (defun mk-org-concatl (&rest sequences-sequence)
   (let ((r '()))
@@ -138,8 +138,13 @@ in which projects have been defined as well as the files specified by
 Also tries to find org files with projects in files from `recentf-list'."
   (let ((org-files '()))
     (maphash (lambda (k p)
-               (when (cdr (assoc 'org-file p))
-                 (add-to-list 'org-files (cadr (assoc 'org-file p)))))
+               ;; - first check for org-file config option
+               ;; - second check if a file named $projectname.org is in $basedir
+               (cond ((cdr (assoc 'org-file p))
+                      (add-to-list 'org-files (cadr (assoc 'org-file p))))
+                     ((let ((project-org-filename (concat (expand-file-name (cadr (assoc 'basedir p))) (cadr (assoc 'name p)) ".org")))
+                        (when (file-exists-p project-org-filename)
+                          (add-to-list 'org-files project-org-filename))))))
              mk-proj-list)
     (when (boundp 'recentf-list)
       (dolist (recent-file recentf-list)
@@ -175,6 +180,8 @@ Also tries to find org files with projects in files from `recentf-list'."
                                                                     ((file-exists-p path)
                                                                      `(,(expand-file-name path)))
                                                                     (t (file-expand-wildcards path)))))
+                                                          ;; - mk-org-project-search-files can contain directories, is appending here the right thing to do? have
+                                                          ;; I coded this so that somewhere down the line I check for directories? I hope so...
                                                           (append mk-org-project-search-files
                                                                   (let ((xs '()))
                                                                     (maphash (lambda (k v)
@@ -1210,7 +1217,7 @@ This is taken almost directly from `org-babel-read'."
         (show-all)
         (re-search-forward org-clock-string (save-excursion (org-end-of-subtree)) t)))))
 
-(defun mk-org-search-files (&rest search-files)
+(defun mk-org-search-projects (&rest search-files)
   (unless (or search-files mk-org-project-search-files)
     (error "mk-org: could not find any projects, mk-org-project-search-files is not set"))
   (let ((buffer-with-projects nil)
