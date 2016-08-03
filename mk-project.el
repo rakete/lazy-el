@@ -580,7 +580,7 @@ Examples:
         ((file-exists-p (concat (file-name-as-directory (expand-file-name mk-global-cache-root)) "projects.el"))
          (load (concat (file-name-as-directory (expand-file-name mk-global-cache-root)) "projects.el")))))
 
-(defun* mk-proj-find-config (&optional proj-name (inherit t))
+(defun* mk-proj-find-alist (&optional proj-name (inherit t))
   "Get a projects config-alist from the global projects hashmap."
   (when (or proj-name (setq proj-name mk-proj-name))
     (let* ((child (gethash proj-name mk-proj-list))
@@ -602,7 +602,7 @@ See also `mk-proj-var-before-get-functions'."
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  (let* ((proj-alist (or proj-alist (mk-proj-find-config proj-name nil)))
+  (let* ((proj-alist (or proj-alist (mk-proj-find-alist proj-name nil)))
          (fn (cdr (assoc key mk-proj-var-before-get-functions)))
          (val  (or (when fn
                      (funcall fn key (cadr (assoc key proj-alist)) proj-name proj-alist))
@@ -621,7 +621,7 @@ See also `mk-proj-var-before-get-functions'."
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
-  (let* ((current-alist (mk-proj-find-config proj-name nil))
+  (let* ((current-alist (mk-proj-find-alist proj-name nil))
          (new-alist current-alist))
     (when current-alist
       (while (assoc key new-alist)
@@ -822,7 +822,7 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
        (set-window-start window (marker-position marker))
        (lisp-interaction-mode)
        (goto-char (marker-position marker))
-       (mk-proj-config-save mk-proj-name (mk-proj-find-config mk-proj-name nil))
+       (mk-proj-config-save mk-proj-name (mk-proj-find-alist mk-proj-name nil))
        (set-window-dedicated-p window t)
        (mk-proj-backend-edit-project-mode 'elisp)
        (buffer-enable-undo)))
@@ -876,7 +876,7 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
     (unless proj-name
       (setq proj-name mk-proj-name))
     (unless config-alist
-      (setq config-alist (mk-proj-find-config proj-name t)))
+      (setq config-alist (mk-proj-find-alist proj-name t)))
     (maphash (lambda (k v)
                (unless (eq k 'elisp)
                  (when (funcall (cdr (assoc 'test v)) config-alist)
@@ -887,17 +887,17 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
   (interactive)
   (mk-proj-assert-proj)
   (mk-proj-backend-funcall (mk-proj-detect-backend)
-                           'save mk-proj-name (mk-proj-find-config nil nil)))
+                           'save mk-proj-name (mk-proj-find-alist nil nil)))
 
 (defun project-insert ()
   (interactive)
   (mk-proj-assert-proj)
   (cond ((derived-mode-p 'emacs-lisp-mode 'inferior-emacs-lisp-mode)
          (mk-proj-backend-funcall 'elisp
-                                  'insert mk-proj-name (mk-proj-find-config nil nil)))
+                                  'insert mk-proj-name (mk-proj-find-alist nil nil)))
         ((derived-mode-p 'org-mode)
          (mk-proj-backend-funcall 'orgmode
-                                  'insert mk-proj-name (mk-proj-find-config nil nil)))))
+                                  'insert mk-proj-name (mk-proj-find-alist nil nil)))))
 
 (defun* project-create ()
   (interactive)
@@ -1050,7 +1050,7 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
 (defun mk-proj-load (proj-name)
   (interactive)
   (let* ((oldname mk-proj-name)
-         (proj-alist (mk-proj-find-config proj-name nil))
+         (proj-alist (mk-proj-find-alist proj-name nil))
          (quiet (and (cadr (assoc 'parent proj-alist))
                      (or (string-equal (cadr (assoc 'parent proj-alist))
                                        mk-proj-name)
@@ -1108,9 +1108,9 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
                      (completing-read "Project Name: " names)))))
     (when (and (cadr (assoc 'name guessed-alist))
                (string-equal name (cadr (assoc 'name guessed-alist)))
-               (not (mk-proj-find-config name nil)))
+               (not (mk-proj-find-alist name nil)))
       (project-def name guessed-alist))
-    (when (not (mk-proj-find-config name nil))
+    (when (not (mk-proj-find-alist name nil))
       (add-to-list 'guessed-alist `(name ,name))
       (project-def name guessed-alist))
     (mk-proj-load name)))
@@ -1191,8 +1191,8 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
 (defun mk-proj-buffer-p (buf &optional proj-name proj-alist)
   "Is the given buffer in our project, is a file opened? Also detects dired buffers open to basedir/*"
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-config proj-name)
-                       (mk-proj-find-config mk-proj-name)
+                       (mk-proj-find-alist proj-name)
+                       (mk-proj-find-alist mk-proj-name)
                        (mk-proj-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
@@ -1377,8 +1377,8 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
   "Create or update the projects TAG database."
   (interactive)
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-config proj-name)
-                       (mk-proj-find-config mk-proj-name)
+                       (mk-proj-find-alist proj-name)
+                       (mk-proj-find-alist mk-proj-name)
                        (mk-proj-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
@@ -1561,7 +1561,7 @@ recieves when it acts as process sentinel."
                  (add-to-list 'available-systems 'gtags))))))
     available-systems))
 
-(defun mk-proj-jump-elisp-location-helper (symbol)
+(defun mk-proj-find-symbol-elisp-location-helper (symbol)
   (let ((sym symbol))
     `(lambda ()
        (let* ((previous-buf-list (buffer-list))
@@ -1573,10 +1573,10 @@ recieves when it acts as process sentinel."
                               ((facep (quote ,sym)) (find-definition-noselect (quote ,sym) 'defface)))))
          location))))
 
-(defun mk-proj-jump-list (proj-name proj-alist system regexp &rest args)
+(defun mk-proj-find-symbol (proj-name proj-alist system regexp &rest args)
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-config proj-name)
-                       (mk-proj-find-config mk-proj-name)
+                       (mk-proj-find-alist proj-name)
+                       (mk-proj-find-alist mk-proj-name)
                        (mk-proj-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
@@ -1605,7 +1605,7 @@ recieves when it acts as process sentinel."
           ((eq 'obarray system)
            (let ((jumps nil)
                  (prev-buf-list (buffer-list)))
-             (when (and proj-name (position 'elisp (mk-proj-src-pattern-languages (cadr (assoc 'src-patterns (mk-proj-find-config proj-name))))))
+             (when (and proj-name (position 'elisp (mk-proj-src-pattern-languages (cadr (assoc 'src-patterns (mk-proj-find-alist proj-name))))))
                (do-all-symbols (sym)
                  (let ((sym-name (symbol-name sym)))
                    (when (and (string-match regexp sym-name)
@@ -1622,7 +1622,7 @@ recieves when it acts as process sentinel."
                             (docstring (and (stringp doc)
                                             (string-match ".*$" doc)
                                             (match-string 0 doc)))
-                            (locator (mk-proj-jump-elisp-location-helper sym)))
+                            (locator (mk-proj-find-symbol-elisp-location-helper sym)))
                        (push (list :word word
                                    :locator locator
                                    :docstring docstring
@@ -2182,18 +2182,18 @@ recieves when it acts as process sentinel."
     (let ((guessed-name (cadr (assoc 'name (mk-proj-guess-alist)))))
       (when guessed-name (setq proj-name guessed-name))))
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-config proj-name)
-                       (mk-proj-find-config mk-proj-name)
+                       (mk-proj-find-alist proj-name)
+                       (mk-proj-find-alist mk-proj-name)
                        (mk-proj-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
     (mk-proj-assert-proj))
   (unless buffer
     (setq buffer (current-buffer)))
-  (let ((jumps (mk-proj-merge-obarray-jumps (mk-proj-jump-list proj-name proj-alist 'obarray (concat "^" word "$"))
-                                            (or (mk-proj-jump-list proj-name proj-alist 'gtags word (concat "global -x -d " (prin1-to-string word)))
-                                                (mk-proj-jump-list proj-name proj-alist 'gtags word (concat "global -x -s " (prin1-to-string word))))
-                                            (mk-proj-jump-list proj-name proj-alist 'imenu (concat "^" word "$")))))
+  (let ((jumps (mk-proj-merge-obarray-jumps (mk-proj-find-symbol proj-name proj-alist 'obarray (concat "^" word "$"))
+                                            (or (mk-proj-find-symbol proj-name proj-alist 'gtags word (concat "global -x -d " (prin1-to-string word)))
+                                                (mk-proj-find-symbol proj-name proj-alist 'gtags word (concat "global -x -s " (prin1-to-string word))))
+                                            (mk-proj-find-symbol proj-name proj-alist 'imenu (concat "^" word "$")))))
     (mk-proj-select-jumps (mk-proj-score-jumps jumps (regexp-quote word) buffer))))
 
 (defun project-jump-regexp (regexp &optional proj-name proj-alist buffer)
@@ -2204,18 +2204,18 @@ recieves when it acts as process sentinel."
     (let ((guessed-name (cadr (assoc 'name (mk-proj-guess-alist)))))
       (when guessed-name (setq proj-name guessed-name))))
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-config proj-name)
-                       (mk-proj-find-config mk-proj-name)
+                       (mk-proj-find-alist proj-name)
+                       (mk-proj-find-alist mk-proj-name)
                        (mk-proj-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
     (mk-proj-assert-proj))
   (unless buffer
     (setq buffer (current-buffer)))
-  (let ((jumps (mk-proj-merge-obarray-jumps (mk-proj-jump-list proj-name proj-alist 'obarray (concat "^" regexp))
-                                            (or (mk-proj-jump-list proj-name proj-alist 'gtags regexp (concat "global -x -e " (prin1-to-string (concat regexp ".*"))))
-                                                (mk-proj-jump-list proj-name proj-alist 'gtags regexp (concat "global -x -s " (prin1-to-string (concat regexp ".*")))))
-                                            (mk-proj-jump-list proj-name proj-alist 'imenu regexp))))
+  (let ((jumps (mk-proj-merge-obarray-jumps (mk-proj-find-symbol proj-name proj-alist 'obarray (concat "^" regexp))
+                                            (or (mk-proj-find-symbol proj-name proj-alist 'gtags regexp (concat "global -x -e " (prin1-to-string (concat regexp ".*"))))
+                                                (mk-proj-find-symbol proj-name proj-alist 'gtags regexp (concat "global -x -s " (prin1-to-string (concat regexp ".*")))))
+                                            (mk-proj-find-symbol proj-name proj-alist 'imenu regexp))))
     (mk-proj-select-jumps (mk-proj-score-jumps jumps regexp buffer))))
 
 (defun project-jump-references (word &optional proj-name buffer)
@@ -2318,8 +2318,8 @@ recieves when it acts as process sentinel."
 (defun mk-proj-fib-cb (process event &optional proj-name proj-alist quiet)
   "Handle failure to complete fib building"
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-config proj-name)
-                       (mk-proj-find-config mk-proj-name)
+                       (mk-proj-find-alist proj-name)
+                       (mk-proj-find-alist mk-proj-name)
                        (mk-proj-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
@@ -2344,8 +2344,8 @@ recieves when it acts as process sentinel."
 (defun mk-proj-find-cmd-src-args (src-patterns &optional proj-name proj-alist)
   "Generate the ( -name <pat1> -o -name <pat2> ...) pattern for find cmd"
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-config proj-name)
-                       (mk-proj-find-config mk-proj-name)
+                       (mk-proj-find-alist proj-name)
+                       (mk-proj-find-alist mk-proj-name)
                        (mk-proj-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
@@ -2369,8 +2369,8 @@ recieves when it acts as process sentinel."
 (defun mk-proj-find-cmd-ignore-args (ignore-patterns &optional proj-name proj-alist)
   "Generate the -not ( -name <pat1> -o -name <pat2> ...) pattern for find cmd"
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-config proj-name)
-                       (mk-proj-find-config mk-proj-name)
+                       (mk-proj-find-alist proj-name)
+                       (mk-proj-find-alist mk-proj-name)
                        (mk-proj-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
@@ -2384,8 +2384,8 @@ recieves when it acts as process sentinel."
   "Regenerate the *file-index* buffer that is used for project-find-file"
   (interactive)
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-config proj-name)
-                       (mk-proj-find-config mk-proj-name)
+                       (mk-proj-find-alist proj-name)
+                       (mk-proj-find-alist mk-proj-name)
                        (mk-proj-guess-alist)
                        ))
   (setq proj-name (cadr (assoc 'name proj-alist)))
@@ -2443,7 +2443,7 @@ recieves when it acts as process sentinel."
           (sleep-for 0 4)))
       (when do-friends
         (dolist (friend friends)
-          (let ((friend-alist (mk-proj-find-config friend)))
+          (let ((friend-alist (mk-proj-find-alist friend)))
             (when friend-alist
               (project-index friend friend-alist async nil quiet terminator parent))))))))
 
@@ -2455,8 +2455,8 @@ If it is nil, return all files.
 
 Returned file paths are relative to the project's basedir."
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-config proj-name)
-                       (mk-proj-find-config mk-proj-name)
+                       (mk-proj-find-alist proj-name)
+                       (mk-proj-find-alist mk-proj-name)
                        (mk-proj-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (get-buffer (mk-proj-fib-name proj-name))
@@ -2481,8 +2481,8 @@ Returned file paths are relative to the project's basedir."
 
 (defun mk-proj-files (&optional proj-name proj-alist truenames)
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-config proj-name)
-                       (mk-proj-find-config mk-proj-name)
+                       (mk-proj-find-alist proj-name)
+                       (mk-proj-find-alist mk-proj-name)
                        (mk-proj-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
@@ -2507,8 +2507,8 @@ Returned file paths are relative to the project's basedir."
 
 (defun mk-proj-friendly-files (&optional proj-name proj-alist truenames)
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-config proj-name)
-                       (mk-proj-find-config mk-proj-name)
+                       (mk-proj-find-alist proj-name)
+                       (mk-proj-find-alist mk-proj-name)
                        (mk-proj-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
@@ -2563,8 +2563,8 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
 
 (defun mk-proj-fib-friend-matches (&optional regex proj-name proj-alist)
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-config proj-name)
-                       (mk-proj-find-config mk-proj-name)
+                       (mk-proj-find-alist proj-name)
+                       (mk-proj-find-alist mk-proj-name)
                        (mk-proj-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
@@ -2579,7 +2579,7 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
               (when (string-match regex friend) (add-to-list 'resulting-matches (expand-file-name friend)))
             (add-to-list 'resulting-matches (expand-file-name friend)))
         (setq resulting-matches (append resulting-matches
-                                        (let ((friend-alist (mk-proj-find-config friend)))
+                                        (let ((friend-alist (mk-proj-find-alist friend)))
                                           (when friend-alist
                                             (mapcar (lambda (f)
                                                       (expand-file-name (concat (file-name-as-directory (mk-proj-get-config-val 'basedir friend t friend-alist)) f)))
@@ -2596,8 +2596,8 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                    (if (file-exists-p (expand-file-name f))
                        (when (string-equal f file-name)
                          (return-from "friend-loop" t))
-                     (when (mk-proj-find-config f t)
-                       (let* ((friend-config (mk-proj-find-config f t))
+                     (when (mk-proj-find-alist f t)
+                       (let* ((friend-config (mk-proj-find-alist f t))
                               (non-slash-basedir (expand-file-name (car (cdr (assoc 'basedir friend-config)))))
                               (slash-basedir (if (string-equal (substring non-slash-basedir -1) "/")
                                                   non-slash-basedir

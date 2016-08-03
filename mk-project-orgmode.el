@@ -65,7 +65,7 @@ a single org file is stored in the projects basedir.")
                                                    (and (boundp 'mk-proj-name)
                                                         mk-proj-name
                                                         (not (string-equal mk-proj-name (mk-org-entry-name))))))
-                                      (unless (mk-proj-find-config (mk-org-entry-name))
+                                      (unless (mk-proj-find-alist (mk-org-entry-name))
                                         (project-def (mk-org-entry-name) (mk-org-entry-alist)))
                                       (mk-proj-load (mk-org-entry-name)))))
      (add-hook 'org-after-todo-state-change-hook (lambda ()
@@ -240,7 +240,7 @@ than the current one."
            (not (condition-case nil (mk-proj-assert-proj) (error t)))
            (not (mk-proj-get-config-val 'org-file mk-proj-name))
            (y-or-n-p (concat "Create .org file for " mk-proj-name "? ")))
-      (mk-org-config-save mk-proj-name (mk-proj-find-config mk-proj-name t))
+      (mk-org-config-save mk-proj-name (mk-proj-find-alist mk-proj-name t))
       (mk-proj-load mk-proj-name)
       nil)
      ;; 3. project not loaded, proj-name and org -> load proj-name
@@ -257,13 +257,13 @@ than the current one."
            proj-name
            (not (mk-proj-get-config-val 'org-file proj-name))
            (y-or-n-p (concat "Create .org file for " proj-name "? ")))
-      (mk-org-config-save mk-proj-name (mk-proj-find-config proj-name t))
+      (mk-org-config-save mk-proj-name (mk-proj-find-alist proj-name t))
       (mk-proj-load proj-name)
       nil)
      ;; 5. guessed exists, org -> load guessed
      ((and try-guessing
            (setq guessed-alist (mk-proj-guess-alist))
-           (assoc 'org-file (mk-proj-find-config (cadr (assoc 'name guessed-alist)) t))
+           (assoc 'org-file (mk-proj-find-alist (cadr (assoc 'name guessed-alist)) t))
            (y-or-n-p (concat "Load " (cadr (assoc 'name guessed-alist)) "? ")))
       (mk-proj-load (cadr (assoc 'name guessed-alist)))
       nil)
@@ -968,7 +968,7 @@ See also `mk-org-entry-nearest-active'."
     (setq proj-name (or (mk-proj-get-config-val 'parent)
                         mk-proj-name)))
   (when (and proj-name
-             (mk-proj-find-config proj-name))
+             (mk-proj-find-alist proj-name))
     (let ((todos '()))
       (maphash (lambda (title alist)
                  (when (string-match (concat "^" proj-name ":\\(.*\\)$") title)
@@ -1100,9 +1100,9 @@ See also `mk-org-entry-nearest-active'."
          (set-buffer-modified-p mod)
          (mk-org-entry-define-project saved-marker))))))
 
-;;(mk-org-config-save "sauerbraten" (mk-proj-find-config "sauerbraten" t))
+;;(mk-org-config-save "sauerbraten" (mk-proj-find-alist "sauerbraten" t))
 ;; (mk-org-find-save-location-marker "sauerbraten")
-;;(cadr (assoc 'name (mk-proj-find-config "cl-horde3d" t)))
+;;(cadr (assoc 'name (mk-proj-find-alist "cl-horde3d" t)))
 
 (defun* mk-org-config-buffer (&optional (state :create) proj-name config-alist)
   (case state
