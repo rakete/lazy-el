@@ -971,7 +971,8 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
 (defun project-undef (&optional proj-name)
   "Opposite of `project-define'."
   (interactive "sProject: ")
-  (remhash proj-name mk-proj-list))
+  (remhash proj-name mk-proj-list)
+  (remhash proj-name mk-proj-completions-cache))
 
 (defmacro mk-proj-with-current-project (proj-name &rest body)
   `(let ((mk-proj-name ,proj-name))
