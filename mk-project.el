@@ -291,7 +291,6 @@ Only gtags and gtags+exuberant-ctags are implemented.")
 (defvar mk-proj-thing-selector 'symbol)
 
 (defvar mk-proj-completions-cache (make-hash-table :test 'equal))
-(defvar mk-proj-definitions-cache (make-hash-table :test 'equal))
 
 (defvar mk-proj-list (make-hash-table :test 'equal))
 
@@ -303,11 +302,6 @@ Only gtags and gtags+exuberant-ctags are implemented.")
   "A programming project management library."
   :group 'tools)
 
-(defcustom mk-proj-ack-respect-case-fold t
-  "If on and case-fold-search is true, project-ack will ignore case by passing \"-i\" to ack."
-  :type 'boolean
-  :group 'mk-project)
-
 (defcustom mk-proj-use-ido-selection nil
   "If ido-mode is available, use ido selection where appropriate."
   :type 'boolean
@@ -315,12 +309,6 @@ Only gtags and gtags+exuberant-ctags are implemented.")
 
 (defcustom mk-proj-file-index-relative-paths t
   "If non-nil, generate relative path names in the file-index buffer"
-  :type 'boolean
-  :group 'mk-project)
-
-(defcustom mk-proj-menu-on t
-  "If non-nil, define the 'mk-project' menu in the menu-bar at
-load time. See also `project-menu-remove'."
   :type 'boolean
   :group 'mk-project)
 
@@ -2026,29 +2014,6 @@ recieves when it acts as process sentinel."
   (define-key mk-proj-jump-list-mode-map (kbd "<return>") 'mk-proj-jump-go)
   (tabulated-list-init-header))
 
-(defun mk-proj-update-gtags-definitions-cache (proj-name)
-  (let* ((cmd (concat "global --match-part=first -xGq -d \".*\""))
-         (lines (split-string (condition-case nil (shell-command-to-string cmd) (error nil)) "\n" t))
-         (case-fold-search nil))
-    (when lines
-      (loop for line in lines
-            do (when (string-match (concat "^"
-                                           "\\([^ ]*\\)" ;; completion
-                                           "[ \t]+\\([[:digit:]]+\\)" ;; linum
-                                           "[ \t]+\\([^ \t]+\\)" ;; file
-                                           "[ \t]+\\(.*\\)" ;; definition
-                                           "$")
-                                   line)
-                 (let* ((completion (match-string 1 line))
-                        (cached-definition (gethash completion mk-proj-definitions-cache)))
-                   (plist-put cached-definition :line-number (match-string 2 line))
-                   (plist-put cached-definition :file-path (match-string 3 line))
-                   (plist-put cached-definition :definition (match-string 4 line))
-                   (unless cached-definition
-                     (puthash completion
-                              cached-definition
-                              mk-proj-definitions-cache))))))))
-
 (defun mk-proj-update-gtags-completions-cache (proj-name)
   (let* ((cmd (concat "global --match-part=first -Gq -c \"\""))
          (completions (split-string (condition-case nil (shell-command-to-string cmd) (error nil)) "\n" t))
@@ -2058,27 +2023,6 @@ recieves when it acts as process sentinel."
             do (puthash completion
                         nil
                         completions-cache)))))
-
-(defun mk-proj-update-obarray-definitions-cache (proj-name)
-  (do-all-symbols (sym)
-    (when (or (fboundp sym)
-              (boundp sym))
-      (let* ((completion (symbol-name sym))
-             (doc (condition-case nil
-                      (if (fboundp sym)
-                          (documentation sym t)
-                        (documentation-property sym 'variable-documentation t))
-                    (error nil)))
-             (case-fold-search nil)
-             (docstring (and (stringp doc)
-                             (string-match ".*$" doc)
-                             (match-string 0 doc)))
-             (cached-definition (when docstring (gethash completion mk-proj-definitions-cache))))
-        (if (and docstring cached-definition)
-            (plist-put cached-definition :docstring docstring)
-          (puthash completion
-                   (plist-put cached-definition :docstring docstring)
-                   mk-proj-definitions-cache))))))
 
 (defun mk-proj-update-obarray-completions-cache (proj-name)
   (let ((completions-cache (gethash proj-name mk-proj-completions-cache)))
