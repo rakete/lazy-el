@@ -23,7 +23,7 @@
       (puthash proj-name history mk-company-history))))
 
 (defun mk-company-history-candidates (prefix proj-name)
-  (remove-if-not 'identity (mapcar (lambda (last) (when (string-match prefix last) last))
+  (remove-if-not 'identity (mapcar (lambda (last) (when (string-match (concat "^" prefix) last) last))
                                    (gethash proj-name mk-company-history))))
 
 (defun mk-company-gtags-candidates (prefix)
@@ -86,18 +86,34 @@
                                mk-company-project-name) mk-company-complete-in-projects))
                  (company-grab-symbol)))
     (candidates (mk-company-history-candidates arg mk-company-project-name))
-    (meta (let* ((cache (gethash arg mk-proj-definitions-cache))
-                 (definition (plist-get cache :definition))
-                 (docstring (plist-get cache :docstring))
-                 (meta nil))
-            (when docstring
-              (push docstring meta))
-            (when definition
-              (push definition meta))
-            (when meta
-              (mapconcat 'identity meta ": "))))
+    (meta (mk-eldoc-function-meta arg mk-company-project-name (mk-proj-find-alist mk-company-project-name)))
+    ;;doc
+    ;;location
     (post-completion (mk-company-add-history mk-company-project-name))
-    ;;(location (mk-company-get-jump arg 'location))
+    (init (setq-local mk-company-project-name (or mk-company-project-name (cadr (assoc 'name (mk-proj-guess-alist))))))))
+
+;;;###autoload
+(defun company-project-cached (command &optional arg &rest ignored)
+  (interactive (list 'interactive))
+  (cl-case command
+    (interactive (company-begin-backend 'company-project))
+    (no-cache nil)
+    (sorted nil)
+    (duplicates nil)
+    (prefix (and (not (company-in-string-or-comment))
+                 (buffer-file-name (current-buffer))
+                 (or mk-company-project-name
+                     mk-proj-name)
+                 (or (eq mk-company-complete-in-projects t)
+                     (find (or mk-proj-name
+                               mk-company-project-name) mk-company-complete-in-projects))
+                 (company-grab-symbol)))
+    (candidates (append (mk-proj-completions arg mk-company-project-name)
+                        (mk-company-dabbrev-candidates arg)))
+    (meta (mk-eldoc-function-meta arg mk-company-project-name (mk-proj-find-alist mk-company-project-name)))
+    ;;doc
+    ;;location
+    (post-completion (mk-company-add-history mk-company-project-name))
     (init (setq-local mk-company-project-name (or mk-company-project-name (cadr (assoc 'name (mk-proj-guess-alist))))))))
 
 ;;;###autoload
@@ -121,50 +137,10 @@
                         (when (find 'elisp (mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns mk-company-project-name)))
                           (mk-company-obarray-candidates arg))
                         (mk-company-dabbrev-candidates arg)))
-    (meta (let* ((cache (gethash arg mk-proj-definitions-cache))
-                 (definition (plist-get cache :definition))
-                 (docstring (plist-get cache :docstring))
-                 (meta nil))
-            (when docstring
-              (push docstring meta))
-            (when definition
-              (push definition meta))
-            (when meta
-              (mapconcat 'identity meta ": "))))
+    (meta (mk-eldoc-function-meta arg mk-company-project-name (mk-proj-find-alist mk-company-project-name)))
+    ;;doc
+    ;;location
     (post-completion (mk-company-add-history mk-company-project-name))
-    ;;(location (mk-company-get-jump arg 'location))
-    (init (setq-local mk-company-project-name (or mk-company-project-name (cadr (assoc 'name (mk-proj-guess-alist))))))))
-
-;;;###autoload
-(defun company-project-cached (command &optional arg &rest ignored)
-  (interactive (list 'interactive))
-  (cl-case command
-    (interactive (company-begin-backend 'company-project))
-    (no-cache nil)
-    (sorted nil)
-    (duplicates nil)
-    (prefix (and (not (company-in-string-or-comment))
-                 (buffer-file-name (current-buffer))
-                 (or mk-company-project-name
-                     mk-proj-name)
-                 (or (eq mk-company-complete-in-projects t)
-                     (find (or mk-proj-name
-                               mk-company-project-name) mk-company-complete-in-projects))
-                 (company-grab-symbol)))
-    (candidates (append (mk-proj-completions arg mk-company-project-name)
-                        (mk-company-dabbrev-candidates arg)))
-    (meta (let* ((cache (gethash arg mk-proj-definitions-cache))
-                 (definition (plist-get cache :definition))
-                 (docstring (plist-get cache :docstring))
-                 (meta nil))
-            (when docstring
-              (push docstring meta))
-            (when definition
-              (push definition meta))
-            (when meta
-              (mapconcat 'identity meta ": "))))
-    (post-completion (mk-company-add-history mk-company-project-name))
-    ;;(location (mk-company-get-jump arg 'location))
     (init (setq-local mk-company-project-name (or mk-company-project-name (cadr (assoc 'name (mk-proj-guess-alist))))))))
 
 (defun mk-company-transform-history-to-front (candidates)
