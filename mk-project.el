@@ -1578,6 +1578,7 @@ recieves when it acts as process sentinel."
          (cmd-sep (if (eq system-type 'windows-nt) " & " " ; ")))
     (cond ((eq 'gtags system)
            (let ((cmd (nth 0 args)))
+             (project-setup-tags proj-name)
              (mapcar (lambda (line)
                        (let ((tokens (split-string line " " t)))
                          (list :word (nth 0 tokens)
