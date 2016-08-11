@@ -2037,53 +2037,67 @@ recieves when it acts as process sentinel."
                    completions-cache))))))
 
 (defun mk-proj-update-completions-cache (&optional proj-name)
-  (when (and mk-proj-name (not proj-name))
-    (let ((guessed-name (cadr (assoc 'name (mk-proj-guess-alist)))))
-      (when guessed-name (setq proj-name guessed-name))))
-  (setq proj-name (or proj-name
-                      mk-proj-after-save-current-project
-                      mk-proj-name
-                      (cadr (assoc 'name (mk-proj-guess-alist)))))
-  (unless proj-name
-    (mk-proj-assert-proj))
-  (if (not (hash-table-p (gethash proj-name mk-proj-completions-cache)))
-      (puthash proj-name (make-hash-table :test 'equal :size 100000) mk-proj-completions-cache)
-    (maphash (lambda (k v)
-               (remhash k (gethash proj-name mk-proj-completions-cache)))
-             (gethash proj-name mk-proj-completions-cache)))
-  (unless (string-equal mk-proj-name proj-name)
-    (project-setup-tags proj-name))
-  (mk-proj-update-gtags-completions-cache proj-name)
-  (unless (string-equal mk-proj-name proj-name)
-    (project-setup-tags mk-proj-name))
-  ;; (mk-proj-update-imenu-completions-cache proj-name)
-  (when (find 'elisp (mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns proj-name)))
-    (mk-proj-update-obarray-completions-cache proj-name))
-  (garbage-collect))
+  (let* ((guessed-alist (mk-proj-guess-alist))
+         (guessed-name (cadr (assoc 'name guessed-alist)))
+         (proj-alist (mk-proj-find-alist proj-name)))
+    (cond ((and (not proj-name)
+                mk-proj-name
+                (mk-proj-buffer-p (current-buffer) mk-proj-name))
+           (setq proj-name mk-proj-name
+                 proj-alist (mk-proj-find-alist mk-proj-name)))
+          ((or (and proj-name
+                    (not proj-alist)
+                    guessed-alist)
+               (and (not proj-name)
+                    guessed-name))
+           (setq proj-name guessed-name
+                 proj-alist guessed-alist)))
+    (unless proj-name
+      (mk-proj-assert-proj))
+    (if (not (hash-table-p (gethash proj-name mk-proj-completions-cache)))
+        (puthash proj-name (make-hash-table :test 'equal :size 100000) mk-proj-completions-cache)
+      (maphash (lambda (k v)
+                 (remhash k (gethash proj-name mk-proj-completions-cache)))
+               (gethash proj-name mk-proj-completions-cache)))
+    (unless (string-equal mk-proj-name proj-name)
+      (project-setup-tags proj-name))
+    (mk-proj-update-gtags-completions-cache proj-name)
+    (unless (string-equal mk-proj-name proj-name)
+      (project-setup-tags mk-proj-name))
+    ;; (mk-proj-update-imenu-completions-cache proj-name)
+    (when (find 'elisp (mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns proj-name nil proj-alist)))
+      (mk-proj-update-obarray-completions-cache proj-name))
+    (garbage-collect)))
 
 (defun mk-proj-completions (&optional prefix proj-name buffer)
-  (when (and mk-proj-name (not proj-name))
-    (let ((guessed-name (cadr (assoc 'name (mk-proj-guess-alist)))))
-      (when guessed-name (setq proj-name guessed-name))))
-  (setq proj-name (or proj-name
-                      mk-proj-name
-                      (cadr (assoc 'name (mk-proj-guess-alist)))))
-  (unless proj-name
-    (mk-proj-assert-proj))
-  (unless prefix
-    (setq prefix ""))
-  (unless buffer
-    (setq buffer (current-buffer)))
-  (let ((unique-completions '())
-        (case-fold-search nil))
-    (when (not (gethash proj-name mk-proj-completions-cache))
-      (mk-proj-update-completions-cache proj-name))
-    (maphash (lambda (k v)
-               (when (or (string-equal prefix "")
-                         (string-match (concat "^" prefix) k))
-                 (push k unique-completions)))
-             (gethash proj-name mk-proj-completions-cache))
-    (reverse unique-completions)))
+  (let* ((guessed-alist (mk-proj-guess-alist))
+         (guessed-name (cadr (assoc 'name guessed-alist)))
+         (proj-alist nil))
+    (cond ((and (not proj-name)
+                mk-proj-name
+                (mk-proj-buffer-p (current-buffer) mk-proj-name))
+           (setq proj-name mk-proj-name
+                 proj-alist (mk-proj-find-alist mk-proj-name)))
+          ((and (not proj-name)
+                guessed-name)
+           (setq proj-name guessed-name
+                 proj-alist guessed-alist)))
+    (unless proj-name
+      (mk-proj-assert-proj))
+    (unless prefix
+      (setq prefix ""))
+    (unless buffer
+      (setq buffer (current-buffer)))
+    (let ((unique-completions '())
+          (case-fold-search nil))
+      (when (not (gethash proj-name mk-proj-completions-cache))
+        (mk-proj-update-completions-cache proj-name))
+      (maphash (lambda (k v)
+                 (when (or (string-equal prefix "")
+                           (string-match (concat "^" prefix) k))
+                   (push k unique-completions)))
+               (gethash proj-name mk-proj-completions-cache))
+      (reverse unique-completions))))
 
 (defun mk-proj-merge-obarray-jumps (obarray-jumps &rest rest)
   (if obarray-jumps
