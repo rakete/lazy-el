@@ -63,35 +63,37 @@
       (error nil))))
 
 (defun mk-eldoc-function-meta (&optional symbol proj-name proj-alist)
-  (unless (or (window-minibuffer-p)
-              (string-match "\*.*\*" (buffer-name (current-buffer))))
-    (setq symbol (or symbol
-                     (or (and (not symbol)
-                              (boundp 'company-candidates)
-                              company-candidates
-                              (car-safe company-candidates))
-                         (mk-eldoc-thing-at-point-function-name))))
-    (setq proj-alist (or proj-alist
-                         (mk-proj-find-alist proj-name)
-                         (mk-proj-find-alist mk-proj-name)
-                         (mk-proj-guess-alist)))
-    (setq proj-name (cadr (assoc 'name proj-alist)))
-    (unless (and proj-name proj-alist)
-      (mk-proj-assert-proj))
-    (when symbol
-      (let* ((gtags-plist (car-safe (mk-proj-find-symbol proj-name proj-alist 'gtags symbol (concat "global -x -d -e \"^" symbol ".*\""))))
-             (line-number (plist-get gtags-plist :line-number))
-             (file-path (plist-get gtags-plist :file-path))
-             (definition (plist-get gtags-plist :definition)))
-        (when definition
-          (setq definition (replace-regexp-in-string " {$" "" definition)))
-        (if (and definition (string-match ")[ \t{;]*$" definition))
-            definition
-          (when (and line-number file-path)
-            (with-temp-buffer
-              (insert-file-contents file-path)
-              (forward-line (1- line-number))
-              (mk-eldoc-cleanup-thing (mk-eldoc-thing-at-point-function-synopsis)))))))))
+  (condition-case nil
+      (unless (or (window-minibuffer-p)
+                  (string-match "\*.*\*" (buffer-name (current-buffer))))
+        (setq symbol (or symbol
+                         (or (and (not symbol)
+                                  (boundp 'company-candidates)
+                                  company-candidates
+                                  (car-safe company-candidates))
+                             (mk-eldoc-thing-at-point-function-name))))
+        (setq proj-alist (or proj-alist
+                             (mk-proj-find-alist proj-name)
+                             (mk-proj-find-alist mk-proj-name)
+                             (mk-proj-guess-alist)))
+        (setq proj-name (cadr (assoc 'name proj-alist)))
+        (unless (and proj-name proj-alist)
+          (mk-proj-assert-proj))
+        (when symbol
+          (let* ((gtags-plist (car-safe (mk-proj-find-symbol proj-name proj-alist 'gtags symbol (concat "global -x -d -e \"^" symbol ".*\""))))
+                 (line-number (plist-get gtags-plist :line-number))
+                 (file-path (plist-get gtags-plist :file-path))
+                 (definition (plist-get gtags-plist :definition)))
+            (when definition
+              (setq definition (replace-regexp-in-string " {$" "" definition)))
+            (if (and definition (string-match ")[ \t{;]*$" definition))
+                definition
+              (when (and line-number file-path (file-exists-p file-path))
+                (with-temp-buffer
+                  (insert-file-contents file-path)
+                  (forward-line (1- line-number))
+                  (mk-eldoc-cleanup-thing (mk-eldoc-thing-at-point-function-synopsis))))))))
+    (error nil)))
 
 (defun mk-eldoc-function-doc ()
   "yoinks!")
