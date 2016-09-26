@@ -1550,6 +1550,22 @@ recieves when it acts as process sentinel."
                  (add-to-list 'available-systems 'gtags))))))
     available-systems))
 
+(defadvice ido-switch-buffer (around mk-proj-ido-switch-buffer-setup-tags first nil activate)
+  (let ((previous-buffer (current-buffer)))
+    ad-do-it
+    (when (and (not mk-proj-name)
+               (buffer-file-name (current-buffer))
+               (not (eq (current-buffer) previous-buffer)))
+      (project-setup-tags))))
+
+(defadvice switch-buffer (around mk-proj-switch-buffer-setup-tags first nil activate)
+  (let ((previous-buffer (current-buffer)))
+    ad-do-it
+    (when (and (not mk-proj-name)
+               (buffer-file-name (current-buffer))
+               (not (eq (current-buffer) previous-buffer)))
+      (project-setup-tags))))
+
 (defun mk-proj-find-symbol-elisp-location-helper (symbol)
   (let ((sym symbol))
     `(lambda ()
