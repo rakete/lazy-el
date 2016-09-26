@@ -2806,7 +2806,8 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
      (add-hook 'after-save-hook 'mk-proj-after-save-update)
      (add-hook 'after-load-hook 'mk-proj-after-save-update)
      (add-hook 'after-save-hook 'mk-proj-jump-cleanup-highlight)
-     (add-hook 'pre-command-hook 'mk-proj-pre-command-remove-jump-delete-buffer)))
+     (add-hook 'pre-command-hook 'mk-proj-pre-command-remove-jump-delete-buffer)
+     (load-file (concat (file-name-as-directory mk-global-cache-root) "projects.el"))))
 
 ;; ---------------------------------------------------------------------
 ;; Guessing
