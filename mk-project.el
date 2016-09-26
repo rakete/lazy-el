@@ -1578,6 +1578,12 @@ recieves when it acts as process sentinel."
                               ((facep (quote ,sym)) (find-definition-noselect (quote ,sym) 'defface)))))
          location))))
 
+;; - given a system and a regexp, this tries to match regexp with jumps aquired from system and returns
+;; all matching jumps
+;; - so this can be used to find all jumps for only part of a symbol, eg finding all jumps to defintions
+;; starting with mk-proj-find-.* would be possible with this function
+;; - this function is also used to find symbols names if we already know the whole name, check below
+;; how it is used in project-jump-definition and project-jump-regexp
 (defun mk-proj-find-symbol (proj-name proj-alist system regexp &rest args)
   (setq proj-alist (or proj-alist
                        (mk-proj-find-alist proj-name)
@@ -1611,8 +1617,9 @@ recieves when it acts as process sentinel."
           ((eq 'obarray system)
            (let ((jumps nil)
                  (prev-buf-list (buffer-list)))
-             (when (or (eq major-mode 'emacs-lisp-mode)
-                       (eq major-mode 'lisp-interaction-mode)
+             ;; - only try to find the current symbol in the obarray when the current major-mode is a emacs-lisp-mode,
+             ;; or the current project contains any elisp files
+             (when (or (eq major-mode 'emacs-lisp-mode) (eq major-mode 'lisp-interaction-mode)
                        (and proj-name (position 'elisp (mk-proj-src-pattern-languages (cadr (assoc 'src-patterns (mk-proj-find-alist proj-name)))))))
                (do-all-symbols (sym)
                  (let ((sym-name (symbol-name sym)))
