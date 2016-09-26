@@ -39,7 +39,7 @@
 
 (defvar mk-proj-version "2.0.0")
 
-(defvar mk-global-cache-root "~/.mk-project"
+(defvar mk-global-cache-root (expand-file-name "~/.mk-project/")
   "Root path under which to create files that contain project metadata like open
 files, open friends etc. These are automatically created for a project under a
 directory created under this path. Makes the open-files-cache, file-list-cache,
@@ -252,7 +252,7 @@ See also `mk-proj-get-config-val'.")
   "Maps file suffixes to regexps used as source-patterns when guessing a
 project config from the currently opened file in the active buffer.")
 
-(defvar mk-proj-config-save-location nil
+(defvar mk-proj-config-save-location (concat (file-name-as-directory mk-global-cache-root) "projects.el")
   "Where to save project configs in elisp. If this is a filename project
 configs will be written to that file. If it is a directory an elisp
 file with the projects name will be created in that directory.")
