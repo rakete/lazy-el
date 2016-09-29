@@ -39,7 +39,7 @@
 
 (defvar mk-proj-version "2.0.0")
 
-(defvar mk-global-cache-root "~/.mk-project"
+(defvar mk-global-cache-root (expand-file-name "~/.mk-project/")
   "Root path under which to create files that contain project metadata like open
 files, open friends etc. These are automatically created for a project under a
 directory created under this path. Makes the open-files-cache, file-list-cache,
@@ -252,7 +252,7 @@ See also `mk-proj-get-config-val'.")
   "Maps file suffixes to regexps used as source-patterns when guessing a
 project config from the currently opened file in the active buffer.")
 
-(defvar mk-proj-config-save-location nil
+(defvar mk-proj-config-save-location (concat (file-name-as-directory mk-global-cache-root) "projects.el")
   "Where to save project configs in elisp. If this is a filename project
 configs will be written to that file. If it is a directory an elisp
 file with the projects name will be created in that directory.")
@@ -1550,6 +1550,22 @@ recieves when it acts as process sentinel."
                  (add-to-list 'available-systems 'gtags))))))
     available-systems))
 
+(defadvice ido-switch-buffer (around mk-proj-ido-switch-buffer-setup-tags first nil activate)
+  (let ((previous-buffer (current-buffer)))
+    ad-do-it
+    (when (and (not mk-proj-name)
+               (buffer-file-name (current-buffer))
+               (not (eq (current-buffer) previous-buffer)))
+      (project-setup-tags))))
+
+(defadvice switch-buffer (around mk-proj-switch-buffer-setup-tags first nil activate)
+  (let ((previous-buffer (current-buffer)))
+    ad-do-it
+    (when (and (not mk-proj-name)
+               (buffer-file-name (current-buffer))
+               (not (eq (current-buffer) previous-buffer)))
+      (project-setup-tags))))
+
 (defun mk-proj-find-symbol-elisp-location-helper (symbol)
   (let ((sym symbol))
     `(lambda ()
@@ -1562,6 +1578,12 @@ recieves when it acts as process sentinel."
                               ((facep (quote ,sym)) (find-definition-noselect (quote ,sym) 'defface)))))
          location))))
 
+;; - given a system and a regexp, this tries to match regexp with jumps aquired from system and returns
+;; all matching jumps
+;; - so this can be used to find all jumps for only part of a symbol, eg finding all jumps to defintions
+;; starting with mk-proj-find-.* would be possible with this function
+;; - this function is also used to find symbols names if we already know the whole name, check below
+;; how it is used in project-jump-definition and project-jump-regexp
 (defun mk-proj-find-symbol (proj-name proj-alist system regexp &rest args)
   (setq proj-alist (or proj-alist
                        (mk-proj-find-alist proj-name)
@@ -1595,7 +1617,10 @@ recieves when it acts as process sentinel."
           ((eq 'obarray system)
            (let ((jumps nil)
                  (prev-buf-list (buffer-list)))
-             (when (and proj-name (position 'elisp (mk-proj-src-pattern-languages (cadr (assoc 'src-patterns (mk-proj-find-alist proj-name))))))
+             ;; - only try to find the current symbol in the obarray when the current major-mode is a emacs-lisp-mode,
+             ;; or the current project contains any elisp files
+             (when (or (eq major-mode 'emacs-lisp-mode) (eq major-mode 'lisp-interaction-mode)
+                       (and proj-name (position 'elisp (mk-proj-src-pattern-languages (cadr (assoc 'src-patterns (mk-proj-find-alist proj-name)))))))
                (do-all-symbols (sym)
                  (let ((sym-name (symbol-name sym)))
                    (when (and (string-match regexp sym-name)
@@ -2791,7 +2816,8 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
      (add-hook 'after-save-hook 'mk-proj-after-save-update)
      (add-hook 'after-load-hook 'mk-proj-after-save-update)
      (add-hook 'after-save-hook 'mk-proj-jump-cleanup-highlight)
-     (add-hook 'pre-command-hook 'mk-proj-pre-command-remove-jump-delete-buffer)))
+     (add-hook 'pre-command-hook 'mk-proj-pre-command-remove-jump-delete-buffer)
+     (load-file (concat (file-name-as-directory mk-global-cache-root) "projects.el"))))
 
 ;; ---------------------------------------------------------------------
 ;; Guessing
