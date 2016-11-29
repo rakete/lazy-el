@@ -78,9 +78,13 @@ used by `project-find-file' to quickly locate project files."
   "When `mk-proj-vcs' is one of the VCS types listed here, ignore
 the associated paths when greping or indexing the project.")
 
-(defvar mk-proj-required-vars '((name . (stringp))
-                                (basedir . (stringp)))
-  "Project config vars that are required in every project.
+(defvar mk-proj-required-vars '((name . (identity stringp))
+                                (basedir . (identity stringp (lambda (v) (> (length v) 0)) file-exists-p)))
+  "Project config vars that are required in every project. Each entry is a (symbol . (functions)) tuple where the
+functions are used by `mk-proj-check-required-vars' to test if a value given to symbol is valid.
+
+name   : project name
+basedir: root directory of the project
 
 See also `mk-proj-optional-vars' `mk-proj-var-before-get-functions'.")
 
@@ -89,9 +93,9 @@ See also `mk-proj-optional-vars' `mk-proj-var-before-get-functions'.")
                                 (src-patterns . (listp))
                                 (ignore-patterns . (listp))
                                 (vcs . (symbolp))
-                                (compile-cmd . (functionp commandp stringp listp))
-                                (startup-hook . (functionp commandp stringp listp))
-                                (shutdown-hook . (functionp commandp stringp listp))
+                                (compile-cmd . ((lambda (v) (or (functionp v) (commandp v) (stringp v) (listp v)))))
+                                (startup-hook . ((lambda (v) (or (functionp v) (commandp v) (stringp v) (listp v)))))
+                                (shutdown-hook . ((lambda (v) (or (functionp v) (commandp v) (stringp v) (listp v)))))
                                 (file-list-cache . (stringp))
                                 (open-files-cache . (stringp))
                                 (patterns-are-regex . (symbolp))
@@ -99,7 +103,9 @@ See also `mk-proj-optional-vars' `mk-proj-var-before-get-functions'.")
                                 (open-friends-cache . (stringp))
                                 (gtags-config . (stringp file-exists-p))
                                 (gtags-arguments . (stringp)))
-  "Project config vars that are optional.
+  "Project config vars that are optional. Each entry is a (symbol . (functions)) tuple where the
+functions are used by `mk-proj-check-optional-vars' to test if a value given to symbol is valid.
+
 
 parent            : a project name that acts as parent to this one
 languages         : a list of languages that are used in this project
@@ -129,7 +135,9 @@ See also `mk-proj-required-vars' `mk-proj-var-before-get-functions'")
 
 (defun mk-proj-basedir-expand (var val &optional proj-name config-alist)
   "Helper used in `mk-proj-var-before-get-functions' to expand basedir."
-  (when (stringp val)
+  ;; need to check all these to make sure the value is not nil, but a string that does
+  ;; not have zero length and also exists as file/directory
+  (when (and (identity val) (stringp val) (> (length val) 0) (file-exists-p val))
     (file-name-as-directory (expand-file-name val))))
 
 (defun mk-proj-var-get-open-file-cache (var val &optional proj-name config-alist)
@@ -203,13 +211,19 @@ See also `mk-proj-get-config-val'.")
                                     (patterns-are-regex . (lambda () t)))
   "Functions that are used to ask the user about what a vars value should be.")
 
-(defvar mk-proj-before-load-hook '())
-(defvar mk-proj-before-files-load-hook '())
-(defvar mk-proj-after-load-hook '())
+(defvar mk-proj-before-load-hook '()
+  "Hook that runs before loading a project.")
+(defvar mk-proj-before-files-load-hook '()
+  "Hook that runs before the files are visited when loading.")
+(defvar mk-proj-after-load-hook '()
+  "Hook that runs after loading a project.")
 
-(defvar mk-proj-before-unload-hook '())
-(defvar mk-proj-before-files-unload-hook '())
-(defvar mk-proj-after-unload-hook '())
+(defvar mk-proj-before-unload-hook '()
+  "Hook that runs before unloading a project.")
+(defvar mk-proj-before-files-unload-hook '()
+  "Hook that runs before files are closed when unloading.")
+(defvar mk-proj-after-unload-hook '()
+  "Hook that runs after unloading a project.")
 
 (defvar mk-proj-history '())
 
@@ -563,6 +577,8 @@ Examples:
 ;; ---------------------------------------------------------------------
 
 (defun mk-proj-search-projects ()
+  "Search for projects by evaluating `mk-proj-config-save-location' as if it were an elisp file. Falls back to
+trying to evaluate `mk-global-cache-root'/projects.el"
   (cond ((file-exists-p mk-proj-config-save-location)
          (load mk-proj-config-save-location))
         ((file-exists-p (concat (file-name-as-directory (expand-file-name mk-global-cache-root)) "projects.el"))
@@ -592,10 +608,10 @@ See also `mk-proj-var-before-get-functions'."
     (setq proj-name mk-proj-name))
   (let* ((proj-alist (or proj-alist (mk-proj-find-alist proj-name nil)))
          (fn (cdr (assoc key mk-proj-var-before-get-functions)))
-         (val  (or (when fn
-                     (funcall fn key (cadr (assoc key proj-alist)) proj-name proj-alist))
-                   (and (assoc key proj-alist)
-                        (cadr (assoc key proj-alist)))
+         (val (or (when fn
+                    (funcall fn key (cadr (assoc key proj-alist)) proj-name proj-alist))
+                  (and (assoc key proj-alist)
+                       (cadr (assoc key proj-alist)))
                    (let ((parent (cadr (assoc 'parent proj-alist))))
                      (when (and inherit parent)
                        (mk-proj-get-config-val key parent t))))))
@@ -624,8 +640,8 @@ See also `mk-proj-var-before-get-functions'."
   "Evaluates a CONFIG-ALIST for PROJ-NAME by calling eval on every
 value.
 
-It then goes through all values and checks them with the functions
-from mk-proj-required-vars and mk-proj-optional-vars."
+It then uses `mk-proj-check-required-vars' and `mk-proj-check-optional-vars'
+to verify the evaluated configuration."
   (interactive)
   (let* ((evaluated-config-alist `((name ,proj-name)))
          (result-alist (dolist (cv config-alist evaluated-config-alist)
@@ -641,20 +657,12 @@ from mk-proj-required-vars and mk-proj-optional-vars."
                              (add-to-list 'evaluated-config-alist `(,key ,value)))))))
     (when (gethash proj-name mk-proj-list)
       (setq result-alist (mk-proj-alist-union (gethash proj-name mk-proj-list) result-alist)))
-    (loop for varchecks in (append mk-proj-required-vars mk-proj-optional-vars)
-          if (or (and (assoc (car varchecks) mk-proj-required-vars)
-                      (assoc (car varchecks) result-alist)
-                      (or (not (cadr (assoc (car varchecks) result-alist)))
-                          (not (some (lambda (check) (funcall check (cadr (assoc (car varchecks) result-alist))))
-                                     (cdr varchecks)))))
-                 (and (assoc (car varchecks) mk-proj-optional-vars)
-                      (assoc (car varchecks) result-alist)
-                      (not (some (lambda (check) (funcall check (cadr (assoc (car varchecks) result-alist))))
-                                 (cdr varchecks)))
-                      (not (eq (cadr (assoc (car varchecks) result-alist)) nil))))
-          do (progn (error "Project \"%s\" contains error: %S %s" proj-name (car varchecks) (assoc (car varchecks) result-alist))
-                    (return-from "mk-proj-eval-alist" nil)))
-    result-alist))
+    ;; both check vars functions error, but I don't want to interrupt when loading emacs,
+    ;; so this catches the errors but still outputs the error message
+    (if (or (condition-case err (mk-proj-check-required-vars proj-name result-alist) (error (message (error-message-string err))))
+            (condition-case err (mk-proj-check-optional-vars proj-name result-alist) (error (message (error-message-string err)))))
+        (progn (message "Project %s could not be evaluated because of errors!" proj-name) nil)
+      result-alist)))
 
 (defun* project-def (&optional proj-name config-alist)
   "Associate the settings in CONFIG-ALIST with project PROJ-NAME.
@@ -714,7 +722,7 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
             (return-from "while-search-loop" (point))))))))
 
 (defun mk-proj-find-save-location-marker (&optional proj-name config-alist)
-  "This tries to find a suitable location to save the projects configuration."
+  "This tries to find a suitable location to save the projects configuration to disk."
   (unless proj-name
     (mk-proj-assert-proj)
     (setq proj-name mk-proj-name))
@@ -969,20 +977,43 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
 
 
 (defun project-undef (&optional proj-name)
-  "Opposite of `project-define'."
+  "Opposite of `project-def'."
   (interactive "sProject: ")
   (remhash proj-name mk-proj-list)
   (remhash proj-name mk-proj-completions-cache))
 
 (defmacro mk-proj-with-current-project (proj-name &rest body)
+  "Execute BODY with PROJ-NAME as current project. It just sets `mk-proj-name' to PROJ-NAME temporarily."
   `(let ((mk-proj-name ,proj-name))
      (condition-case nil ,@body (error nil))))
 
-(defun mk-proj-check-required-vars (proj-name)
-  (catch 'mk-proj-check-required-vars
-    (dolist (v mk-proj-required-vars)
-      (unless (mk-proj-get-config-val (car v) proj-name t)
-        (throw 'mk-proj-check-required-vars (car v))))))
+(defun mk-proj-check-required-vars (proj-name &optional proj-alist)
+  "Go through all `mk-proj-required-vars' and check them in PROJ-NAME or PROJ-ALIST using the functions
+defined in `mk-proj-required-vars'.
+
+See also `mk-proj-optional-vars'"
+  (unless proj-alist
+    (setq proj-alist (mk-proj-find-alist proj-name)))
+  (dolist (v mk-proj-required-vars)
+    (let* ((config-symbol (car v))
+           (config-value (cadr (assoc config-symbol proj-alist)))
+           (config-checks (cdr v)))
+      (if (not config-value)
+          (error "Required config value '%s' missing in %s!" (symbol-name config-symbol) proj-name)
+        (when (not (every (lambda (check) (funcall check config-value)) config-checks))
+          (error "Required config value '%s' has invalid value '%s' in %s!" (symbol-name config-symbol) (prin1-to-string config-value) proj-name))))))
+
+(defun mk-proj-check-optional-vars (proj-name &optional proj-alist)
+  "Go through all `mk-proj-optional-vars' and check them in PROJ-NAME or PROJ-ALIST using the functions
+defined in `mk-proj-optional-vars'.
+
+See also `mk-proj-required-vars'"
+  (dolist (v mk-proj-optional-vars)
+    (let* ((config-symbol (car v))
+           (config-value (cadr (assoc config-symbol proj-alist)))
+           (config-checks (cdr v)))
+      (when (and config-value (not (every (lambda (check) (funcall check config-value)) config-checks)))
+        (error "Optional config value '%s' has invalid value '%s' in %s!" (symbol-name config-symbol) (prin1-to-string config-value) proj-name)))))
 
 (defun* mk-proj-get-cache-file (symbol &optional proj-name (inherit t))
   (unless proj-name
@@ -1037,7 +1068,11 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
 (defvar mk-proj-prevent-after-save-update nil)
 
 (defun mk-proj-load (proj-name)
-  (interactive)
+  "Load PROJ-NAME configuration. This is the main loading function that does all the work, it
+is supposed to be called from `project-load'.
+
+See also `project-load', `project-unload', `mk-proj-fib-init', `mk-proj-visit-saved-open-files',
+`mk-proj-visit-saved-open-friends', `mk-proj-before-load-hook', `mk-proj-after-load-hook'"
   (let* ((oldname mk-proj-name)
          (proj-alist (mk-proj-find-alist proj-name nil))
          (quiet (and (cadr (assoc 'parent proj-alist))
@@ -1053,17 +1088,16 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
     (unless (or (string= oldname proj-name)
                 (eq proj-alist nil))
       (project-unload))
-    (if proj-alist
-        (let ((v (mk-proj-check-required-vars proj-name)))
-          (when v (error "Required config value '%s' missing in %s!" (symbol-name v) proj-name)))
-      (error "Project %s does not exist!" proj-name))
+    (if (not  proj-alist)
+        (error "Project %s does not exist!" proj-name)
+      (mk-proj-check-required-vars proj-name proj-alist)
+      (mk-proj-check-optional-vars proj-name proj-alist))
     (setq mk-proj-name proj-name)
     (while (not (file-directory-p (mk-proj-get-config-val 'basedir)))
       (mk-proj-set-config-val 'basedir (read-string "Missing base directory? : " (mk-proj-get-config-val 'basedir))))
     (when (and (mk-proj-get-config-val 'vcs) (not (mk-proj-get-vcs-path)))
       (error "Invalid VCS setting!"))
     (message "Loading project %s ..." proj-name)
-    ;;(cd (file-name-as-directory (mk-proj-get-config-val 'basedir)))
     (mk-proj-fib-init)
     (add-hook 'kill-emacs-hook 'mk-proj-kill-emacs-hook)
     (run-hooks 'mk-proj-before-files-load-hook)
@@ -1084,7 +1118,9 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
     (message "Loading project %s done" proj-name)))
 
 (defun project-load (&optional proj-name)
-  "Load a project's settings."
+  "Load PROJ-NAME or ask the user about which project to load.
+
+See also `mk-proj-load'"
   (interactive)
   (let* ((guessed-alist (mk-proj-guess-alist))
          (names (let ((ns (mk-proj-names)))
@@ -1116,7 +1152,10 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
   (project-unload t))
 
 (defun project-unload (&optional quiet)
-  "Unload the current project's settings after running the shutdown hook."
+  "Unload the current project configuration after running the shutdown hook.
+
+See also `project-close-files', `project-close-friends', `mk-proj-history'
+`mk-proj-before-files-unload-hook', `mk-proj-before-unload-hook', `mk-proj-after-unload-hook'"
   (interactive "P")
   (let ((mk-proj-prevent-after-save-update t)
         (close-files (when mk-proj-name (y-or-n-p (concat "Close all '" mk-proj-name "' project files? ")))))
@@ -1142,9 +1181,6 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
         (error nil)))
     (add-to-list 'mk-proj-history mk-proj-name)
     (setq mk-proj-name nil)
-    ;; (when (and (buffer-file-name (current-buffer))
-    ;;            (file-exists-p (buffer-file-name (current-buffer))))
-    ;;   (cd (mk-proj-dirname (buffer-file-name (current-buffer)))))
     (modify-frame-parameters (selected-frame) (list (cons 'name "Emacs")))
     (setq compile-command nil)
     (unless quiet (message "Project settings have been cleared"))))
@@ -1445,7 +1481,9 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
                                         (find 'cpp languages)
                                         (file-exists-p (expand-file-name mk-proj-c++-gtags-config)))
                                (expand-file-name mk-proj-c++-gtags-config))
-                             (expand-file-name mk-proj-default-gtags-config)
+                             (when (and mk-proj-default-gtags-config
+                                        (file-exists-p (expand-file-name mk-proj-default-gtags-config)))
+                               (expand-file-name mk-proj-default-gtags-config))
                              (let ((c (expand-file-name "~/.globalrc")))
                                (when (file-exists-p c)
                                  c))
