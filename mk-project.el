@@ -2164,7 +2164,7 @@ recieves when it acts as process sentinel."
                        (substring-no-properties (ido-completing-read "Symbol: "
                                                                      (mk-proj-completions) nil nil
                                                                      (substring-no-properties (or (thing-at-point mk-proj-thing-selector) "")))))))
-  (when (and mk-proj-name (not proj-alist))
+  (when (and (not mk-proj-name) (not proj-alist))
     (let ((guessed-name (cadr (assoc 'name (mk-proj-guess-alist)))))
       (when guessed-name (setq proj-name guessed-name))))
   (setq proj-alist (or proj-alist
