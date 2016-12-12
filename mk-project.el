@@ -1471,8 +1471,7 @@ See also `project-close-files', `project-close-friends', `mk-proj-history'
            ;; - the database is stored in the dbpath, that should be ~/.mk-project/project
            (gtags-dbpath (file-name-as-directory (file-truename (mk-proj-get-root-cache-dir nil proj-name))))
            (gtags-config (or (let ((c (mk-proj-get-config-val 'gtags-config proj-name nil proj-alist)))
-                               (when (and c
-                                          (file-exists-p c))
+                               (when (and c (> (length c) 0) (file-exists-p c))
                                  c))
                              (let ((c (concat (mk-proj-get-config-val 'basedir proj-name nil proj-alist) "/.globalrc")))
                                (when (file-exists-p c)
@@ -1487,7 +1486,7 @@ See also `project-close-files', `project-close-friends', `mk-proj-history'
                              (let ((c (expand-file-name "~/.globalrc")))
                                (when (file-exists-p c)
                                  c))
-                             ""))
+                             nil))
            (gtags-arguments (or (mk-proj-get-config-val 'gtags-arguments proj-name nil proj-alist)
                                 ""))
            (gtags-commands (make-hash-table))
@@ -1501,14 +1500,14 @@ See also `project-close-files', `project-close-friends', `mk-proj-history'
         (puthash 'gtags
                  (concat "cd " gtags-root cmd-seperator
                          "env GTAGSROOT=" gtags-root " "
-                         (when (file-exists-p gtags-config) (concat "GTAGSCONF=" gtags-config " "))
+                         (when gtags-config (concat "GTAGSCONF=" gtags-config " "))
                          "gtags " gtags-dbpath " -i -v -f - " gtags-arguments cmd-seperator)
                  gtags-commands))
       (when (gethash 'gtags+exuberant-ctags sys-files)
         (puthash 'gtags+exuberant-ctags
                  (concat "cd " gtags-root cmd-seperator
                          "env GTAGSLABEL=exuberant-ctags "
-                         (when (file-exists-p gtags-config) (concat "GTAGSCONF=" gtags-config " "))
+                         (when gtags-config (concat "GTAGSCONF=" gtags-config " "))
                          "GTAGSROOT=" gtags-root " "
                          "gtags " gtags-dbpath " -i -v -f - " gtags-arguments cmd-seperator)
                  gtags-commands))
@@ -1543,7 +1542,7 @@ recieves when it acts as process sentinel."
                (string-equal event "finished\n")))
       (let* ((proc-name (concat name "-" (prin1-to-string n)))
              (shell-file-name (if (eq system-type 'windows-nt) (default-value 'shell-file-name) "/bin/sh"))
-             (process (start-process-shell-command proc-name (when debug proc-name) (nth n commands)))
+             (process (print (start-process-shell-command proc-name (when debug proc-name) (nth n commands))))
              (input (nth n inputs)))
         (set-process-sentinel process (apply-partially 'mk-proj-process-group name commands inputs terminator terminator-args debug (1+ n)))
         (when input
