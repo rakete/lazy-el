@@ -1,4 +1,5 @@
-(require 'mk-project)
+(require 'lazy)
+
 (require 'company)
 (require 'cl-lib)
 
@@ -160,6 +161,6 @@
           (setq history-candidates (sort history-candidates (lambda (a b) (< (position a history :test 'equal) (position b history :test 'equal)))))
           (append history-candidates other-candidates))))))
 
-(provide 'mk-project-company)
+(provide 'lazy-company)
 
 ;; mk-project-company.el ends here

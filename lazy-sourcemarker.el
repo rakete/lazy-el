@@ -17,7 +17,7 @@
 ;; Free Software Foundation, Inc., 59 Temple Place - Suite 330,
 ;; Boston, MA 02111-1307, USA.
 
-(require 'mk-project)
+(require 'lazy)
 (require 'continue)
 
 (defvar mk-sourcemarker-per-project-db t)
@@ -185,4 +185,4 @@
 
 ;;(sort '((0 . "foo") (1 . "bar")) (lambda (a b) (> (car a) (car b))))
 
-(provide 'mk-project-sourcemarker)
+(provide 'lazy-sourcemarker)

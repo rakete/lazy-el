@@ -17,7 +17,7 @@
 ;; Free Software Foundation, Inc., 59 Temple Place - Suite 330,
 ;; Boston, MA 02111-1307, USA.
 
-(require 'mk-project)
+(require 'lazy)
 
 (require 'helm-config)
 (require 'helm-locate)
@@ -250,4 +250,4 @@
           :input (helm-ag--insert-thing-at-point helm-ag-insert-at-point)
           :keymap helm-do-ag-map)))
 
-(provide 'mk-project-helm)
+(provide 'lazy-helm)

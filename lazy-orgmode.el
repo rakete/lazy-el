@@ -17,7 +17,7 @@
 ;; Free Software Foundation, Inc., 59 Temple Place - Suite 330,
 ;; Boston, MA 02111-1307, USA.
 
-(require 'mk-project)
+(require 'lazy)
 
 (require 'org-install)
 (require 'org-protocol)
@@ -1328,4 +1328,4 @@ This is taken almost directly from `org-babel-read'."
       (mk-org-assert-org proj-name)
       (org-clock-out))))
 
-(provide 'mk-project-orgmode)
+(provide 'lazy-orgmode)

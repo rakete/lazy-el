@@ -1,4 +1,4 @@
-(require 'mk-project)
+(require 'lazy)
 
 (require 'which-func)
 
@@ -144,4 +144,4 @@
 ;;                               cached-definition
 ;;                               mk-proj-definitions-cache))))))))
 
-(provide 'mk-project-eldoc)
+(provide 'lazy-eldoc)

@@ -3290,6 +3290,6 @@ and their parent directory used as basedir.")
                            already-defined-result))
           result)))))
 
-(provide 'mk-project)
+(provide 'lazy)
 
 ;; mk-project.el ends here
