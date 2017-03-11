@@ -29,6 +29,8 @@
 (require 'color)
 (require 'imenu)
 
+(declare-function lazy-org-project-buffer-name "lazy-orgmode")
+
 (defvar lazy-version "2.0.0")
 
 (defvar lazy-global-cache-root (expand-file-name "~/.lazy/")
