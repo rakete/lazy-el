@@ -1,7 +1,7 @@
-;;; mk-project.el ---  Lightweight project handling
+;;; lazy.el ---  Lightweight project handling
 
 ;; Copyright (C) 2010  Matt Keller <mattkeller at gmail dot com>
-;;                     Andreas Raster <lazor at affenbande dot org>
+;; Copyright (C) 2017 Andreas Raster <lazor at affenbande dot org>
 ;;
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -20,75 +20,67 @@
 
 ;;; Commentary:
 
-;; Quickly switch between projects and perform operations on a
-;; per-project basis. A 'project' in this sense is a directory of
-;; related files, usually a directory of source files. Projects are
-;; defined in pure elisp with the 'project-def' function. No
-;; mk-project-specific files are required in the project's base
-;; directory.
-
-;; More information about this library, including the most recent
-;; version and a comprehensive README, is available at
-;; http://github.com/mattkeller/mk-project
-
 ;;; Code:
 
 (require 'thingatpt)
-(require 'cl)
+(require 'cl-lib)
 (require 'etags-table)
+(require 'compile)
+(require 'color)
+(require 'imenu)
 
-(defvar mk-proj-version "2.0.0")
+(defvar lazy-version "2.0.0")
 
-(defvar mk-global-cache-root (expand-file-name "~/.mk-project/")
+(defvar lazy-global-cache-root (expand-file-name "~/.lazy/")
   "Root path under which to create files that contain project metadata like open
 files, open friends etc. These are automatically created for a project under a
 directory created under this path. Makes the open-files-cache, file-list-cache,
 open-friends-cache directives optional.
 
-See also `mk-proj-open-files-cache', `mk-proj-open-friends-cache',
-`mk-proj-file-list-cache'")
+See also `lazy-open-files-cache', `lazy-open-friends-cache',
+`lazy-file-list-cache'")
 
 ;; ---------------------------------------------------------------------
 ;; Project Variables
 ;; ---------------------------------------------------------------------
 
-(defvar mk-proj-name nil
-  "Name of the current project. Required. First argument to project-def.")
+(defvar lazy-name nil
+  "Name of the current project. Required. First argument to lazy-def.")
 
-(defun mk-proj-fib-name (&optional proj-name)
+(defun lazy-fib-name (&optional proj-name)
   "Buffer name of the file-list cache. This buffer contains a
 list of all the files under the project's basedir (minus those
 matching ignore-patterns) or, if index-find-cmd is set, the list
 of files found by calling the custom find command.  The list is
-used by `project-find-file' to quickly locate project files."
+used by `lazy-find-file' to quickly locate project files."
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (let ((top-level-parent (mk-proj-get-config-val 'parent proj-name)))
-    (while (and top-level-parent (mk-proj-get-config-val 'parent top-level-parent))
-      (setq top-level-parent (mk-proj-get-config-val 'parent top-level-parent)))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (let ((top-level-parent (lazy-get-config-val 'parent proj-name)))
+    (while (and top-level-parent (lazy-get-config-val 'parent top-level-parent))
+      (setq top-level-parent (lazy-get-config-val 'parent top-level-parent)))
     (concat "*" (or top-level-parent proj-name) " file-index*")))
 
-(defconst mk-proj-vcs-path '((git . ".git")
+(defconst lazy-vcs-path '((git . ".git")
                              (cvs . ".CVS")
                              (svn . ".svn")
                              (bzr . ".bzr")
                              (hg  . ".hg")
                              (darcs . "_darcs"))
-  "When `mk-proj-vcs' is one of the VCS types listed here, ignore
+  "When `lazy-vcs' is one of the VCS types listed here, ignore
 the associated paths when greping or indexing the project.")
 
-(defvar mk-proj-required-vars '((name . (identity stringp))
+(defvar lazy-required-vars '((name . (identity stringp))
                                 (basedir . (identity stringp (lambda (v) (> (length v) 0)) file-exists-p)))
   "Project config vars that are required in every project. Each entry is a (symbol . (functions)) tuple where the
-functions are used by `mk-proj-check-required-vars' to test if a value given to symbol is valid.
+functions are used by `lazy-check-required-vars' to test if a value given to symbol is valid.
 
 name   : project name
 basedir: root directory of the project
 
-See also `mk-proj-optional-vars' `mk-proj-var-before-get-functions'.")
+See also `lazy-optional-vars' `lazy-var-before-get-functions'.")
 
-(defvar mk-proj-optional-vars '((parent . (stringp)) ;; parent needs to come first!
+(defvar lazy-optional-vars '((parent . (stringp)) ;; parent needs to come first!
                                 (languages . (listp))
                                 (src-patterns . (listp))
                                 (ignore-patterns . (listp))
@@ -104,7 +96,7 @@ See also `mk-proj-optional-vars' `mk-proj-var-before-get-functions'.")
                                 (gtags-config . (stringp file-exists-p))
                                 (gtags-arguments . (stringp)))
   "Project config vars that are optional. Each entry is a (symbol . (functions)) tuple where the
-functions are used by `mk-proj-check-optional-vars' to test if a value given to symbol is valid.
+functions are used by `lazy-check-optional-vars' to test if a value given to symbol is valid.
 
 
 parent            : a project name that acts as parent to this one
@@ -128,39 +120,39 @@ open-friends-cache: filesystem location for open files from friend projects
 gtags-config      : gtags config file that should be used
 gtags-arguments   : additional gtags arguments
 
-See also `mk-proj-required-vars' `mk-proj-var-before-get-functions'")
+See also `lazy-required-vars' `lazy-var-before-get-functions'")
 
-(defvar mk-proj-internal-vars '()
+(defvar lazy-internal-vars '()
   "Project config vars that are ignored when saving the project config.")
 
-(defun mk-proj-basedir-expand (var val &optional proj-name config-alist)
-  "Helper used in `mk-proj-var-before-get-functions' to expand basedir."
+(defun lazy-basedir-expand (var val &optional proj-name config-alist)
+  "Helper used in `lazy-var-before-get-functions' to expand basedir."
   ;; need to check all these to make sure the value is not nil, but a string that does
   ;; not have zero length and also exists as file/directory
   (when (and (identity val) (stringp val) (> (length val) 0) (file-exists-p val))
     (file-name-as-directory (expand-file-name val))))
 
-(defun mk-proj-var-get-open-file-cache (var val &optional proj-name config-alist)
-  "Helper used in `mk-proj-var-before-get-functions' to find cache location."
+(defun lazy-var-get-open-file-cache (var val &optional proj-name config-alist)
+  "Helper used in `lazy-var-before-get-functions' to find cache location."
   (if val
       (expand-file-name val)
-    (mk-proj-get-cache-file var proj-name nil)))
+    (lazy-get-cache-file var proj-name nil)))
 
-(defun mk-proj-var-get-file-list-cache (var val &optional proj-name config-alist)
-  "Helper used in `mk-proj-var-before-get-functions' to find cache location."
+(defun lazy-var-get-file-list-cache (var val &optional proj-name config-alist)
+  "Helper used in `lazy-var-before-get-functions' to find cache location."
   (if val
       (expand-file-name val)
-    (mk-proj-get-cache-file var proj-name t)))
+    (lazy-get-cache-file var proj-name t)))
 
-(defun mk-proj-var-guess-languages (var val &optional proj-name config-alist)
-  "Helper used in `mk-proj-var-before-get-functions' to guess project languages."
-  (or val (mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns proj-name))))
+(defun lazy-var-guess-languages (var val &optional proj-name config-alist)
+  "Helper used in `lazy-var-before-get-functions' to guess project languages."
+  (or val (lazy-src-pattern-languages (lazy-get-config-val 'src-patterns proj-name))))
 
-(defvar mk-proj-var-before-get-functions '((basedir . mk-proj-basedir-expand)
-                                           (file-list-cache . mk-proj-var-get-file-list-cache)
-                                           (open-files-cache . mk-proj-var-get-open-file-cache)
-                                           (open-friends-cache . mk-proj-var-get-open-file-cache)
-                                           (languages . mk-proj-var-guess-languages)
+(defvar lazy-var-before-get-functions '((basedir . lazy-basedir-expand)
+                                           (file-list-cache . lazy-var-get-file-list-cache)
+                                           (open-files-cache . lazy-var-get-open-file-cache)
+                                           (open-friends-cache . lazy-var-get-open-file-cache)
+                                           (languages . lazy-var-guess-languages)
                                            (patterns-are-regex . (lambda (var val &optional proj-name config-alist)
                                                                    (if (and config-alist
                                                                             (not (assoc 'patterns-are-regex config-alist)))
@@ -168,19 +160,19 @@ See also `mk-proj-required-vars' `mk-proj-var-before-get-functions'")
                                                                      val)))
                                            (friends . (lambda (var val &optional proj-name config-alist)
                                                         (loop for friend in val
-                                                              if (gethash friend mk-proj-list)
+                                                              if (gethash friend lazy-list)
                                                               collect friend))))
-  "Config vars from `mk-proj-required-vars' and `mk-proj-optional-vars' (except 'name')
+  "Config vars from `lazy-required-vars' and `lazy-optional-vars' (except 'name')
 can be associated with a function in this association list, which will be
 applied to the value of the var right after it is taken from the config-alist.
 
-That means when querying the configuration with `mk-proj-get-config-val', the var
+That means when querying the configuration with `lazy-get-config-val', the var
 symbol is used to look up a function in this list and, if present, that function is then
 applied to the var symbol and var value pair and its result used as new var value.
 
-See also `mk-proj-get-config-val'.")
+See also `lazy-get-config-val'.")
 
-(defvar mk-proj-var-ask-functions '((name . (lambda ()
+(defvar lazy-var-ask-functions '((name . (lambda ()
                                               (read-string "Name: " super)))
                                     (basedir . (lambda ()
                                                  (expand-file-name (concat "~/" (ido-completing-read "Basedir: " (ido-file-name-all-completions "~"))))))
@@ -204,30 +196,30 @@ See also `mk-proj-get-config-val'.")
                                                                  finally return xs))))
                                     (vcs . (lambda ()
                                              (loop for v = (read-string "vcs: " super) then (read-string "vcs: " super)
-                                                   until (some (lambda (x) (eq (car x) (read v))) mk-proj-vcs-path)
+                                                   until (cl-some (lambda (x) (eq (car x) (read v))) lazy-vcs-path)
                                                    finally return (read v))))
                                     (compile-cmd . (lambda ()
                                                      (read-string "Compile command: " super)))
                                     (patterns-are-regex . (lambda () t)))
   "Functions that are used to ask the user about what a vars value should be.")
 
-(defvar mk-proj-before-load-hook '()
+(defvar lazy-before-load-hook '()
   "Hook that runs before loading a project.")
-(defvar mk-proj-before-files-load-hook '()
+(defvar lazy-before-files-load-hook '()
   "Hook that runs before the files are visited when loading.")
-(defvar mk-proj-after-load-hook '()
+(defvar lazy-after-load-hook '()
   "Hook that runs after loading a project.")
 
-(defvar mk-proj-before-unload-hook '()
+(defvar lazy-before-unload-hook '()
   "Hook that runs before unloading a project.")
-(defvar mk-proj-before-files-unload-hook '()
+(defvar lazy-before-files-unload-hook '()
   "Hook that runs before files are closed when unloading.")
-(defvar mk-proj-after-unload-hook '()
+(defvar lazy-after-unload-hook '()
   "Hook that runs after unloading a project.")
 
-(defvar mk-proj-history '())
+(defvar lazy-history '())
 
-(defvar mk-proj-buildsystems '((gnu-make ((files ("autogen.sh" "configure" "Makefile"))
+(defvar lazy-buildsystems '((gnu-make ((files ("autogen.sh" "configure" "Makefile"))
                                           (build "make")))
                                (cmake ((files ("CMakeLists.txt"))
                                        (build "mkdir -p build; cd build; cmake ..; make")))
@@ -237,7 +229,7 @@ See also `mk-proj-get-config-val'.")
                                         (build "python setup.py build $MK_BUILD_OPTS"))))
   "Used when guessing a project root or its compile-cmd.")
 
-(defvar mk-proj-src-pattern-table '(("h" . (c ".*\\.c" ".*\\.cpp" ".*\\.cc" ".*\\.h" ".*\\.hpp" ".*\\.hh"))
+(defvar lazy-src-pattern-table '(("h" . (c ".*\\.c" ".*\\.cpp" ".*\\.cc" ".*\\.h" ".*\\.hpp" ".*\\.hh"))
                                     ("hpp" . (cpp ".*\\.cpp" ".*\\.c" ".*\\.h" ".*\\.hh" ".*\\.hpp"))
                                     ("hh" . (cpp ".*\\.cc" ".*\\.c" ".*\\.h" ".*\\.hh" ".*\\.hpp"))
                                     ("c" . (c ".*\\.c" ".*\\.h"))
@@ -266,12 +258,12 @@ See also `mk-proj-get-config-val'.")
   "Maps file suffixes to regexps used as source-patterns when guessing a
 project config from the currently opened file in the active buffer.")
 
-(defvar mk-proj-config-save-location (concat (file-name-as-directory mk-global-cache-root) "projects.el")
+(defvar lazy-config-save-location (concat (file-name-as-directory lazy-global-cache-root) "projects.el")
   "Where to save project configs in elisp. If this is a filename project
 configs will be written to that file. If it is a directory an elisp
 file with the projects name will be created in that directory.")
 
-(defvar mk-proj-language-tag-systems '((awk . (gtags+exuberant-ctags))
+(defvar lazy-language-tag-systems '((awk . (gtags+exuberant-ctags))
                                        (batch . (gtags+exuberant-ctags))
                                        (cobol . (gtags+exuberant-ctags))
                                        (c . (gtags))
@@ -302,52 +294,52 @@ file with the projects name will be created in that directory.")
 
 Only gtags and gtags+exuberant-ctags are implemented.")
 
-(defvar mk-proj-thing-selector 'symbol)
+(defvar lazy-thing-selector 'symbol)
 
-(defvar mk-proj-completions-cache (make-hash-table :test 'equal))
+(defvar lazy-completions-cache (make-hash-table :test 'equal))
 
-(defvar mk-proj-list (make-hash-table :test 'equal))
+(defvar lazy-list (make-hash-table :test 'equal))
 
 ;; ---------------------------------------------------------------------
 ;; Customization
 ;; ---------------------------------------------------------------------
 
-(defgroup mk-project nil
+(defgroup lazyect nil
   "A programming project management library."
   :group 'tools)
 
-(defcustom mk-proj-use-ido-selection nil
+(defcustom lazy-use-ido-selection nil
   "If ido-mode is available, use ido selection where appropriate."
   :type 'boolean
-  :group 'mk-project)
+  :group 'lazyect)
 
-(defcustom mk-proj-file-index-relative-paths t
+(defcustom lazy-file-index-relative-paths t
   "If non-nil, generate relative path names in the file-index buffer"
   :type 'boolean
-  :group 'mk-project)
+  :group 'lazyect)
 
 ;; ---------------------------------------------------------------------
 ;; Utils
 ;; ---------------------------------------------------------------------
 
-(defun mk-proj-save-state ()
+(defun lazy-save-state ()
   "Save the currently open project files."
-  (when mk-proj-name
-    (mk-proj-save-open-file-info)
-    (mk-proj-save-open-friends-info)))
+  (when lazy-name
+    (lazy-save-open-file-info)
+    (lazy-save-open-friends-info)))
 
-(defun mk-proj-zip (&rest lists)
+(defun lazy-zip (&rest lists)
   "A zipper takes lists like (1 2 3) (a b c) and produces a result like ((1 a) (2 b) (3 c))"
   (let* ((n (- (length lists) 1))
          (i 0)
          (rs '()))
-    (while (some 'identity (mapcar (lambda (l) (> (length l) i)) lists))
-      (setq rs (append rs (list (loop for m from 0 to n
-                                      collect (nth i (nth m lists))))))
+    (while (cl-some 'identity (mapcar (lambda (l) (> (length l) i)) lists))
+      (setq rs (append rs (list (cl-loop for m from 0 to n
+                                         collect (nth i (nth m lists))))))
       (setq i (1+ i)))
     rs))
 
-(defun mk-proj-dirname (path)
+(defun lazy-dirname (path)
   "Take a path and return the directory only, without filename."
   (file-name-as-directory (apply #'concat (reverse (mapcar (lambda (s)
                                                              (if (> (length s) 0)
@@ -355,110 +347,110 @@ Only gtags and gtags+exuberant-ctags are implemented.")
                                                                (file-name-as-directory "/")))
                                                            (cdr (reverse (split-string (expand-file-name path) "/"))))))))
 
-(defun mk-proj-assert-proj (&optional try-guessing)
-  (unless mk-proj-name
+(defun lazy-assert-proj (&optional try-guessing)
+  (unless lazy-name
     (let* ((continue-prevent-restore t)
            (guessed-alist (cond ((eq try-guessing 'quiet)
-                                 (mk-proj-guess-alist nil nil))
+                                 (lazy-guess-alist nil nil))
                                 (try-guessing
-                                 (mk-proj-guess-alist t t)))))
+                                 (lazy-guess-alist t t)))))
       (cond ((and guessed-alist
                   (eq try-guessing 'quiet)
-                  (gethash (cadr (assoc 'name guessed-alist)) mk-proj-list nil))
-             (mk-proj-load (cadr (assoc 'name guessed-alist))))
+                  (gethash (cadr (assoc 'name guessed-alist)) lazy-list nil))
+             (lazy-load-project (cadr (assoc 'name guessed-alist))))
             ((and guessed-alist
                   (eq try-guessing 'quiet)
-                  (not (gethash (cadr (assoc 'name guessed-alist)) mk-proj-list nil)))
-             (project-def (cadr (assoc 'name guessed-alist)) guessed-alist)
-             (mk-proj-load (cadr (assoc 'name guessed-alist))))
+                  (not (gethash (cadr (assoc 'name guessed-alist)) lazy-list nil)))
+             (lazy-def (cadr (assoc 'name guessed-alist)) guessed-alist)
+             (lazy-load-project (cadr (assoc 'name guessed-alist))))
             ((and guessed-alist
                   try-guessing
-                  (gethash (cadr (assoc 'name guessed-alist)) mk-proj-list nil)
+                  (gethash (cadr (assoc 'name guessed-alist)) lazy-list nil)
                   (y-or-n-p (concat "Load project " (cadr (assoc 'name guessed-alist)) "? ")))
-             (mk-proj-load (cadr (assoc 'name guessed-alist))))
+             (lazy-load-project (cadr (assoc 'name guessed-alist))))
             ((and guessed-alist
                   try-guessing
-                  (not (gethash (cadr (assoc 'name guessed-alist)) mk-proj-list nil))
+                  (not (gethash (cadr (assoc 'name guessed-alist)) lazy-list nil))
                   (y-or-n-p (concat "Create project " (cadr (assoc 'name guessed-alist)) "? ")))
-             (project-def (cadr (assoc 'name guessed-alist)) guessed-alist)
-             (mk-proj-load (cadr (assoc 'name guessed-alist))))
+             (lazy-def (cadr (assoc 'name guessed-alist)) guessed-alist)
+             (lazy-load-project (cadr (assoc 'name guessed-alist))))
             (t
              (error "No project is set!"))))))
 
-(defun mk-proj-maybe-kill-buffer (bufname)
+(defun lazy-maybe-kill-buffer (bufname)
   (let ((b (get-buffer bufname)))
     (when b (kill-buffer b))))
 
-(defun mk-proj-get-vcs-path (&optional proj-name)
+(defun lazy-get-vcs-path (&optional proj-name)
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (if (mk-proj-get-config-val 'vcs proj-name)
-      (cdr (assoc (mk-proj-get-config-val 'vcs proj-name) mk-proj-vcs-path))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (if (lazy-get-config-val 'vcs proj-name)
+      (cdr (assoc (lazy-get-config-val 'vcs proj-name) lazy-vcs-path))
     nil))
 
-(defun mk-proj-has-univ-arg ()
+(defun lazy-has-univ-arg ()
   (eql (prefix-numeric-value current-prefix-arg) 4))
 
-(defun mk-proj-names ()
+(defun lazy-names ()
   (let ((names nil))
-    (maphash (lambda (k v) (when k (add-to-list 'names k))) mk-proj-list)
+    (maphash (lambda (k v) (when k (add-to-list 'names k))) lazy-list)
     names))
 
-(defun mk-proj-use-ido ()
-  (and (boundp 'ido-mode) mk-proj-use-ido-selection))
+(defun lazy-use-ido ()
+  (and (boundp 'ido-mode) lazy-use-ido-selection))
 
-(defun mk-proj-filter (condp lst)
+(defun lazy-filter (condp lst)
   "Filter LST with CONDP. All elements for which CONDP returns t will be kept,
 all others filtered."
   (delq nil
         (mapcar (lambda (x) (and (funcall condp x) x)) lst)))
 
-(defun* mk-proj-any (condp lst)
+(cl-defun lazy-any (condp lst)
   "Apply CONDP to all elements of LST."
-  (some condp lst))
+  (cl-some condp lst))
 
-(defun* mk-proj-all (condp lst)
+(cl-defun lazy-all (condp lst)
   "Apply CONDP to all elements of LST, return nil as soon as
 CONDP yields nil."
   (let ((b t))
     (dolist (x lst b)
       (unless b
-        (return-from "mk-proj-all" nil))
+        (cl-return-from "lazy-all" nil))
        (setq b (funcall condp x)))))
 
-(defun mk-proj-flatten (xs)
+(defun lazy-flatten (xs)
   "Takes a list XS of lists and returns a list with only the elements of
 all lists within the list XS.
 
-\(mk-proj-flatten '(1 (2 (3 4)))) = '(1 2 3 4)"
+\(lazy-flatten '(1 (2 (3 4)))) = '(1 2 3 4)"
   (if (listp xs)
       (let ((ret nil))
         (while xs
-          (setq ret (append ret (mk-proj-flatten (car xs))))
+          (setq ret (append ret (lazy-flatten (car xs))))
           (setq xs (cdr xs)))
         ret)
     (list xs)))
 
-(defmacro mk-proj-assoc-pop (key alist)
+(defmacro lazy-assoc-pop (key alist)
   "Like `assoc', but remove the (KEY . value) pair from the ALIST."
   `(let ((result (assoc ,key ,alist)))
      (setq ,alist (delete result ,alist))
      result))
 
-(defun mk-proj-alist-union (alist1 alist2)
+(defun lazy-alist-union (alist1 alist2)
   "Make a union alist out of ALIST1 and ALIST2. The second alist
 is the one that overwrites values in the first alist if they both
 contain a similar key."
   (append (mapcar (lambda (c)
-                    (or (mk-proj-assoc-pop (car c) alist2) c)) alist1) alist2))
+                    (or (lazy-assoc-pop (car c) alist2) c)) alist1) alist2))
 
-(defun mk-proj-chomp (str)
+(defun lazy-chomp (str)
   "Chomp leading and tailing whitespace from STR."
   (let ((s (if (symbolp str) (symbol-name str) str)))
     (replace-regexp-in-string "\\(^[[:space:]\n]*\\|[[:space:]\n]*$\\)" "" s)))
 
-(defun* mk-proj-buffer-has-markers-p (&optional buf)
+(cl-defun lazy-buffer-has-markers-p (&optional buf)
   (interactive)
   (with-current-buffer (or buf (current-buffer))
     (save-excursion
@@ -466,51 +458,51 @@ contain a similar key."
       (while (not (eobp))
         (forward-char)
         (when (buffer-has-markers-at (point))
-          (return-from "mk-proj-buffer-has-markers-p" t)))
-      (return-from "mk-proj-buffer-has-markers-p" nil))))
+          (cl-return-from "lazy-buffer-has-markers-p" t)))
+      (cl-return-from "lazy-buffer-has-markers-p" nil))))
 
-(defun mk-proj-buildsystem-patterns ()
+(defun lazy-buildsystem-patterns ()
   (mapcar 'regexp-quote
-          (mk-proj-flatten (loop for bs in mk-proj-buildsystems
+          (lazy-flatten (cl-loop for bs in lazy-buildsystems
                                  collect (cadr (assoc 'files (cadr bs)))))))
 
-(defun mk-proj-path-complement (path1 path2)
+(defun lazy-path-complement (path1 path2)
   "This will return the part of the two paths PATH1 and PATH2 that is _not_ equal.
 
 If both paths have a common prefix this will return the part that is not
 found in both of them:
-\(mk-proj-path-complement \"/foo/bar/blah\" \"/foo/bar\") -> \"blah/\"
+\(lazy-path-complement \"/foo/bar/blah\" \"/foo/bar\") -> \"blah/\"
 
 If they do not share a common prefix this will return nil. If they are
 equal this will return t."
-  (loop for x = (split-string path1 "/" t) then (cdr x)
-        for y = (split-string path2 "/" t) then (cdr y)
-        until (or (not (and (car x) (car y)))
-                  (not (string-equal (car x) (car y))))
-        finally return (cond ((equal x y)
-                              t)
-                             ((and x y)
-                              nil)
-                             ((and (not (car x)) (not (car y)))
-                              nil)
-                             (t (apply #'concat (mapcar (lambda (s) (concat s "/")) (cond (x x) (y y))))))))
+  (cl-loop for x = (split-string path1 "/" t) then (cdr x)
+           for y = (split-string path2 "/" t) then (cdr y)
+           until (or (not (and (car x) (car y)))
+                     (not (string-equal (car x) (car y))))
+           finally return (cond ((equal x y)
+                                 t)
+                                ((and x y)
+                                 nil)
+                                ((and (not (car x)) (not (car y)))
+                                 nil)
+                                (t (apply #'concat (mapcar (lambda (s) (concat s "/")) (cond (x x) (y y))))))))
 
-(defun* mk-proj-path-equal (a b &optional string-equal)
+(cl-defun lazy-path-equal (a b &optional string-equal)
   "If path B is equal to or fully contained in path A, this will be true.
 
 If STRING-EQUAL is non-nil behaviour is as if string-equal wouldn't
 care about slashes.
 
 Examples:
-\(mk-proj-path-equal \"/foo/bar\" \"/foo/bar\")      -> true
-\(mk-proj-path-equal \"/foo/bar\" \"/foo\")          -> true
-\(mk-proj-path-equal \"/foo/bar\" \"/foo/bar/blah\") -> false
-\(mk-proj-path-equal \"/foo/bar\" \"/foo/blah/bar\") -> false
+\(lazy-path-equal \"/foo/bar\" \"/foo/bar\")      -> true
+\(lazy-path-equal \"/foo/bar\" \"/foo\")          -> true
+\(lazy-path-equal \"/foo/bar\" \"/foo/bar/blah\") -> false
+\(lazy-path-equal \"/foo/bar\" \"/foo/blah/bar\") -> false
 
-\(mk-proj-path-equal \"/foo/bar\" \"/foo/bar/\" t)     -> true
-\(mk-proj-path-equal \"/foo/bar\" \"/foo\" t)          -> false
-\(mk-proj-path-equal \"/foo/bar\" \"/foo/bar/blah\" t) -> false
-\(mk-proj-path-equal \"/foo/bar\" \"/foo/blah/bar\" t) -> false"
+\(lazy-path-equal \"/foo/bar\" \"/foo/bar/\" t)     -> true
+\(lazy-path-equal \"/foo/bar\" \"/foo\" t)          -> false
+\(lazy-path-equal \"/foo/bar\" \"/foo/bar/blah\" t) -> false
+\(lazy-path-equal \"/foo/bar\" \"/foo/blah/bar\" t) -> false"
   (let ((x (split-string a "/" t))
         (y (split-string b "/" t)))
     (while (and (car x)
@@ -532,24 +524,24 @@ Examples:
      ((and (not (null a)) (not (null b)))
       nil))))
 
-(defun* mk-proj-search-path (re path &optional stop-paths ignore-paths)
+(cl-defun lazy-search-path (re path &optional stop-paths ignore-paths)
   (let ((xs (reverse (split-string path "/" t))))
     (while (and (cdr xs)
-                (loop for ig in stop-paths
-                      if (mk-proj-path-equal ig (apply 'concat (mapcar (lambda (s) (concat "/" s)) (reverse xs))))
-                      return nil
-                      finally return t))
+                (cl-loop for ig in stop-paths
+                         if (lazy-path-equal ig (apply 'concat (mapcar (lambda (s) (concat "/" s)) (reverse xs))))
+                         return nil
+                         finally return t))
       (when (and (directory-files (apply 'concat (mapcar (lambda (s) (concat "/" s)) (reverse xs))) nil re)
-                 (not (some (lambda (re) (string-match re (car xs))) ignore-paths)))
-        (return-from "mk-proj-search-path" (apply 'concat (mapcar (lambda (s) (concat "/" s)) (reverse xs)))))
+                 (not (cl-some (lambda (re) (string-match re (car xs))) ignore-paths)))
+        (cl-return-from "lazy-search-path" (apply 'concat (mapcar (lambda (s) (concat "/" s)) (reverse xs)))))
       (setq xs (cdr xs)))))
 
-(defun mk-proj-join (delimiter strings)
-  (reduce (lambda (a b)
-            (concatenate 'string a delimiter b))
+(defun lazy-join (delimiter strings)
+  (cl-reduce (lambda (a b)
+            (cl-concatenate 'string a delimiter b))
           strings))
 
-(defmacro mk-proj-with-directory (path &rest body)
+(defmacro lazy-with-directory (path &rest body)
   `(let ((default-directory ,path))
      (with-local-quit
        ,@body)))
@@ -576,71 +568,71 @@ Examples:
 ;; Project Configuration
 ;; ---------------------------------------------------------------------
 
-(defun mk-proj-search-projects ()
-  "Search for projects by evaluating `mk-proj-config-save-location' as if it were an elisp file. Falls back to
-trying to evaluate `mk-global-cache-root'/projects.el"
-  (cond ((file-exists-p mk-proj-config-save-location)
-         (load mk-proj-config-save-location))
-        ((file-exists-p (concat (file-name-as-directory (expand-file-name mk-global-cache-root)) "projects.el"))
-         (load (concat (file-name-as-directory (expand-file-name mk-global-cache-root)) "projects.el")))))
+(defun lazy-search-projects ()
+  "Search for projects by evaluating `lazy-config-save-location' as if it were an elisp file. Falls back to
+trying to evaluate `lazy-global-cache-root'/projects.el"
+  (cond ((file-exists-p lazy-config-save-location)
+         (load lazy-config-save-location))
+        ((file-exists-p (concat (file-name-as-directory (expand-file-name lazy-global-cache-root)) "projects.el"))
+         (load (concat (file-name-as-directory (expand-file-name lazy-global-cache-root)) "projects.el")))))
 
-(defun* mk-proj-find-alist (&optional proj-name (inherit t))
+(cl-defun lazy-find-alist (&optional proj-name (inherit t))
   "Get a projects config-alist from the global projects hashmap."
-  (when (or proj-name (setq proj-name mk-proj-name))
-    (let* ((child (gethash proj-name mk-proj-list))
+  (when (or proj-name (setq proj-name lazy-name))
+    (let* ((child (gethash proj-name lazy-list))
            (alist child))
       (while (and (assoc 'parent child)
                   inherit)
-        (setq child (gethash (cadr (assoc 'parent child)) mk-proj-list)
-              alist (append alist (remove-if (lambda (x) (some (lambda (y) (eq (first x) (first y))) alist)) child))))
+        (setq child (gethash (cadr (assoc 'parent child)) lazy-list)
+              alist (append alist (cl-remove-if (lambda (x) (cl-some (lambda (y) (eq (cl-first x) (cl-first y))) alist)) child))))
       alist)))
 
-(defun* mk-proj-get-config-val (key &optional proj-name (inherit t) (proj-alist nil))
+(cl-defun lazy-get-config-val (key &optional proj-name (inherit t) (proj-alist nil))
   "Finds the value associated with KEY. A project PROJ can optionally
 be specified.
 
 If the third argument INHERIT is non-nil, all parents will queried
 for the KEY and the first value that is found is returned.
 
-See also `mk-proj-var-before-get-functions'."
+See also `lazy-var-before-get-functions'."
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (let* ((proj-alist (or proj-alist (mk-proj-find-alist proj-name nil)))
-         (fn (cdr (assoc key mk-proj-var-before-get-functions)))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (let* ((proj-alist (or proj-alist (lazy-find-alist proj-name nil)))
+         (fn (cdr (assoc key lazy-var-before-get-functions)))
          (val (or (when fn
                     (funcall fn key (cadr (assoc key proj-alist)) proj-name proj-alist))
                   (and (assoc key proj-alist)
                        (cadr (assoc key proj-alist)))
                    (let ((parent (cadr (assoc 'parent proj-alist))))
                      (when (and inherit parent)
-                       (mk-proj-get-config-val key parent t))))))
+                       (lazy-get-config-val key parent t))))))
     (if fn (funcall fn key val proj-name proj-alist) val)))
 
-(defalias 'mk-proj-config-val 'mk-proj-get-config-val
-  "Alias for `mk-proj-get-config-val' to ensure backward compatibility.")
+(defalias 'lazy-config-val 'lazy-get-config-val
+  "Alias for `lazy-get-config-val' to ensure backward compatibility.")
 
-(defun mk-proj-set-config-val (key value &optional proj-name)
+(defun lazy-set-config-val (key value &optional proj-name)
   "Set the value associated with KEY to VALUE in config of project NAME."
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (let* ((current-alist (mk-proj-find-alist proj-name nil))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (let* ((current-alist (lazy-find-alist proj-name nil))
          (new-alist current-alist))
     (when current-alist
       (while (assoc key new-alist)
         (setq new-alist (delq (assoc key new-alist) new-alist)))
       (add-to-list 'new-alist `(,key ,value))
       (unless (equal new-alist current-alist)
-        (puthash proj-name new-alist mk-proj-list)
-        (mk-proj-backend-funcall (mk-proj-detect-backend proj-name)
+        (puthash proj-name new-alist lazy-list)
+        (lazy-backend-funcall (lazy-detect-backend proj-name)
                                  'save proj-name new-alist)))))
 
-(defun* mk-proj-eval-alist (proj-name config-alist)
+(cl-defun lazy-eval-alist (proj-name config-alist)
   "Evaluates a CONFIG-ALIST for PROJ-NAME by calling eval on every
 value.
 
-It then uses `mk-proj-check-required-vars' and `mk-proj-check-optional-vars'
+It then uses `lazy-check-required-vars' and `lazy-check-optional-vars'
 to verify the evaluated configuration."
   (interactive)
   (let* ((evaluated-config-alist `((name ,proj-name)))
@@ -650,38 +642,37 @@ to verify the evaluated configuration."
                                 ;; to refer to the parents value
                                 ;; I haven't tested this, it is a experimental feature
                                 (super (when (cadr (assoc 'parent config-alist))
-                                         (mk-proj-get-config-val key (cadr (assoc 'parent config-alist)) t)))
+                                         (lazy-get-config-val key (cadr (assoc 'parent config-alist)) t)))
                                 (lisp (car (cdr cv)))
                                 (value (condition-case nil (eval lisp) (error lisp))))
                            (unless (eq key 'name)
                              (add-to-list 'evaluated-config-alist `(,key ,value)))))))
-    (when (gethash proj-name mk-proj-list)
-      (setq result-alist (mk-proj-alist-union (gethash proj-name mk-proj-list) result-alist)))
+    (when (gethash proj-name lazy-list)
+      (setq result-alist (lazy-alist-union (gethash proj-name lazy-list) result-alist)))
     ;; both check vars functions error, but I don't want to interrupt when loading emacs,
     ;; so this catches the errors but still outputs the error message
-    (if (or (condition-case err (mk-proj-check-required-vars proj-name result-alist) (error (message (error-message-string err))))
-            (condition-case err (mk-proj-check-optional-vars proj-name result-alist) (error (message (error-message-string err)))))
+    (if (or (condition-case err (lazy-check-required-vars proj-name result-alist) (error (message (error-message-string err))))
+            (condition-case err (lazy-check-optional-vars proj-name result-alist) (error (message (error-message-string err)))))
         (progn (message "Project %s could not be evaluated because of errors!" proj-name) nil)
       result-alist)))
 
-(defun* project-def (&optional proj-name config-alist)
+(cl-defun lazy-def (&optional proj-name config-alist)
   "Associate the settings in CONFIG-ALIST with project PROJ-NAME.
 
 All values within CONFIG-ALIST will be evaluated when they look
 like a lisp expression or symbol. So make sure to quote lists!
 
-See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
+See also `lazy-undef', `lazy-required-vars' and `lazy-optional-vars'."
   (interactive)
   (cond ((stringp proj-name)
-         (let ((alist (mk-proj-eval-alist proj-name config-alist)))
+         (let ((alist (lazy-eval-alist proj-name config-alist)))
            (when (and alist (file-exists-p (cadr (assoc 'basedir alist))))
-             (puthash proj-name alist mk-proj-list)
+             (puthash proj-name alist lazy-list)
              (message "Defined: %s" proj-name)
              alist)))
-        ((and (functionp 'mk-org-entry-define-project)
+        ((and (functionp 'lazy-org-entry-define-project)
               (eq major-mode 'org-mode)
-              (looking-at org-complex-heading-regexp)
-              (mk-org-entry-define-project)))))
+              (lazy-org-entry-define-project)))))
 
 
 
@@ -709,126 +700,126 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
 
 
 
-(defun mk-proj-find-project-elisp-configuration-in-buffer (proj-name &optional buffer)
+(defun lazy-find-project-elisp-configuration-in-buffer (proj-name &optional buffer)
   (unless buffer
     (setq buffer (current-buffer)))
   (with-current-buffer buffer
     (save-excursion
       (goto-char (point-min))
-      (block "while-search-loop"
+      (cl-block "while-search-loop"
         (while (and (re-search-forward (regexp-quote proj-name) nil t)
                     (not (eobp)))
-          (when (re-search-backward (regexp-quote "(project-def") (save-excursion (re-search-backward ")" nil t)) t)
-            (return-from "while-search-loop" (point))))))))
+          (when (re-search-backward (regexp-quote "(lazy-def") (save-excursion (re-search-backward ")" nil t)) t)
+            (cl-return-from "while-search-loop" (point))))))))
 
-(defun mk-proj-find-save-location-marker (&optional proj-name config-alist)
+(defun lazy-find-save-location-marker (&optional proj-name config-alist)
   "This tries to find a suitable location to save the projects configuration to disk."
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
   (let ((save-location nil))
     (cond
      ;; find file in directory named after project
-     ((condition-case nil (directory-files (expand-file-name mk-proj-config-save-location)) (error nil))
-      (with-current-buffer (find-file-noselect (concat (expand-file-name mk-proj-config-save-location) proj-name ".el"))
+     ((condition-case nil (directory-files (expand-file-name lazy-config-save-location)) (error nil))
+      (with-current-buffer (find-file-noselect (concat (expand-file-name lazy-config-save-location) proj-name ".el"))
         (save-excursion
-          (goto-char (or (mk-proj-find-project-elisp-configuration-in-buffer proj-name) (point-max)))
+          (goto-char (or (lazy-find-project-elisp-configuration-in-buffer proj-name) (point-max)))
           (point-marker))))
      ;; find section to save under in single el file
-     ((or (and (stringp mk-proj-config-save-location)
-               (or (file-exists-p (expand-file-name mk-proj-config-save-location))
-                   (write-region "" nil (expand-file-name mk-proj-config-save-location))
+     ((or (and (stringp lazy-config-save-location)
+               (or (file-exists-p (expand-file-name lazy-config-save-location))
+                   (write-region "" nil (expand-file-name lazy-config-save-location))
                    t)
-               (setq save-location mk-proj-config-save-location))
-          (and (or (file-exists-p (concat (file-name-as-directory (expand-file-name mk-global-cache-root)) "projects.el"))
-                   (write-region "" nil (concat (file-name-as-directory (expand-file-name mk-global-cache-root)) "projects.el"))
+               (setq save-location lazy-config-save-location))
+          (and (or (file-exists-p (concat (file-name-as-directory (expand-file-name lazy-global-cache-root)) "projects.el"))
+                   (write-region "" nil (concat (file-name-as-directory (expand-file-name lazy-global-cache-root)) "projects.el"))
                    t)
-               (setq save-location (concat (file-name-as-directory (expand-file-name mk-global-cache-root)) "projects.el"))))
+               (setq save-location (concat (file-name-as-directory (expand-file-name lazy-global-cache-root)) "projects.el"))))
       (with-current-buffer (find-file-noselect (expand-file-name save-location))
         (save-excursion
-          (cond ((condition-case nil (goto-char (mk-proj-find-project-elisp-configuration-in-buffer proj-name)) (error nil))
+          (cond ((condition-case nil (goto-char (lazy-find-project-elisp-configuration-in-buffer proj-name)) (error nil))
                  (point-marker))
                 ((goto-char (point-max))
                  (point-marker))
-                (t (error "mk-proj: could not find a location to save %s, see mk-proj-config-save-location" proj-name))))))
+                (t (error "lazy: could not find a location to save %s, see lazy-config-save-location" proj-name))))))
      ;; no suitable location found
-     (t (error "mk-proj: could not find a location to save %s, see mk-proj-config-save-location" proj-name)))))
+     (t (error "lazy: could not find a location to save %s, see lazy-config-save-location" proj-name)))))
 
-(defun mk-proj-config-insert (proj-name config-alist &optional insert-undefined insert-internal)
+(defun lazy-config-insert (proj-name config-alist &optional insert-undefined insert-internal)
   (save-excursion
-    (insert (concat "(project-def \"" proj-name "\" '("))
-    (loop for k in (append mk-proj-required-vars mk-proj-optional-vars)
-          if (and (not (eq (car k) 'name))
-                  (or (not (some (lambda (j) (eq (car k) j)) mk-proj-internal-vars))
-                      insert-internal)
-                  (or (not (cdr (assoc (car k) mk-proj-var-before-get-functions)))
-                      (not (string-equal (prin1-to-string (funcall (cdr (assoc (car k) mk-proj-var-before-get-functions)) (car k) nil))
-                                         (prin1-to-string (mk-proj-get-config-val (car k) proj-name))))
-                      insert-internal))
-          do (when (or insert-undefined
-                       (assoc (car k) config-alist))
-               (insert (concat "(" (symbol-name (car k)) " " (prin1-to-string (cadr (assoc (car k) config-alist))) ")"))
-               (unless (eq (car k) (car (last mk-proj-optional-vars)))
-                 (newline))
-               (indent-according-to-mode)))
+    (insert (concat "(lazy-def \"" proj-name "\" '("))
+    (cl-loop for k in (append lazy-required-vars lazy-optional-vars)
+             if (and (not (eq (car k) 'name))
+                     (or (not (cl-some (lambda (j) (eq (car k) j)) lazy-internal-vars))
+                         insert-internal)
+                     (or (not (cdr (assoc (car k) lazy-var-before-get-functions)))
+                         (not (string-equal (prin1-to-string (funcall (cdr (assoc (car k) lazy-var-before-get-functions)) (car k) nil))
+                                            (prin1-to-string (lazy-get-config-val (car k) proj-name))))
+                         insert-internal))
+             do (when (or insert-undefined
+                          (assoc (car k) config-alist))
+                  (insert (concat "(" (symbol-name (car k)) " " (prin1-to-string (cadr (assoc (car k) config-alist))) ")"))
+                  (unless (eq (car k) (car (last lazy-optional-vars)))
+                    (newline))
+                  (indent-according-to-mode)))
     (insert "))\n")))
 
-(defun mk-proj-config-save (proj-name config-alist)
-  (let ((marker (mk-proj-find-save-location-marker proj-name config-alist)))
+(defun lazy-config-save (proj-name config-alist)
+  (let ((marker (lazy-find-save-location-marker proj-name config-alist)))
     (with-marker marker
                  (let ((mod (buffer-modified-p)))
-                   (cond ((looking-at "(project-def.*")
+                   (cond ((looking-at "(lazy-def.*")
                           (let* ((begin (point))
-                                 (end (save-excursion (end-of-sexp) (point)))
+                                 (end (save-excursion (thing-at-point--end-of-sexp) (point)))
                                  (old-alist (eval (nth 2 (read (buffer-substring begin end)))))
-                                 (new-alist (mk-proj-alist-union old-alist config-alist)))
+                                 (new-alist (lazy-alist-union old-alist config-alist)))
                             (kill-region begin end)
-                            (mk-proj-config-insert proj-name new-alist)
+                            (lazy-config-insert proj-name new-alist)
                             (call-interactively 'eval-defun)))
                          (t
                           (goto-char (point-max))
                           (newline)
                           (newline)
-                          (mk-proj-config-insert proj-name config-alist)
+                          (lazy-config-insert proj-name config-alist)
                           (call-interactively 'eval-defun)))
                    (save-buffer)
                    (set-buffer-modified-p mod)))))
 
-(defun* mk-proj-config-buffer (&optional (state :create) proj-name config-alist)
-  (case state
+(cl-defun lazy-config-buffer (&optional (state :create) proj-name config-alist)
+  (cl-case state
     (:create
      (let* ((proj-b (current-buffer))
-            (buf (get-buffer-create "*mk-proj: new project*"))
+            (buf (get-buffer-create "*lazy: new project*"))
             (window (display-buffer buf))
-            (config-alist (or config-alist (mk-proj-guess-alist))))
+            (config-alist (or config-alist (lazy-guess-alist))))
        (select-window window)
        (set-window-dedicated-p window t)
        (emacs-lisp-mode)
        (buffer-disable-undo)
-       (mk-proj-config-insert (or proj-name (cadr (assoc 'name config-alist)) "NewProject") config-alist t)
+       (lazy-config-insert (or proj-name (cadr (assoc 'name config-alist)) "NewProject") config-alist t)
        (goto-char 0)
        (end-of-line)
-       (mk-proj-backend-create-project-mode 'elisp)
+       (lazy-backend-create-project-mode 'elisp)
        (buffer-enable-undo)))
     (:edit
-     (let* ((marker (mk-proj-find-save-location-marker))
-            (buf (make-indirect-buffer (marker-buffer marker) "*mk-proj: edit project*"))
+     (let* ((marker (lazy-find-save-location-marker))
+            (buf (make-indirect-buffer (marker-buffer marker) "*lazy: edit project*"))
             (window (display-buffer buf)))
        (select-window window)
        (set-window-start window (marker-position marker))
        (lisp-interaction-mode)
        (goto-char (marker-position marker))
-       (mk-proj-config-save mk-proj-name (mk-proj-find-alist mk-proj-name nil))
+       (lazy-config-save lazy-name (lazy-find-alist lazy-name nil))
        (set-window-dedicated-p window t)
-       (mk-proj-backend-edit-project-mode 'elisp)
+       (lazy-backend-edit-project-mode 'elisp)
        (buffer-enable-undo)))
     (:finalize-create
      (let ((result nil))
        (while (not (setq result (condition-case nil (eval (read (buffer-string))) (error nil)))))
-       (mk-proj-config-save (cadr (assoc 'name result)) result)
+       (lazy-config-save (cadr (assoc 'name result)) result)
        (kill-buffer (buffer-name))))
     (:finalize-edit
-     (let ((marker (mk-proj-find-save-location-marker)))
+     (let ((marker (lazy-find-save-location-marker)))
        (save-excursion
          (goto-char (marker-position marker))
          (let (edited-alist)
@@ -836,9 +827,9 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
                        'error)
              (save-buffer)
              (kill-buffer)
-             (when (and (not (condition-case nil (mk-proj-assert-proj) (error t)))
-                        (string-equal (cadr (assoc 'name edited-alist)) mk-proj-name))
-               (project-def mk-proj-name edited-alist)))))))))
+             (when (and (not (condition-case nil (lazy-assert-proj) (error t)))
+                        (string-equal (cadr (assoc 'name edited-alist)) lazy-name))
+               (lazy-def lazy-name edited-alist)))))))))
 
 
 
@@ -846,121 +837,115 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
 
 
 
-(defvar mk-proj-backend-list (make-hash-table))
+(defvar lazy-backend-list (make-hash-table))
 
-(defun* mk-proj-define-backend (backend &key buffer-fun save-fun insert-fun test-fun)
+(cl-defun lazy-define-backend (backend &key buffer-fun save-fun insert-fun test-fun)
   (puthash backend `((buffer . ,buffer-fun)
                      (save . ,save-fun)
                      (insert . ,insert-fun)
                      (test . ,test-fun))
-           mk-proj-backend-list))
+           lazy-backend-list))
 
-(mk-proj-define-backend 'elisp
-                        :buffer-fun 'mk-proj-config-buffer
-                        :save-fun 'mk-proj-config-save
-                        :insert-fun 'mk-proj-config-insert)
+(lazy-define-backend 'elisp
+                        :buffer-fun 'lazy-config-buffer
+                        :save-fun 'lazy-config-save
+                        :insert-fun 'lazy-config-insert)
 
-(defvar mk-proj-config-backend 'elisp)
+(defvar lazy-config-backend 'elisp)
 
-(defun mk-proj-backend-funcall (backend sym &rest args)
-  (apply (cdr (assoc sym (gethash backend mk-proj-backend-list))) args))
+(defun lazy-backend-funcall (backend sym &rest args)
+  (apply (cdr (assoc sym (gethash backend lazy-backend-list))) args))
 
-(defun* mk-proj-detect-backend (&optional proj-name config-alist)
-  (if (and (condition-case nil (mk-proj-assert-proj) (error t))
+(cl-defun lazy-detect-backend (&optional proj-name config-alist)
+  (if (and (condition-case nil (lazy-assert-proj) (error t))
            (not proj-name))
-      (return-from "mk-proj-detect-backend" mk-proj-config-backend)
+      (cl-return-from "lazy-detect-backend" lazy-config-backend)
     (unless proj-name
-      (setq proj-name mk-proj-name))
+      (setq proj-name lazy-name))
     (unless config-alist
-      (setq config-alist (mk-proj-find-alist proj-name t)))
+      (setq config-alist (lazy-find-alist proj-name t)))
     (maphash (lambda (k v)
                (unless (eq k 'elisp)
                  (when (funcall (cdr (assoc 'test v)) config-alist)
-                   (return-from "mk-proj-detect-backend" k)))) mk-proj-backend-list)
+                   (cl-return-from "lazy-detect-backend" k)))) lazy-backend-list)
     'elisp))
 
-(defun project-save ()
+(defun lazy-save ()
   (interactive)
-  (mk-proj-assert-proj)
-  (mk-proj-backend-funcall (mk-proj-detect-backend)
-                           'save mk-proj-name (mk-proj-find-alist nil nil)))
+  (lazy-assert-proj)
+  (lazy-backend-funcall (lazy-detect-backend)
+                           'save lazy-name (lazy-find-alist nil nil)))
 
-(defun project-insert ()
+(defun lazy-insert ()
   (interactive)
-  (mk-proj-assert-proj)
+  (lazy-assert-proj)
   (cond ((derived-mode-p 'emacs-lisp-mode 'inferior-emacs-lisp-mode)
-         (mk-proj-backend-funcall 'elisp
-                                  'insert mk-proj-name (mk-proj-find-alist nil nil)))
+         (lazy-backend-funcall 'elisp
+                                  'insert lazy-name (lazy-find-alist nil nil)))
         ((derived-mode-p 'org-mode)
-         (mk-proj-backend-funcall 'orgmode
-                                  'insert mk-proj-name (mk-proj-find-alist nil nil)))))
+         (lazy-backend-funcall 'orgmode
+                                  'insert lazy-name (lazy-find-alist nil nil)))))
 
-(defun* project-create ()
+(cl-defun lazy-create ()
   (interactive)
-  (if (and (gethash 'org-mode mk-proj-backend-list)
-           (boundp 'org-complex-heading-regexp)
-           (if (eq major-mode 'org-mode)
-               (save-excursion
-                 (org-back-to-heading)
-                 (looking-at org-complex-heading-regexp))
-             t))
-      (mk-proj-backend-funcall 'org-mode
+  (if (and (gethash 'org-mode lazy-backend-list))
+      (lazy-backend-funcall 'org-mode
                                'buffer :create)
-    (mk-proj-backend-funcall (mk-proj-detect-backend)
+    (lazy-backend-funcall (lazy-detect-backend)
                              'buffer :create)))
 
-(defun project-edit (&optional proj-name)
+(defun lazy-edit (&optional proj-name)
   (interactive)
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (mk-proj-backend-funcall (mk-proj-detect-backend proj-name)
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (lazy-backend-funcall (lazy-detect-backend proj-name)
                            'buffer :edit proj-name))
 
 
 
 
-(defvar mk-proj-create-project-mode-map (make-sparse-keymap))
+(defvar lazy-create-project-mode-map (make-sparse-keymap))
 
-(defvar mk-proj-create-project-mode-hook nil)
+(defvar lazy-create-project-mode-hook nil)
 
-(define-minor-mode mk-proj-create-project-mode nil nil " NewProject" mk-proj-create-project-mode-map
-  (run-hooks 'mk-proj-create-project-mode-hook))
+(define-minor-mode lazy-create-project-mode nil nil " NewProject" lazy-create-project-mode-map
+  (run-hooks 'lazy-create-project-mode-hook))
 
-(defun mk-proj-backend-create-project-mode (backend)
-  (mk-proj-create-project-mode)
-  (setq mk-proj-create-project-mode backend))
+(defun lazy-backend-create-project-mode (backend)
+  (lazy-create-project-mode)
+  (setq lazy-create-project-mode backend))
 
-(define-key mk-proj-create-project-mode-map "\C-c\C-c"
+(define-key lazy-create-project-mode-map "\C-c\C-c"
   (lambda ()
     (interactive)
-    (mk-proj-backend-funcall mk-proj-create-project-mode
+    (lazy-backend-funcall lazy-create-project-mode
                              'buffer :finalize-create)))
 
-(define-key mk-proj-create-project-mode-map "\C-c\C-k"
+(define-key lazy-create-project-mode-map "\C-c\C-k"
   (lambda ()
     (interactive)
     (kill-buffer (buffer-name))))
 
 
-(defvar mk-proj-edit-project-mode-map (make-sparse-keymap))
+(defvar lazy-edit-project-mode-map (make-sparse-keymap))
 
-(defvar mk-proj-edit-project-mode-hook nil)
+(defvar lazy-edit-project-mode-hook nil)
 
-(define-minor-mode mk-proj-edit-project-mode nil nil " EditProject" mk-proj-edit-project-mode-map
-  (run-hooks 'mk-proj-edit-project-mode-hook))
+(define-minor-mode lazy-edit-project-mode nil nil " EditProject" lazy-edit-project-mode-map
+  (run-hooks 'lazy-edit-project-mode-hook))
 
-(defun mk-proj-backend-edit-project-mode (backend)
-  (mk-proj-edit-project-mode)
-  (setq mk-proj-edit-project-mode backend))
+(defun lazy-backend-edit-project-mode (backend)
+  (lazy-edit-project-mode)
+  (setq lazy-edit-project-mode backend))
 
-(define-key mk-proj-edit-project-mode-map "\C-c\C-c"
+(define-key lazy-edit-project-mode-map "\C-c\C-c"
   (lambda ()
     (interactive)
-    (mk-proj-backend-funcall mk-proj-edit-project-mode
+    (lazy-backend-funcall lazy-edit-project-mode
                              'buffer :finalize-edit)))
 
-(define-key mk-proj-edit-project-mode-map "\C-c\C-k"
+(define-key lazy-edit-project-mode-map "\C-c\C-k"
   (lambda ()
     (interactive)
     (kill-buffer (buffer-name))))
@@ -976,52 +961,52 @@ See also `project-undef', `mk-proj-required-vars' and `mk-proj-optional-vars'."
 
 
 
-(defun project-undef (&optional proj-name)
-  "Opposite of `project-def'."
+(defun lazy-undef (&optional proj-name)
+  "Opposite of `lazy-def'."
   (interactive "sProject: ")
-  (remhash proj-name mk-proj-list)
-  (remhash proj-name mk-proj-completions-cache))
+  (remhash proj-name lazy-list)
+  (remhash proj-name lazy-completions-cache))
 
-(defmacro mk-proj-with-current-project (proj-name &rest body)
-  "Execute BODY with PROJ-NAME as current project. It just sets `mk-proj-name' to PROJ-NAME temporarily."
-  `(let ((mk-proj-name ,proj-name))
+(defmacro lazy-with-current-project (proj-name &rest body)
+  "Execute BODY with PROJ-NAME as current project. It just sets `lazy-name' to PROJ-NAME temporarily."
+  `(let ((lazy-name ,proj-name))
      (condition-case nil ,@body (error nil))))
 
-(defun mk-proj-check-required-vars (proj-name &optional proj-alist)
-  "Go through all `mk-proj-required-vars' and check them in PROJ-NAME or PROJ-ALIST using the functions
-defined in `mk-proj-required-vars'.
+(defun lazy-check-required-vars (proj-name &optional proj-alist)
+  "Go through all `lazy-required-vars' and check them in PROJ-NAME or PROJ-ALIST using the functions
+defined in `lazy-required-vars'.
 
-See also `mk-proj-optional-vars'"
+See also `lazy-optional-vars'"
   (unless proj-alist
-    (setq proj-alist (mk-proj-find-alist proj-name)))
-  (dolist (v mk-proj-required-vars)
+    (setq proj-alist (lazy-find-alist proj-name)))
+  (dolist (v lazy-required-vars)
     (let* ((config-symbol (car v))
            (config-value (cadr (assoc config-symbol proj-alist)))
            (config-checks (cdr v)))
       (if (not config-value)
           (error "Required config value '%s' missing in %s!" (symbol-name config-symbol) proj-name)
-        (when (not (every (lambda (check) (funcall check config-value)) config-checks))
+        (when (not (cl-every (lambda (check) (funcall check config-value)) config-checks))
           (error "Required config value '%s' has invalid value '%s' in %s!" (symbol-name config-symbol) (prin1-to-string config-value) proj-name))))))
 
-(defun mk-proj-check-optional-vars (proj-name &optional proj-alist)
-  "Go through all `mk-proj-optional-vars' and check them in PROJ-NAME or PROJ-ALIST using the functions
-defined in `mk-proj-optional-vars'.
+(defun lazy-check-optional-vars (proj-name &optional proj-alist)
+  "Go through all `lazy-optional-vars' and check them in PROJ-NAME or PROJ-ALIST using the functions
+defined in `lazy-optional-vars'.
 
-See also `mk-proj-required-vars'"
-  (dolist (v mk-proj-optional-vars)
+See also `lazy-required-vars'"
+  (dolist (v lazy-optional-vars)
     (let* ((config-symbol (car v))
            (config-value (cadr (assoc config-symbol proj-alist)))
            (config-checks (cdr v)))
-      (when (and config-value (not (every (lambda (check) (funcall check config-value)) config-checks)))
+      (when (and config-value (not (cl-every (lambda (check) (funcall check config-value)) config-checks)))
         (error "Optional config value '%s' has invalid value '%s' in %s!" (symbol-name config-symbol) (prin1-to-string config-value) proj-name)))))
 
-(defun* mk-proj-get-cache-file (symbol &optional proj-name (inherit t))
+(cl-defun lazy-get-cache-file (symbol &optional proj-name (inherit t))
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (let ((directory (concat mk-global-cache-root
-                           (cond ((mk-proj-get-config-val 'parent proj-name nil)
-                                  (let ((a (concat "/" (mk-proj-join "/" (mk-proj-ancestry proj-name)))))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (let ((directory (concat lazy-global-cache-root
+                           (cond ((lazy-get-config-val 'parent proj-name nil)
+                                  (let ((a (concat "/" (lazy-join "/" (lazy-ancestry proj-name)))))
                                     (concat a "/")))
                                  (t
                                   (concat "/" proj-name "/")))))
@@ -1030,83 +1015,83 @@ See also `mk-proj-required-vars'"
     (let ((r (concat directory file)))
       (cond ((file-exists-p r)
              r)
-            ((and (mk-proj-get-config-val 'parent proj-name nil)
-                  (file-exists-p (or (mk-proj-get-config-val symbol (mk-proj-get-config-val 'parent proj-name nil) nil)
-                                     (mk-proj-get-cache-file symbol (mk-proj-get-config-val 'parent proj-name nil) t)))
+            ((and (lazy-get-config-val 'parent proj-name nil)
+                  (file-exists-p (or (lazy-get-config-val symbol (lazy-get-config-val 'parent proj-name nil) nil)
+                                     (lazy-get-cache-file symbol (lazy-get-config-val 'parent proj-name nil) t)))
                   (eq inherit 'copy))
              (progn
-               (copy-file (or (mk-proj-get-config-val symbol (mk-proj-get-config-val 'parent proj-name nil) nil)
-                              (mk-proj-get-cache-file symbol (mk-proj-get-config-val 'parent proj-name nil) t)) r)
+               (copy-file (or (lazy-get-config-val symbol (lazy-get-config-val 'parent proj-name nil) nil)
+                              (lazy-get-cache-file symbol (lazy-get-config-val 'parent proj-name nil) t)) r)
                r))
-            ((and (mk-proj-get-config-val 'parent proj-name nil)
-                  (eq (mk-proj-get-config-val 'basedir proj-name nil) nil)
+            ((and (lazy-get-config-val 'parent proj-name nil)
+                  (eq (lazy-get-config-val 'basedir proj-name nil) nil)
                   (eq inherit t))
-             (or (mk-proj-get-config-val symbol (mk-proj-get-config-val 'parent proj-name nil) nil)
-                 (mk-proj-get-cache-file symbol (mk-proj-get-config-val 'parent proj-name nil) t)))
+             (or (lazy-get-config-val symbol (lazy-get-config-val 'parent proj-name nil) nil)
+                 (lazy-get-cache-file symbol (lazy-get-config-val 'parent proj-name nil) t)))
             (t r)))))
 
-(defun mk-proj-get-root-cache-dir (&optional dirname proj-name)
+(defun lazy-get-root-cache-dir (&optional dirname proj-name)
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (let ((cachedir (concat mk-global-cache-root "/" (or (car-safe (mk-proj-ancestry proj-name)) proj-name) "/" dirname)))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (let ((cachedir (concat lazy-global-cache-root "/" (or (car-safe (lazy-ancestry proj-name)) proj-name) "/" dirname)))
     (unless (file-directory-p cachedir)
       (make-directory cachedir t))
     (expand-file-name cachedir)))
 
-(defun mk-proj-ancestry (&optional proj-name)
+(defun lazy-ancestry (&optional proj-name)
   (let* ((current (or proj-name
                       (progn
-                        (mk-proj-assert-proj)
-                        mk-proj-name)))
+                        (lazy-assert-proj)
+                        lazy-name)))
          (ancestry `(,current)))
-    (while (mk-proj-config-val 'parent current)
-      (setq ancestry (cons (mk-proj-config-val 'parent current) ancestry)
-            current (mk-proj-config-val 'parent current)))
+    (while (lazy-config-val 'parent current)
+      (setq ancestry (cons (lazy-config-val 'parent current) ancestry)
+            current (lazy-config-val 'parent current)))
     ancestry))
 
-(defvar mk-proj-prevent-after-save-update nil)
+(defvar lazy-prevent-after-save-update nil)
 
-(defun mk-proj-load (proj-name)
+(defun lazy-load-project (proj-name)
   "Load PROJ-NAME configuration. This is the main loading function that does all the work, it
-is supposed to be called from `project-load'.
+is supposed to be called from `lazy-load'.
 
-See also `project-load', `project-unload', `mk-proj-fib-init', `mk-proj-visit-saved-open-files',
-`mk-proj-visit-saved-open-friends', `mk-proj-before-load-hook', `mk-proj-after-load-hook'"
-  (let* ((oldname mk-proj-name)
-         (proj-alist (mk-proj-find-alist proj-name nil))
+See also `lazy-load', `lazy-unload', `lazy-fib-init', `lazy-visit-saved-open-files',
+`lazy-visit-saved-open-friends', `lazy-before-load-hook', `lazy-after-load-hook'"
+  (let* ((oldname lazy-name)
+         (proj-alist (lazy-find-alist proj-name nil))
          (quiet (and (cadr (assoc 'parent proj-alist))
                      (or (string-equal (cadr (assoc 'parent proj-alist))
-                                       mk-proj-name)
-                         (and (not (condition-case nil (mk-proj-assert-proj) (error t)))
+                                       lazy-name)
+                         (and (not (condition-case nil (lazy-assert-proj) (error t)))
                               (string-equal (cadr (assoc 'parent proj-alist))
-                                            (mk-proj-get-config-val 'parent nil nil))))))
-         (mk-proj-prevent-after-save-update t))
+                                            (lazy-get-config-val 'parent nil nil))))))
+         (lazy-prevent-after-save-update t))
     (unless proj-name
-      (error "mk-proj-load: proj-name is nil"))
-    (run-hooks 'mk-proj-before-load-hook)
+      (error "lazy-load: proj-name is nil"))
+    (run-hooks 'lazy-before-load-hook)
     (unless (or (string= oldname proj-name)
                 (eq proj-alist nil))
-      (project-unload))
+      (lazy-unload))
     (if (not  proj-alist)
         (error "Project %s does not exist!" proj-name)
-      (mk-proj-check-required-vars proj-name proj-alist)
-      (mk-proj-check-optional-vars proj-name proj-alist))
-    (setq mk-proj-name proj-name)
-    (while (not (file-directory-p (mk-proj-get-config-val 'basedir)))
-      (mk-proj-set-config-val 'basedir (read-string "Missing base directory? : " (mk-proj-get-config-val 'basedir))))
-    (when (and (mk-proj-get-config-val 'vcs) (not (mk-proj-get-vcs-path)))
+      (lazy-check-required-vars proj-name proj-alist)
+      (lazy-check-optional-vars proj-name proj-alist))
+    (setq lazy-name proj-name)
+    (while (not (file-directory-p (lazy-get-config-val 'basedir)))
+      (lazy-set-config-val 'basedir (read-string "Missing base directory? : " (lazy-get-config-val 'basedir))))
+    (when (and (lazy-get-config-val 'vcs) (not (lazy-get-vcs-path)))
       (error "Invalid VCS setting!"))
     (message "Loading project %s ..." proj-name)
-    (mk-proj-fib-init)
-    (add-hook 'kill-emacs-hook 'mk-proj-kill-emacs-hook)
-    (run-hooks 'mk-proj-before-files-load-hook)
-    (mk-proj-visit-saved-open-files)
-    (mk-proj-visit-saved-open-friends)
+    (lazy-fib-init)
+    (add-hook 'kill-emacs-hook 'lazy-kill-emacs-hook)
+    (run-hooks 'lazy-before-files-load-hook)
+    (lazy-visit-saved-open-files)
+    (lazy-visit-saved-open-friends)
     (modify-frame-parameters (selected-frame) (list (cons 'name proj-name)))
-    (run-hooks 'mk-proj-after-load-hook)
-    (when (mk-proj-get-config-val 'startup-hook)
-      (let ((startup-hook (mk-proj-get-config-val 'startup-hook)))
+    (run-hooks 'lazy-after-load-hook)
+    (when (lazy-get-config-val 'startup-hook)
+      (let ((startup-hook (lazy-get-config-val 'startup-hook)))
         (cond ((functionp startup-hook)
                (progn (message "funcall startup-hook...") (funcall startup-hook)))
               ((commandp startup-hook)
@@ -1114,86 +1099,86 @@ See also `project-load', `project-unload', `mk-proj-fib-init', `mk-proj-visit-sa
               ((and (listp startup-hook)
                     (symbolp (car startup-hook)))
                (progn (message "eval startup-hook...") (eval startup-hook))))))
-    (project-update-tags proj-name)
+    (lazy-update-tags proj-name)
     (message "Loading project %s done" proj-name)))
 
-(defun project-load (&optional proj-name)
+(defun lazy-load (&optional proj-name)
   "Load PROJ-NAME or ask the user about which project to load.
 
-See also `mk-proj-load'"
+See also `lazy-load-project'"
   (interactive)
-  (let* ((guessed-alist (mk-proj-guess-alist))
-         (names (let ((ns (mk-proj-names)))
+  (let* ((guessed-alist (lazy-guess-alist))
+         (names (let ((ns (lazy-names)))
                   (when (cadr (assoc 'name guessed-alist))
                     (add-to-list 'ns (cadr (assoc 'name guessed-alist))))
                   ns))
          (name (or proj-name
-                   (if (mk-proj-use-ido)
+                   (if (lazy-use-ido)
                        (ido-completing-read "Project Name (ido): " names nil nil nil nil (cadr (assoc 'name guessed-alist)))
                      (completing-read "Project Name: " names)))))
     (when (and (cadr (assoc 'name guessed-alist))
                (string-equal name (cadr (assoc 'name guessed-alist)))
-               (not (mk-proj-find-alist name nil)))
-      (project-def name guessed-alist))
-    (when (not (mk-proj-find-alist name nil))
+               (not (lazy-find-alist name nil)))
+      (lazy-def name guessed-alist))
+    (when (not (lazy-find-alist name nil))
       (add-to-list 'guessed-alist `(name ,name))
-      (project-def name guessed-alist))
-    (mk-proj-load name)))
+      (lazy-def name guessed-alist))
+    (lazy-load-project name)))
 
-(defun mk-proj-kill-emacs-hook ()
+(defun lazy-kill-emacs-hook ()
   "Ensure we save the open-files-cache info on emacs exit"
-  (when (and mk-proj-name
-             (mk-proj-get-config-val 'open-files-cache))
-    (mk-proj-save-open-file-info))
-  (when (and mk-proj-name
-             (mk-proj-get-config-val 'friends)
-             (mk-proj-get-config-val 'open-friends-cache))
-    (mk-proj-save-open-friends-info))
-  (project-unload t))
+  (when (and lazy-name
+             (lazy-get-config-val 'open-files-cache))
+    (lazy-save-open-file-info))
+  (when (and lazy-name
+             (lazy-get-config-val 'friends)
+             (lazy-get-config-val 'open-friends-cache))
+    (lazy-save-open-friends-info))
+  (lazy-unload t))
 
-(defun project-unload (&optional quiet)
+(defun lazy-unload (&optional quiet)
   "Unload the current project configuration after running the shutdown hook.
 
-See also `project-close-files', `project-close-friends', `mk-proj-history'
-`mk-proj-before-files-unload-hook', `mk-proj-before-unload-hook', `mk-proj-after-unload-hook'"
+See also `lazy-close-files', `lazy-close-friends', `lazy-history'
+`lazy-before-files-unload-hook', `lazy-before-unload-hook', `lazy-after-unload-hook'"
   (interactive "P")
-  (let ((mk-proj-prevent-after-save-update t)
-        (close-files (when mk-proj-name (y-or-n-p (concat "Close all '" mk-proj-name "' project files? ")))))
-    (when mk-proj-name
+  (let ((lazy-prevent-after-save-update t)
+        (close-files (when lazy-name (y-or-n-p (concat "Close all '" lazy-name "' project files? ")))))
+    (when lazy-name
       (condition-case nil
           (progn
-            (unless quiet (message "Unloading project %s" mk-proj-name))
-            (run-hooks 'mk-proj-before-unload-hook)
-            (mk-proj-maybe-kill-buffer (mk-proj-fib-name))
-            (mk-proj-save-open-friends-info)
-            (mk-proj-save-open-file-info)
-            (run-hooks 'mk-proj-before-files-unload-hook)
-            (and (or (mk-proj-buffers) (mk-proj-friendly-buffers))
+            (unless quiet (message "Unloading project %s" lazy-name))
+            (run-hooks 'lazy-before-unload-hook)
+            (lazy-maybe-kill-buffer (lazy-fib-name))
+            (lazy-save-open-friends-info)
+            (lazy-save-open-file-info)
+            (run-hooks 'lazy-before-files-unload-hook)
+            (and (or (lazy-buffers) (lazy-friendly-buffers))
                  (not quiet)
                  close-files
-                 (project-close-friends)
-                 (project-close-files))
-            (when (mk-proj-get-config-val 'shutdown-hook)
-              (if (functionp (mk-proj-get-config-val 'shutdown-hook))
-                  (funcall (mk-proj-get-config-val 'shutdown-hook))
-                (mapc 'funcall (mk-proj-get-config-val 'shutdown-hook))))
-            (run-hooks 'mk-proj-after-unload-hook))
+                 (lazy-close-friends)
+                 (lazy-close-files))
+            (when (lazy-get-config-val 'shutdown-hook)
+              (if (functionp (lazy-get-config-val 'shutdown-hook))
+                  (funcall (lazy-get-config-val 'shutdown-hook))
+                (mapc 'funcall (lazy-get-config-val 'shutdown-hook))))
+            (run-hooks 'lazy-after-unload-hook))
         (error nil)))
-    (add-to-list 'mk-proj-history mk-proj-name)
-    (setq mk-proj-name nil)
+    (add-to-list 'lazy-history lazy-name)
+    (setq lazy-name nil)
     (modify-frame-parameters (selected-frame) (list (cons 'name "Emacs")))
     (setq compile-command nil)
     (unless quiet (message "Project settings have been cleared"))))
 
-(defun project-close-files ()
+(defun lazy-close-files ()
   "Close all unmodified files that reside in the project's basedir"
   (interactive)
-  (mk-proj-assert-proj)
+  (lazy-assert-proj)
   (let ((closed nil)
         (dirty nil)
         (zeitgeist-prevent-send t)
         (continue-prevent-save t))
-    (dolist (b (append (mk-proj-file-buffers) (mk-proj-dired-buffers)))
+    (dolist (b (append (lazy-file-buffers) (lazy-dired-buffers)))
       (cond
        ((string-equal (buffer-name b) "*scratch*")
         nil)
@@ -1205,7 +1190,7 @@ See also `project-close-files', `project-close-friends', `mk-proj-history'
     (message "Closed %d buffers, %d modified buffers where left open"
              (length closed) (length dirty))))
 
-(defun mk-proj-buffer-name (buf)
+(defun lazy-buffer-name (buf)
   "Return buffer's name based on filename or dired's location"
   (let ((file-name (or (buffer-file-name (or (buffer-base-buffer buf) buf))
                        (with-current-buffer (or (buffer-base-buffer buf) buf) list-buffers-directory))))
@@ -1213,91 +1198,91 @@ See also `project-close-files', `project-close-friends', `mk-proj-history'
         (expand-file-name file-name)
       nil)))
 
-(defun mk-proj-buffer-p (buf &optional proj-name proj-alist)
+(defun lazy-buffer-p (buf &optional proj-name proj-alist)
   "Is the given buffer in our project, is a file opened? Also detects dired buffers open to basedir/*"
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-alist proj-name)
-                       (mk-proj-find-alist mk-proj-name)
-                       (mk-proj-guess-alist)))
+                       (lazy-find-alist proj-name)
+                       (lazy-find-alist lazy-name)
+                       (lazy-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
-    (mk-proj-assert-proj))
-  (let ((file-name (mk-proj-buffer-name buf))
-        (basedir (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t proj-alist)))
+    (lazy-assert-proj))
+  (let ((file-name (lazy-buffer-name buf))
+        (basedir (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist)))
         (case-fold-search nil))
     (if (and (stringp file-name)
              (file-exists-p file-name)
-             (mk-proj-get-config-val 'basedir proj-name t proj-alist)
-             (loop for pattern in (mk-proj-get-config-val 'src-patterns proj-name t proj-alist)
-                   if (string-match (if (mk-proj-get-config-val 'patterns-are-regex proj-name t proj-alist)
-                                        pattern
-                                      (regexp-quote pattern)) file-name)
-                   return t
-                   finally return nil)
+             (lazy-get-config-val 'basedir proj-name t proj-alist)
+             (cl-loop for pattern in (lazy-get-config-val 'src-patterns proj-name t proj-alist)
+                      if (string-match (if (lazy-get-config-val 'patterns-are-regex proj-name t proj-alist)
+                                           pattern
+                                         (regexp-quote pattern)) file-name)
+                      return t
+                      finally return nil)
              (or (string-match (concat "^" (regexp-quote basedir)) file-name)
                  (string-match (concat "^" (regexp-quote (file-truename basedir))) file-name)))
         proj-name
       nil)))
 
-(defun mk-proj-file-buffer-p (buf &optional proj-name)
+(defun lazy-file-buffer-p (buf &optional proj-name)
   (and (buffer-file-name buf)
-       (mk-proj-buffer-p buf proj-name)))
+       (lazy-buffer-p buf proj-name)))
 
-(defun mk-proj-special-buffer-p (buf &optional proj-name)
+(defun lazy-special-buffer-p (buf &optional proj-name)
   (let ((case-fold-search nil))
     (and (string-match "\*[^\*]\*" (buffer-name buf))
-         (mk-proj-buffer-p buf proj-name))))
+         (lazy-buffer-p buf proj-name))))
 
-(defun mk-proj-dired-buffer-p (buf &optional proj-name)
+(defun lazy-dired-buffer-p (buf &optional proj-name)
   (and (with-current-buffer buf
          (eq major-mode 'dired-mode))
-       (mk-proj-buffer-p buf proj-name)))
+       (lazy-buffer-p buf proj-name)))
 
-(defun mk-proj-buffers (&optional proj-name)
+(defun lazy-buffers (&optional proj-name)
   "Get a list of buffers that reside in this project's basedir"
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
   (let ((buffers nil))
     (dolist (b (buffer-list))
-      (when (mk-proj-buffer-p b proj-name) (push b buffers)))
+      (when (lazy-buffer-p b proj-name) (push b buffers)))
     buffers))
 
-(defun mk-proj-file-buffers (&optional proj-name)
+(defun lazy-file-buffers (&optional proj-name)
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (remove-if (lambda (buf) (not (buffer-file-name buf))) (mk-proj-buffers proj-name)))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (cl-remove-if (lambda (buf) (not (buffer-file-name buf))) (lazy-buffers proj-name)))
 
-(defun mk-proj-special-buffers (&optional proj-name)
+(defun lazy-special-buffers (&optional proj-name)
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
   (let ((case-fold-search nil))
-    (append (remove-if (lambda (buf) (not (string-match "\*[^\*]\*" (buffer-name buf)))) (mk-proj-buffers proj-name))
-            (remove-if (lambda (buf) (or (and (symbolp 'mk-org-project-buffer-name)
-                                              (not (string-equal (mk-org-project-buffer-name proj-name) (buffer-name buf))))
-                                         (compilation-buffer-p buf)))
+    (append (cl-remove-if (lambda (buf) (not (string-match "\*[^\*]\*" (buffer-name buf)))) (lazy-buffers proj-name))
+            (cl-remove-if (lambda (buf) (or (and (symbolp 'lazy-org-project-buffer-name)
+                                                 (not (string-equal (lazy-org-project-buffer-name proj-name) (buffer-name buf))))
+                                            (compilation-buffer-p buf)))
                        (buffer-list)))))
 
-(defun mk-proj-dired-buffers (&optional proj-name)
+(defun lazy-dired-buffers (&optional proj-name)
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (remove-if (lambda (buf) (not (mk-proj-dired-buffer-p buf))) (mk-proj-buffers proj-name)))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (cl-remove-if (lambda (buf) (not (lazy-dired-buffer-p buf))) (lazy-buffers proj-name)))
 
-(defun project-status (&optional proj-name)
+(defun lazy-status (&optional proj-name)
   "View project's variables."
   (interactive)
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (if (mk-proj-get-config-val 'basedir proj-name t)
-      (let ((b (get-buffer-create "*mk-proj: project-status*")))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (if (lazy-get-config-val 'basedir proj-name t)
+      (let ((b (get-buffer-create "*lazy: lazy-status*")))
         (with-current-buffer b
           (kill-region (point-min) (point-max))
-          (dolist (v (append mk-proj-required-vars mk-proj-optional-vars))
-            (insert (format "%-32s = %s\n" (symbol-name (car v)) (mk-proj-get-config-val (car v) proj-name t)))))
+          (dolist (v (append lazy-required-vars lazy-optional-vars))
+            (insert (format "%-32s = %s\n" (symbol-name (car v)) (lazy-get-config-val (car v) proj-name t)))))
         (when (not (eq b (current-buffer)))
           (display-buffer b)))
     (message "No project loaded.")))
@@ -1306,29 +1291,29 @@ See also `project-close-files', `project-close-friends', `mk-proj-history'
 ;; Save/Restore open files
 ;; ---------------------------------------------------------------------
 
-(defun mk-proj-save-open-file-info ()
+(defun lazy-save-open-file-info ()
   "Write the list of `files' to a file"
-  (when (mk-proj-get-config-val 'open-files-cache)
+  (when (lazy-get-config-val 'open-files-cache)
     (with-temp-buffer
-      (dolist (f (remove-duplicates (mapcar (lambda (b) (mk-proj-buffer-name b)) (mk-proj-buffers)) :test 'string-equal))
+      (dolist (f (cl-remove-duplicates (mapcar (lambda (b) (lazy-buffer-name b)) (lazy-buffers)) :test 'string-equal))
         (when f
-          (unless (string-equal (mk-proj-get-config-val 'etags-file) f)
+          (unless (string-equal (lazy-get-config-val 'etags-file) f)
             (insert f "\n"))))
-      (if (file-writable-p (mk-proj-get-config-val 'open-files-cache))
+      (if (file-writable-p (lazy-get-config-val 'open-files-cache))
           (progn
             (write-region (point-min)
                           (point-max)
-                          (mk-proj-get-config-val 'open-files-cache))
-            (message "Wrote open files to %s" (mk-proj-get-config-val 'open-files-cache)))
-        (message "Cannot write to %s" (mk-proj-get-config-val 'open-files-cache))))))
+                          (lazy-get-config-val 'open-files-cache))
+            (message "Wrote open files to %s" (lazy-get-config-val 'open-files-cache)))
+        (message "Cannot write to %s" (lazy-get-config-val 'open-files-cache))))))
 
-(defun mk-proj-visit-saved-open-files ()
+(defun lazy-visit-saved-open-files ()
   (let ((zeitgeist-prevent-send t))
-    (when (mk-proj-get-config-val 'open-files-cache)
-      (when (file-readable-p (mk-proj-get-config-val 'open-files-cache))
-        (message "Reading open files from %s" (mk-proj-get-config-val 'open-files-cache))
+    (when (lazy-get-config-val 'open-files-cache)
+      (when (file-readable-p (lazy-get-config-val 'open-files-cache))
+        (message "Reading open files from %s" (lazy-get-config-val 'open-files-cache))
         (with-temp-buffer
-          (insert-file-contents (mk-proj-get-config-val 'open-files-cache))
+          (insert-file-contents (lazy-get-config-val 'open-files-cache))
           (goto-char (point-min))
           (while (not (eobp))
             (let ((start (point)))
@@ -1342,46 +1327,46 @@ See also `project-close-files', `project-close-friends', `mk-proj-history'
                   (kill-line))))
             (forward-line)))))))
 
-(defadvice switch-to-buffer (after mk-proj-switch-to-buffer-set-auto-mode)
+(defadvice switch-to-buffer (after lazy-switch-to-buffer-set-auto-mode)
   (when (eq major-mode 'fundamental-mode)
     (when (and (eq system-type 'windows-nt)
                (not (eq (default-value 'buffer-file-coding-system) buffer-file-coding-system)))
       (recode-region (point-min) (point-max) (default-value 'buffer-file-coding-system) buffer-file-coding-system)
-      (mk-sourcemarker-restore)
+      (lazy-sourcemarker-restore)
       (set-buffer-modified-p nil))
     (set-auto-mode)))
 (ad-activate 'switch-to-buffer)
 ;;(ad-unadvise 'switch-to-buffer)
 
-(defadvice pop-to-buffer (after mk-proj-pop-to-buffer-set-auto-mode)
+(defadvice pop-to-buffer (after lazy-pop-to-buffer-set-auto-mode)
   (when (eq major-mode 'fundamental-mode)
     (when (and (eq system-type 'windows-nt)
                (not (eq (default-value 'buffer-file-coding-system) buffer-file-coding-system)))
       (recode-region (point-min) (point-max) (default-value 'buffer-file-coding-system) buffer-file-coding-system)
-      (mk-sourcemarker-restore)
+      (lazy-sourcemarker-restore)
       (set-buffer-modified-p nil))
     (set-auto-mode)))
 (ad-activate 'pop-to-buffer)
 ;;(ad-unadvise 'pop-to-buffer)
 
-(defadvice display-buffer (after mk-proj-display-buffer-set-auto-mode)
+(defadvice display-buffer (after lazy-display-buffer-set-auto-mode)
   (with-current-buffer (ad-get-arg 0)
     (when (eq major-mode 'fundamental-mode)
       (when (and (eq system-type 'windows-nt)
                  (not (eq (default-value 'buffer-file-coding-system) buffer-file-coding-system)))
         (recode-region (point-min) (point-max) (default-value 'buffer-file-coding-system) buffer-file-coding-system)
-        (mk-sourcemarker-restore)
+        (lazy-sourcemarker-restore)
         (set-buffer-modified-p nil))
       (set-auto-mode))))
 (ad-activate 'display-buffer)
 
-(defvar mk-proj-suppress-y-or-n-p-patterns (list "Do you want to revisit the file normally now"
+(defvar lazy-suppress-y-or-n-p-patterns (list "Do you want to revisit the file normally now"
                                                  "Do you want to revisit the file literally now"))
 
-(defadvice y-or-n-p (around mk-proj-y-or-n-p)
+(defadvice y-or-n-p (around lazy-y-or-n-p)
   (let ((prompt (ad-get-arg 0))
         (suppress nil))
-    (loop for pattern in mk-proj-suppress-y-or-n-p-patterns
+    (loop for pattern in lazy-suppress-y-or-n-p-patterns
           until (setq suppress (string-match pattern prompt)))
     (setq ad-return-value (or (and suppress t) ad-do-it))))
 (ad-activate 'y-or-n-p)
@@ -1391,26 +1376,26 @@ See also `project-close-files', `project-close-friends', `mk-proj-history'
 ;; Tagging
 ;; ---------------------------------------------------------------------
 
-(defvar mk-proj-default-gtags-config nil)
-(defvar mk-proj-c++-gtags-config nil)
-(defvar mk-proj-after-save-update-in-progress nil)
-(defvar mk-proj-after-save-line-numbers (make-hash-table))
-(defvar mk-proj-after-save-current-buffer nil)
-(defvar mk-proj-after-save-current-project nil)
+(defvar lazy-default-gtags-config nil)
+(defvar lazy-c++-gtags-config nil)
+(defvar lazy-after-save-update-in-progress nil)
+(defvar lazy-after-save-line-numbers (make-hash-table))
+(defvar lazy-after-save-current-buffer nil)
+(defvar lazy-after-save-current-project nil)
 
-(defun project-update-tags (&optional proj-name proj-alist files debug)
+(defun lazy-update-tags (&optional proj-name proj-alist files debug)
   "Create or update the projects TAG database."
   (interactive)
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-alist proj-name)
-                       (mk-proj-find-alist mk-proj-name)
-                       (mk-proj-guess-alist)))
+                       (lazy-find-alist proj-name)
+                       (lazy-find-alist lazy-name)
+                       (lazy-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
-    (mk-proj-assert-proj))
+    (lazy-assert-proj))
   (unless files
-    (setq files (mk-proj-unique-files proj-name)))
-  (let ((default-directory (mk-proj-get-config-val 'basedir proj-name nil proj-alist))
+    (setq files (lazy-unique-files proj-name)))
+  (let ((default-directory (lazy-get-config-val 'basedir proj-name nil proj-alist))
         (gtags-executable (executable-find "gtags"))
         (global-executable (executable-find "global"))
         (rtags-executable (executable-find "rtags"))
@@ -1422,25 +1407,25 @@ See also `project-close-files', `project-close-friends', `mk-proj-history'
     ;; - the nested loops look like the could be switched, but the language of a file needs to detected
     ;; first, so that we can then decide which tagging systems to use for that language
     (dolist (f files)
-      (let ((lang (car-safe (mk-proj-src-pattern-languages (list f)))))
+      (let ((lang (car-safe (lazy-src-pattern-languages (list f)))))
         (push lang languages)
-        (dolist (sys (cdr (assoc lang mk-proj-language-tag-systems)))
+        (dolist (sys (cdr (assoc lang lazy-language-tag-systems)))
           (cond ((and (or (eq sys 'gtags+rtags))
                       gtags-executable
                       global-executable
                       rtags-executable)
-                 (return (puthash 'gtags+rtags
+                 (cl-return (puthash 'gtags+rtags
                                   (append (list f) (gethash 'gtags+rtags sys-files))
                                   sys-files)))
                 ((and (eq sys 'rtags)
                       rtags-executable)
-                 (return (puthash 'rtags
+                 (cl-return (puthash 'rtags
                                   (append (list f) (gethash 'rtags sys-files))
                                   sys-files)))
                 ((and (eq sys 'gtags)
                       gtags-executable
                       global-executable)
-                 (return (puthash 'gtags
+                 (cl-return (puthash 'gtags
                                   (append (list f) (gethash 'gtags sys-files))
                                   sys-files)))
                 ((and (eq sys 'gtags+exuberant-ctags)
@@ -1450,7 +1435,7 @@ See also `project-close-files', `project-close-friends', `mk-proj-history'
                  ;; - I had a fallback to gtags here if exuberant is not found, but removed it,
                  ;; it does not make sense, while exuberant can parse many languages, gtags alone
                  ;; can only parse a few
-                 (return (puthash 'gtags+exuberant-ctags
+                 (cl-return (puthash 'gtags+exuberant-ctags
                                   (append (list f) (gethash 'gtags+exuberant-ctags sys-files))
                                   sys-files)))))))
     ;; - why did I do this, I don't know anymore
@@ -1468,26 +1453,26 @@ See also `project-close-files', `project-close-friends', `mk-proj-history'
            ;; - I am a setting gtags-root to / and then just make it scan all project files and friendly files,
            ;; that way I can get tags and completions for everything related to this project, I just have to
            ;; set the root again when building the query command
-           ;; - the database is stored in the dbpath, that should be ~/.mk-project/project
-           (gtags-dbpath (file-name-as-directory (file-truename (mk-proj-get-root-cache-dir nil proj-name))))
-           (gtags-config (or (let ((c (mk-proj-get-config-val 'gtags-config proj-name nil proj-alist)))
+           ;; - the database is stored in the dbpath, that should be ~/.lazyect/project
+           (gtags-dbpath (file-name-as-directory (file-truename (lazy-get-root-cache-dir nil proj-name))))
+           (gtags-config (or (let ((c (lazy-get-config-val 'gtags-config proj-name nil proj-alist)))
                                (when (and c (> (length c) 0) (file-exists-p c))
                                  c))
-                             (let ((c (concat (mk-proj-get-config-val 'basedir proj-name nil proj-alist) "/.globalrc")))
+                             (let ((c (concat (lazy-get-config-val 'basedir proj-name nil proj-alist) "/.globalrc")))
                                (when (file-exists-p c)
                                  c))
-                             (when (and mk-proj-c++-gtags-config
-                                        (find 'cpp languages)
-                                        (file-exists-p (expand-file-name mk-proj-c++-gtags-config)))
-                               (expand-file-name mk-proj-c++-gtags-config))
-                             (when (and mk-proj-default-gtags-config
-                                        (file-exists-p (expand-file-name mk-proj-default-gtags-config)))
-                               (expand-file-name mk-proj-default-gtags-config))
+                             (when (and lazy-c++-gtags-config
+                                        (cl-find 'cpp languages)
+                                        (file-exists-p (expand-file-name lazy-c++-gtags-config)))
+                               (expand-file-name lazy-c++-gtags-config))
+                             (when (and lazy-default-gtags-config
+                                        (file-exists-p (expand-file-name lazy-default-gtags-config)))
+                               (expand-file-name lazy-default-gtags-config))
                              (let ((c (expand-file-name "~/.globalrc")))
                                (when (file-exists-p c)
                                  c))
                              nil))
-           (gtags-arguments (or (mk-proj-get-config-val 'gtags-arguments proj-name nil proj-alist)
+           (gtags-arguments (or (lazy-get-config-val 'gtags-arguments proj-name nil proj-alist)
                                 ""))
            (gtags-commands (make-hash-table))
            (cmd-seperator (if (eq system-type 'windows-nt) " & " " ; ")))
@@ -1512,21 +1497,21 @@ See also `project-close-files', `project-close-friends', `mk-proj-history'
                          "gtags " gtags-dbpath " -i -v -f - " gtags-arguments cmd-seperator)
                  gtags-commands))
       (let* ((ordering (list 'gtags+exuberant-ctags 'gtags))
-             (commands (loop for sys in ordering
-                             if (gethash sys gtags-commands)
-                             collect (gethash sys gtags-commands)))
-             (inputs (loop for sys in ordering
-                           if (gethash sys gtags-commands)
-                           collect (concat (mapconcat #'identity (gethash sys sys-files) "\n") "\n"))))
-        (mk-proj-process-group "gtags" commands inputs 'mk-proj-update-completions-cache (list proj-name) nil)
+             (commands (cl-loop for sys in ordering
+                                if (gethash sys gtags-commands)
+                                collect (gethash sys gtags-commands)))
+             (inputs (cl-loop for sys in ordering
+                              if (gethash sys gtags-commands)
+                              collect (concat (mapconcat #'identity (gethash sys sys-files) "\n") "\n"))))
+        (lazy-process-group "gtags" commands inputs 'lazy-update-completions-cache (list proj-name) nil)
         ))
     ;; - if I'd ever implement rtags, or any other system really, then this would become another section
     (when (gethash 'rtags sys-files)
       (message "rtags not implemented yet")))
   ;; - after updating the tag databases we may as well setup the env variables again, just to be sure
-  (project-setup-tags proj-name))
+  (lazy-setup-tags proj-name))
 
-(defun mk-proj-process-group (name commands inputs &optional terminator terminator-args debug n process event)
+(defun lazy-process-group (name commands inputs &optional terminator terminator-args debug n process event)
   "Create a process group with NAME, that runs all COMMANDS with INPUTS after each other
 and the calls TERMINATOR with TERMINATOR-ARGS.
 
@@ -1544,38 +1529,38 @@ recieves when it acts as process sentinel."
              (shell-file-name (if (eq system-type 'windows-nt) (default-value 'shell-file-name) "/bin/sh"))
              (process (start-process-shell-command proc-name (when debug proc-name) (nth n commands)))
              (input (nth n inputs)))
-        (set-process-sentinel process (apply-partially 'mk-proj-process-group name commands inputs terminator terminator-args debug (1+ n)))
+        (set-process-sentinel process (apply-partially 'lazy-process-group name commands inputs terminator terminator-args debug (1+ n)))
         (when input
           (process-send-string process input))
         (process-send-eof process))
     (when terminator
       (apply terminator terminator-args))))
 
-(defun mk-proj-src-pattern-tag-systems (src-patterns)
+(defun lazy-src-pattern-tag-systems (src-patterns)
   "Takes a list of src patterns (like \"*.cpp\") and returns tag systems that can parse those."
   (let ((systems '()))
-    (dolist (lang (mk-proj-src-pattern-languages src-patterns))
-      (dolist (sys (cdr (assoc lang mk-proj-language-tag-systems)))
+    (dolist (lang (lazy-src-pattern-languages src-patterns))
+      (dolist (sys (cdr (assoc lang lazy-language-tag-systems)))
         (add-to-list 'systems sys)))
     systems))
 
-(defun project-setup-tags (&optional proj-name)
+(defun lazy-setup-tags (&optional proj-name)
   "Setup environment for existing TAG database."
   (interactive)
   (setq proj-name (or proj-name
-                      mk-proj-name
-                      (cadr (assoc 'name (mk-proj-guess-alist)))))
+                      lazy-name
+                      (cadr (assoc 'name (lazy-guess-alist)))))
   (unless proj-name
-    (mk-proj-assert-proj))
-  (let ((proj-systems (mk-proj-src-pattern-tag-systems (mk-proj-get-config-val 'src-patterns proj-name)))
+    (lazy-assert-proj))
+  (let ((proj-systems (lazy-src-pattern-tag-systems (lazy-get-config-val 'src-patterns proj-name)))
         (available-systems '()))
-    (when (or (find 'gtags proj-systems)
-              (find 'gtags+rtags proj-systems)
-              (find 'gtags+exuberant-ctags proj-systems))
-      (let* ((gtags-file (concat (file-truename (concat (mk-proj-get-root-cache-dir nil proj-name) "GTAGS"))))
-             (gtags-file-alternative (concat (mk-proj-get-config-val 'basedir proj-name) "GTAGS")))
+    (when (or (cl-find 'gtags proj-systems)
+              (cl-find 'gtags+rtags proj-systems)
+              (cl-find 'gtags+exuberant-ctags proj-systems))
+      (let* ((gtags-file (concat (file-truename (concat (lazy-get-root-cache-dir nil proj-name) "GTAGS"))))
+             (gtags-file-alternative (concat (lazy-get-config-val 'basedir proj-name) "GTAGS")))
         (cond ((file-exists-p gtags-file)
-               (let ((gtags-dbpath (mk-proj-dirname gtags-file))
+               (let ((gtags-dbpath (lazy-dirname gtags-file))
                      (gtags-root "/"))
                  ;; - hack, gnu global under windows has problems with directories that have a trailing slash
                  ;; so this just removes the last slash from the path
@@ -1587,23 +1572,23 @@ recieves when it acts as process sentinel."
                  (add-to-list 'available-systems 'gtags))))))
     available-systems))
 
-(defadvice ido-switch-buffer (around mk-proj-ido-switch-buffer-setup-tags first nil activate)
+(defadvice ido-switch-buffer (around lazy-ido-switch-buffer-setup-tags first nil activate)
   (let ((previous-buffer (current-buffer)))
     ad-do-it
-    (when (and (not mk-proj-name)
+    (when (and (not lazy-name)
                (buffer-file-name (current-buffer))
                (not (eq (current-buffer) previous-buffer)))
-      (project-setup-tags))))
+      (lazy-setup-tags))))
 
-(defadvice switch-buffer (around mk-proj-switch-buffer-setup-tags first nil activate)
+(defadvice switch-buffer (around lazy-switch-buffer-setup-tags first nil activate)
   (let ((previous-buffer (current-buffer)))
     ad-do-it
-    (when (and (not mk-proj-name)
+    (when (and (not lazy-name)
                (buffer-file-name (current-buffer))
                (not (eq (current-buffer) previous-buffer)))
-      (project-setup-tags))))
+      (lazy-setup-tags))))
 
-(defun mk-proj-find-symbol-elisp-location-helper (symbol)
+(defun lazy-find-symbol-elisp-location-helper (symbol)
   (let ((sym symbol))
     `(lambda ()
        (let* ((previous-buf-list (buffer-list))
@@ -1618,26 +1603,26 @@ recieves when it acts as process sentinel."
 ;; - given a system and a regexp, this tries to match regexp with jumps aquired from system and returns
 ;; all matching jumps
 ;; - so this can be used to find all jumps for only part of a symbol, eg finding all jumps to defintions
-;; starting with mk-proj-find-.* would be possible with this function
+;; starting with lazy-find-.* would be possible with this function
 ;; - this function is also used to find symbols names if we already know the whole name, check below
-;; how it is used in project-jump-definition and project-jump-regexp
-(defun mk-proj-find-symbol (proj-name proj-alist system regexp &rest args)
+;; how it is used in lazy-jump-definition and lazy-jump-regexp
+(defun lazy-find-symbol (proj-name proj-alist system regexp &rest args)
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-alist proj-name)
-                       (mk-proj-find-alist mk-proj-name)
-                       (mk-proj-guess-alist)))
+                       (lazy-find-alist proj-name)
+                       (lazy-find-alist lazy-name)
+                       (lazy-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
-    (mk-proj-assert-proj))
+    (lazy-assert-proj))
   (let* ((basedir (or (when proj-alist (cadr (assoc 'basedir proj-alist)))
-                      (when proj-name (mk-proj-get-config-val 'basedir proj-name))
+                      (when proj-name (lazy-get-config-val 'basedir proj-name))
                       default-directory))
          (default-directory basedir)
          (case-fold-search nil)
          (cmd-sep (if (eq system-type 'windows-nt) " & " " ; ")))
     (cond ((eq 'gtags system)
            (let ((cmd (nth 0 args)))
-             (project-setup-tags proj-name)
+             (lazy-setup-tags proj-name)
              (mapcar (lambda (line)
                        (let ((tokens (split-string line " " t)))
                          (list :word (nth 0 tokens)
@@ -1657,8 +1642,8 @@ recieves when it acts as process sentinel."
              ;; - only try to find the current symbol in the obarray when the current major-mode is a emacs-lisp-mode,
              ;; or the current project contains any elisp files
              (when (or (eq major-mode 'emacs-lisp-mode) (eq major-mode 'lisp-interaction-mode)
-                       (and proj-name (position 'elisp (mk-proj-src-pattern-languages (cadr (assoc 'src-patterns (mk-proj-find-alist proj-name)))))))
-               (do-all-symbols (sym)
+                       (and proj-name (cl-position 'elisp (lazy-src-pattern-languages (cadr (assoc 'src-patterns (lazy-find-alist proj-name)))))))
+               (cl-do-all-symbols (sym)
                  (let ((sym-name (symbol-name sym)))
                    (when (and (string-match regexp sym-name)
                               (or (fboundp sym)
@@ -1674,7 +1659,7 @@ recieves when it acts as process sentinel."
                             (docstring (and (stringp doc)
                                             (string-match ".*$" doc)
                                             (match-string 0 doc)))
-                            (locator (mk-proj-find-symbol-elisp-location-helper sym)))
+                            (locator (lazy-find-symbol-elisp-location-helper sym)))
                        (push (list :word word
                                    :locator locator
                                    :docstring docstring
@@ -1691,27 +1676,27 @@ recieves when it acts as process sentinel."
                   (marker-list (append (cdr (assoc "Types" imenu-alist))
                                        (cdr (assoc "Variables" imenu-alist))
                                        (nthcdr 3 imenu-alist))))
-             (loop for item in marker-list
-                   if (or (string-match (concat "[^ (]*\\(" regexp "[^ ]*\\)[ ]*(" ) (car item))
-                          (string-match (concat "\\(" regexp "[^ ]*\\)") (car item)))
-                   collect (list :word (match-string 1 (car item))
-                                 :line-number (with-current-buffer (marker-buffer (cdr item))
-                                                (save-excursion
-                                                  (line-number-at-pos (marker-position (cdr item)))))
-                                 :file-path (buffer-file-name (marker-buffer (cdr item)))
-                                 :definition (with-current-buffer (marker-buffer (cdr item))
-                                               (save-excursion
-                                                 (goto-char (marker-position (cdr item)))
-                                                 (buffer-substring-no-properties (point-at-bol) (point-at-eol))))
-                                 :system system
-                                 :regexp regexp)))))))
+             (cl-loop for item in marker-list
+                      if (or (string-match (concat "[^ (]*\\(" regexp "[^ ]*\\)[ ]*(" ) (car item))
+                             (string-match (concat "\\(" regexp "[^ ]*\\)") (car item)))
+                      collect (list :word (match-string 1 (car item))
+                                    :line-number (with-current-buffer (marker-buffer (cdr item))
+                                                   (save-excursion
+                                                     (line-number-at-pos (marker-position (cdr item)))))
+                                    :file-path (buffer-file-name (marker-buffer (cdr item)))
+                                    :definition (with-current-buffer (marker-buffer (cdr item))
+                                                  (save-excursion
+                                                    (goto-char (marker-position (cdr item)))
+                                                    (buffer-substring-no-properties (point-at-bol) (point-at-eol))))
+                                    :system system
+                                    :regexp regexp)))))))
 
-(defun mk-proj-score-jumps (jumps regexp buffer)
+(defun lazy-score-jumps (jumps regexp buffer)
   (let ((file-map (make-hash-table :test 'equal))
         (file-score-map (make-hash-table))
-        (buffer-languages (mk-proj-src-pattern-languages (when (buffer-file-name buffer) (list (buffer-file-name buffer)))))
+        (buffer-languages (lazy-src-pattern-languages (when (buffer-file-name buffer) (list (buffer-file-name buffer)))))
         (buffer-path (file-truename (buffer-file-name buffer)))
-        (basedir-path (file-truename (or (condition-case nil (mk-proj-get-config-val 'basedir) (error nil))
+        (basedir-path (file-truename (or (condition-case nil (lazy-get-config-val 'basedir) (error nil))
                                          default-directory)))
         (inc (if (boundp 'ido-buffer-history) (* (ceiling (/ (float (length ido-buffer-history)) 100)) 100) 100))
         (truenames-cache (make-hash-table :test 'equal))
@@ -1757,17 +1742,17 @@ recieves when it acts as process sentinel."
             (setq score (+ score inc)))
           (when (and jump-path
                      (buffer-file-name buffer)
-                     (mk-proj-path-equal jump-path buffer-path))
+                     (lazy-path-equal jump-path buffer-path))
             (setq score (+ score inc)))
           (when (and jump-path
-                     mk-proj-name
-                     (mk-proj-path-equal jump-path basedir-path))
+                     lazy-name
+                     (lazy-path-equal jump-path basedir-path))
             (setq score (+ score inc)))
           (when (and jump-path
                      (boundp 'ido-buffer-history)
                      (find-buffer-visiting jump-path))
             (let ((buffer-position (or (gethash jump-path buffer-position-cache)
-                                       (puthash jump-path (condition-case nil (position (buffer-name (find-buffer-visiting jump-path))
+                                       (puthash jump-path (condition-case nil (cl-position (buffer-name (find-buffer-visiting jump-path))
                                                                                         ido-buffer-history
                                                                                         :test 'equal)
                                                             (error nil)) buffer-position-cache)
@@ -1777,7 +1762,7 @@ recieves when it acts as process sentinel."
           (when (and jump-path
                      buffer-languages)
             (dolist (lang buffer-languages)
-              (when (find lang (mk-proj-src-pattern-languages (list jump-path)))
+              (when (cl-find lang (lazy-src-pattern-languages (list jump-path)))
                 (setq score (+ score inc)))))
           (let ((existing-jump (gethash (or jump-line-number (setq obarray-counter (1+ obarray-counter))) line-map)))
             (unless (and existing-jump (> (plist-get existing-jump :line-score) score))
@@ -1795,7 +1780,7 @@ recieves when it acts as process sentinel."
                file-map)
       jump-list)))
 
-(defun mk-proj-compare-jumps (a b)
+(defun lazy-compare-jumps (a b)
   (let ((file-score-a (plist-get a :file-score))
         (file-score-b (plist-get b :file-score))
         (line-score-a (plist-get a :line-score))
@@ -1828,20 +1813,20 @@ recieves when it acts as process sentinel."
            t)
           (t nil))))
 
-(defun mk-proj-sort-jumps (jump-list)
+(defun lazy-sort-jumps (jump-list)
   (message "sort-jumps")
-  (sort jump-list 'mk-proj-compare-jumps))
+  (sort jump-list 'lazy-compare-jumps))
 
-(defconst mk-proj-jump-buffer "*mk-proj: jumps*")
+(defconst lazy-jump-buffer "*lazy: jumps*")
 
-(defvar mk-proj-auto-jump-to-first-jump nil)
+(defvar lazy-auto-jump-to-first-jump nil)
 
-(defun mk-proj-select-jumps (jump-list &optional invoke-window)
+(defun lazy-select-jumps (jump-list &optional invoke-window)
   (unless invoke-window
     (setq invoke-window (get-buffer-window (current-buffer))))
   (let ((n (length jump-list)))
     (when (> n 0)
-      (ring-insert find-tag-marker-ring (point-marker))
+      (ring-insert xref--marker-ring (point-marker))
       (if (= n 1)
           (let* ((jump (car jump-list))
                  (locator (plist-get jump :locator))
@@ -1857,20 +1842,20 @@ recieves when it acts as process sentinel."
                   (with-current-buffer location-buffer
                     (setq full-path (file-truename (buffer-file-name location-buffer))
                           line-number (line-number-at-pos location-point)))
-                  (mk-proj-jump-highlight (find location-buffer previous-buffer-list)
-                                          (mk-proj-jump invoke-window full-path line-number word)))
-              (mk-proj-jump-highlight (find-buffer-visiting full-path)
-                                      (mk-proj-jump invoke-window full-path line-number word))))
-        (when (get-buffer-window mk-proj-jump-buffer)
-          (delete-window (get-buffer-window mk-proj-jump-buffer)))
-        (when (get-buffer mk-proj-jump-buffer)
-          (kill-buffer mk-proj-jump-buffer))
-        (with-current-buffer (get-buffer-create mk-proj-jump-buffer)
+                  (lazy-jump-highlight (cl-find location-buffer previous-buffer-list)
+                                          (lazy-jump invoke-window full-path line-number word)))
+              (lazy-jump-highlight (find-buffer-visiting full-path)
+                                      (lazy-jump invoke-window full-path line-number word))))
+        (when (get-buffer-window lazy-jump-buffer)
+          (delete-window (get-buffer-window lazy-jump-buffer)))
+        (when (get-buffer lazy-jump-buffer)
+          (kill-buffer lazy-jump-buffer))
+        (with-current-buffer (get-buffer-create lazy-jump-buffer)
           (buffer-disable-undo (current-buffer))
-          (mk-proj-jump-list-mode)
+          (lazy-jump-list-mode)
           (setq tabulated-list-entries nil)
           (let ((id 0))
-            (dolist (jump (mk-proj-sort-jumps jump-list))
+            (dolist (jump (lazy-sort-jumps jump-list))
               (let ((locator (plist-get jump :locator))
                     (file-path (plist-get jump :file-path))
                     (line-number (plist-get jump :line-number))
@@ -1884,25 +1869,25 @@ recieves when it acts as process sentinel."
                 (push (list id (vector (list word
                                              'mouse-face 'highlight
                                              'face 'compilation-warning-face
-                                             'action 'mk-proj-jump-action)
+                                             'action 'lazy-jump-action)
                                        (list (if (and file-path line-number) (concat (file-relative-name full-path (file-truename default-directory))
                                                                                      ":"
                                                                                      (format "%d" line-number))  "obarray")
                                              'mouse-face 'highlight
                                              'face 'compilation-info
-                                             'action 'mk-proj-jump-action)
+                                             'action 'lazy-jump-action)
                                        (list (format "% 5d" line-score)
                                              'mouse-face 'highlight
                                              'face 'compilation-error
-                                             'action 'mk-proj-jump-action)
+                                             'action 'lazy-jump-action)
                                        (list (prin1-to-string system)
                                              'mouse-face 'highlight
                                              'face 'compilation-info-face
-                                             'action 'mk-proj-jump-action)
+                                             'action 'lazy-jump-action)
                                        (list (or docstring definition "")
                                              'mouse-face 'highlight
                                              'face 'compilation-face
-                                             'action 'mk-proj-jump-action)
+                                             'action 'lazy-jump-action)
                                        (list invoke-window
                                              locator
                                              full-path
@@ -1914,12 +1899,12 @@ recieves when it acts as process sentinel."
           (tabulated-list-print t)
           (goto-char (point-min))
           (forward-button 1)
-          (when mk-proj-auto-jump-to-first-jump
-            (mk-proj-jump-action)))
-        (display-buffer mk-proj-jump-buffer)
+          (when lazy-auto-jump-to-first-jump
+            (lazy-jump-action)))
+        (display-buffer lazy-jump-buffer)
         ))))
 
-(defun mk-proj-jump (invoke-window full-path line-number &optional word)
+(defun lazy-jump (invoke-window full-path line-number &optional word)
   (select-window invoke-window)
   (let* ((marker nil)
          (continue-prevent-restore t))
@@ -1930,15 +1915,15 @@ recieves when it acts as process sentinel."
         (re-search-forward word (point-at-eol) t))
       (setq marker (point-marker))
       (recenter-top-bottom))
-    (select-window (or (get-buffer-window mk-proj-jump-buffer) invoke-window))
+    (select-window (or (get-buffer-window lazy-jump-buffer) invoke-window))
     marker))
 
-(defun mk-proj-jump-action (&optional button)
+(defun lazy-jump-action (&optional button)
   (interactive)
   (unless button
     (setq button (point-marker)))
-  (when (get-buffer mk-proj-jump-buffer)
-    (with-current-buffer (get-buffer mk-proj-jump-buffer)
+  (when (get-buffer lazy-jump-buffer)
+    (with-current-buffer (get-buffer lazy-jump-buffer)
       (let* ((list-entry (with-current-buffer (marker-buffer button)
                            (get-text-property (marker-position button) 'tabulated-list-entry)))
              (n (1- (length list-entry)))
@@ -1958,14 +1943,14 @@ recieves when it acts as process sentinel."
               (with-current-buffer location-buffer
                 (setq full-path (file-truename (buffer-file-name location-buffer))
                       line-number (line-number-at-pos location-point)))
-              (mk-proj-jump-highlight (find location-buffer previous-buffer-list)
-                                      (mk-proj-jump invoke-window full-path line-number word)))
-          (mk-proj-jump-highlight (find-buffer-visiting full-path)
-                                  (mk-proj-jump invoke-window full-path line-number word)))))))
+              (lazy-jump-highlight (cl-find location-buffer previous-buffer-list)
+                                      (lazy-jump invoke-window full-path line-number word)))
+          (lazy-jump-highlight (find-buffer-visiting full-path)
+                                  (lazy-jump invoke-window full-path line-number word)))))))
 
-(defvar mk-proj-jump-overlays nil)
+(defvar lazy-jump-overlays nil)
 
-(defun mk-proj-jump-cleanup-highlight (&optional existing-buffer)
+(defun lazy-jump-cleanup-highlight (&optional existing-buffer)
   (let ((zeitgeist-prevent-send t)
         (continue-prevent-save t)
         (delete-buffer nil))
@@ -1979,8 +1964,8 @@ recieves when it acts as process sentinel."
                     (kill-buffer delete-buffer)
                     (setq delete-buffer nil)))
                 (delete-overlay ov))))
-          mk-proj-jump-overlays)
-    (setq mk-proj-jump-overlays nil)
+          lazy-jump-overlays)
+    (setq lazy-jump-overlays nil)
     delete-buffer))
 
 ;; existing-buffer=nil && delete-buffer=nil
@@ -1992,15 +1977,15 @@ recieves when it acts as process sentinel."
 ;; existing-buffer=nil && delete-buffer=<some buffer>
 ;; -> this should not happen, without an existing-buffer but an marked delete-buffer,
 ;; cleanup-highlight should always kill delete-buffer and then return nil
-(defun mk-proj-jump-highlight (&optional existing-buffer marker final)
-  (let ((delete-buffer (mk-proj-jump-cleanup-highlight existing-buffer))
+(defun lazy-jump-highlight (&optional existing-buffer marker final)
+  (let ((delete-buffer (lazy-jump-cleanup-highlight existing-buffer))
         (highlight-color (color-darken-name (face-attribute 'default :background) 10)))
-    (when (get-buffer mk-proj-jump-buffer)
-      (with-current-buffer (get-buffer mk-proj-jump-buffer)
+    (when (get-buffer lazy-jump-buffer)
+      (with-current-buffer (get-buffer lazy-jump-buffer)
         (let ((ov (make-overlay (point-at-bol) (point-at-bol 2))))
           (overlay-put ov 'face `((:background ,highlight-color)))
           (overlay-put ov 'jump-highlight 'select)
-          (push ov mk-proj-jump-overlays))))
+          (push ov lazy-jump-overlays))))
     (when marker
       (with-current-buffer (marker-buffer marker)
         (save-excursion
@@ -2008,58 +1993,58 @@ recieves when it acts as process sentinel."
           (let ((ov (make-overlay (point-at-bol) (point-at-bol 2))))
             (when (or (not existing-buffer) delete-buffer)
               (overlay-put ov 'delete-buffer (or delete-buffer (current-buffer))))
-            (overlay-put ov 'pop-tag-marker (ring-ref find-tag-marker-ring 0))
+            (overlay-put ov 'pop-tag-marker (ring-ref xref--marker-ring 0))
             (overlay-put ov 'face `((:background ,highlight-color)))
             (overlay-put ov 'jump-highlight 'view)
-            (push ov mk-proj-jump-overlays)))))))
+            (push ov lazy-jump-overlays)))))))
 
-(defun mk-proj-jump-next ()
+(defun lazy-jump-next ()
   (interactive)
   (let ((last-window (get-buffer-window (current-buffer))))
-    (when (get-buffer mk-proj-jump-buffer)
-      (select-window (get-buffer-window (get-buffer mk-proj-jump-buffer)))
-      (with-current-buffer (get-buffer mk-proj-jump-buffer)
+    (when (get-buffer lazy-jump-buffer)
+      (select-window (get-buffer-window (get-buffer lazy-jump-buffer)))
+      (with-current-buffer (get-buffer lazy-jump-buffer)
         (when (< (point-at-eol 2) (point-max))
           (when (overlays-at (point))
             (forward-button (length tabulated-list-format)))
-          (mk-proj-jump-action))))
+          (lazy-jump-action))))
     (select-window last-window)))
 
-(defun mk-proj-jump-prev ()
+(defun lazy-jump-prev ()
   (interactive)
   (let ((last-window (get-buffer-window (current-buffer))))
-    (when (get-buffer mk-proj-jump-buffer)
-      (select-window (get-buffer-window (get-buffer mk-proj-jump-buffer)))
-      (with-current-buffer (get-buffer mk-proj-jump-buffer)
+    (when (get-buffer lazy-jump-buffer)
+      (select-window (get-buffer-window (get-buffer lazy-jump-buffer)))
+      (with-current-buffer (get-buffer lazy-jump-buffer)
         (when (> (point-at-bol) (point-min))
           (when (overlays-at (point))
             (backward-button (length tabulated-list-format)))
-          (mk-proj-jump-action))))
+          (lazy-jump-action))))
     (select-window last-window)))
 
-(defun mk-proj-jump-abort ()
+(defun lazy-jump-abort ()
   (interactive)
-  (when (get-buffer-window mk-proj-jump-buffer)
-    (delete-window (get-buffer-window mk-proj-jump-buffer)))
-  (when (get-buffer mk-proj-jump-buffer)
-    (kill-buffer mk-proj-jump-buffer))
+  (when (get-buffer-window lazy-jump-buffer)
+    (delete-window (get-buffer-window lazy-jump-buffer)))
+  (when (get-buffer lazy-jump-buffer)
+    (kill-buffer lazy-jump-buffer))
   (pop-tag-mark)
-  (mk-proj-jump-cleanup-highlight))
+  (lazy-jump-cleanup-highlight))
 
-(defun mk-proj-jump-quit ()
+(defun lazy-jump-quit ()
   (interactive)
-  (when (get-buffer-window mk-proj-jump-buffer)
-    (delete-window (get-buffer-window mk-proj-jump-buffer)))
-  (when (get-buffer mk-proj-jump-buffer)
-    (kill-buffer mk-proj-jump-buffer))
-  (mk-proj-jump-cleanup-highlight (current-buffer)))
+  (when (get-buffer-window lazy-jump-buffer)
+    (delete-window (get-buffer-window lazy-jump-buffer)))
+  (when (get-buffer lazy-jump-buffer)
+    (kill-buffer lazy-jump-buffer))
+  (lazy-jump-cleanup-highlight (current-buffer)))
 
-(defun mk-proj-jump-go ()
+(defun lazy-jump-go ()
   (interactive)
-  (mk-proj-jump-action)
-  (mk-proj-jump-quit))
+  (lazy-jump-action)
+  (lazy-jump-quit))
 
-(define-derived-mode mk-proj-jump-list-mode tabulated-list-mode "Mk-Project jumps"
+(define-derived-mode lazy-jump-list-mode tabulated-list-mode "Mk-Project jumps"
   (setq tabulated-list-format [("Word" 30 t)
                                ("File" 70 t)
                                ("Score" 5 t)
@@ -2067,30 +2052,30 @@ recieves when it acts as process sentinel."
                                ("Text" 0 nil)]
         tabulated-list-padding 1
         tabulated-list-sort-key nil)
-  (define-key mk-proj-jump-list-mode-map (kbd "q") 'mk-proj-jump-quit)
-  (define-key mk-proj-jump-list-mode-map (kbd "C-g") 'mk-proj-jump-abort)
-  (define-key mk-proj-jump-list-mode-map (kbd "C-n") 'mk-proj-jump-next)
-  (define-key mk-proj-jump-list-mode-map (kbd "n") 'mk-proj-jump-next)
-  (define-key mk-proj-jump-list-mode-map (kbd "<down>") 'mk-proj-jump-next)
-  (define-key mk-proj-jump-list-mode-map (kbd "C-p") 'mk-proj-jump-prev)
-  (define-key mk-proj-jump-list-mode-map (kbd "p") 'mk-proj-jump-prev)
-  (define-key mk-proj-jump-list-mode-map (kbd "<up>") 'mk-proj-jump-prev)
-  (define-key mk-proj-jump-list-mode-map (kbd "<return>") 'mk-proj-jump-go)
+  (define-key lazy-jump-list-mode-map (kbd "q") 'lazy-jump-quit)
+  (define-key lazy-jump-list-mode-map (kbd "C-g") 'lazy-jump-abort)
+  (define-key lazy-jump-list-mode-map (kbd "C-n") 'lazy-jump-next)
+  (define-key lazy-jump-list-mode-map (kbd "n") 'lazy-jump-next)
+  (define-key lazy-jump-list-mode-map (kbd "<down>") 'lazy-jump-next)
+  (define-key lazy-jump-list-mode-map (kbd "C-p") 'lazy-jump-prev)
+  (define-key lazy-jump-list-mode-map (kbd "p") 'lazy-jump-prev)
+  (define-key lazy-jump-list-mode-map (kbd "<up>") 'lazy-jump-prev)
+  (define-key lazy-jump-list-mode-map (kbd "<return>") 'lazy-jump-go)
   (tabulated-list-init-header))
 
-(defun mk-proj-update-gtags-completions-cache (proj-name)
+(defun lazy-update-gtags-completions-cache (proj-name)
   (let* ((cmd (concat "global --match-part=first -Gq -c \"\""))
          (completions (split-string (condition-case nil (shell-command-to-string cmd) (error nil)) "\n" t))
-         (completions-cache (gethash proj-name mk-proj-completions-cache)))
+         (completions-cache (gethash proj-name lazy-completions-cache)))
     (when completions
-      (loop for completion in completions
-            do (puthash completion
-                        nil
-                        completions-cache)))))
+      (cl-loop for completion in completions
+               do (puthash completion
+                           nil
+                           completions-cache)))))
 
-(defun mk-proj-update-obarray-completions-cache (proj-name)
-  (let ((completions-cache (gethash proj-name mk-proj-completions-cache)))
-    (do-all-symbols (sym)
+(defun lazy-update-obarray-completions-cache (proj-name)
+  (let ((completions-cache (gethash proj-name lazy-completions-cache)))
+    (cl-do-all-symbols (sym)
       (when (or (fboundp sym)
                 (boundp sym))
         (let* ((completion (symbol-name sym)))
@@ -2098,15 +2083,15 @@ recieves when it acts as process sentinel."
                    nil
                    completions-cache))))))
 
-(defun mk-proj-update-completions-cache (&optional proj-name)
-  (let* ((guessed-alist (mk-proj-guess-alist))
+(defun lazy-update-completions-cache (&optional proj-name)
+  (let* ((guessed-alist (lazy-guess-alist))
          (guessed-name (cadr (assoc 'name guessed-alist)))
-         (proj-alist (mk-proj-find-alist proj-name)))
+         (proj-alist (lazy-find-alist proj-name)))
     (cond ((and (not proj-name)
-                mk-proj-name
-                (mk-proj-buffer-p (current-buffer) mk-proj-name))
-           (setq proj-name mk-proj-name
-                 proj-alist (mk-proj-find-alist mk-proj-name)))
+                lazy-name
+                (lazy-buffer-p (current-buffer) lazy-name))
+           (setq proj-name lazy-name
+                 proj-alist (lazy-find-alist lazy-name)))
           ((or (and proj-name
                     (not proj-alist)
                     guessed-alist)
@@ -2115,54 +2100,54 @@ recieves when it acts as process sentinel."
            (setq proj-name guessed-name
                  proj-alist guessed-alist)))
     (unless proj-name
-      (mk-proj-assert-proj))
-    (if (not (hash-table-p (gethash proj-name mk-proj-completions-cache)))
-        (puthash proj-name (make-hash-table :test 'equal :size 100000) mk-proj-completions-cache)
+      (lazy-assert-proj))
+    (if (not (hash-table-p (gethash proj-name lazy-completions-cache)))
+        (puthash proj-name (make-hash-table :test 'equal :size 100000) lazy-completions-cache)
       (maphash (lambda (k v)
-                 (remhash k (gethash proj-name mk-proj-completions-cache)))
-               (gethash proj-name mk-proj-completions-cache)))
-    (unless (string-equal mk-proj-name proj-name)
-      (project-setup-tags proj-name))
-    (mk-proj-update-gtags-completions-cache proj-name)
-    (unless (string-equal mk-proj-name proj-name)
-      (project-setup-tags mk-proj-name))
-    ;; (mk-proj-update-imenu-completions-cache proj-name)
-    (when (find 'elisp (mk-proj-src-pattern-languages (mk-proj-get-config-val 'src-patterns proj-name nil proj-alist)))
-      (mk-proj-update-obarray-completions-cache proj-name))
+                 (remhash k (gethash proj-name lazy-completions-cache)))
+               (gethash proj-name lazy-completions-cache)))
+    (unless (string-equal lazy-name proj-name)
+      (lazy-setup-tags proj-name))
+    (lazy-update-gtags-completions-cache proj-name)
+    (unless (string-equal lazy-name proj-name)
+      (lazy-setup-tags lazy-name))
+    ;; (lazy-update-imenu-completions-cache proj-name)
+    (when (cl-find 'elisp (lazy-src-pattern-languages (lazy-get-config-val 'src-patterns proj-name nil proj-alist)))
+      (lazy-update-obarray-completions-cache proj-name))
     (garbage-collect)))
 
-(defun mk-proj-completions (&optional prefix proj-name buffer)
-  (let* ((guessed-alist (mk-proj-guess-alist))
+(defun lazy-completions (&optional prefix proj-name buffer)
+  (let* ((guessed-alist (lazy-guess-alist))
          (guessed-name (cadr (assoc 'name guessed-alist)))
          (proj-alist nil))
     (cond ((and (not proj-name)
-                mk-proj-name
-                (mk-proj-buffer-p (current-buffer) mk-proj-name))
-           (setq proj-name mk-proj-name
-                 proj-alist (mk-proj-find-alist mk-proj-name)))
+                lazy-name
+                (lazy-buffer-p (current-buffer) lazy-name))
+           (setq proj-name lazy-name
+                 proj-alist (lazy-find-alist lazy-name)))
           ((and (not proj-name)
                 guessed-name)
            (setq proj-name guessed-name
                  proj-alist guessed-alist)))
     (unless proj-name
-      (mk-proj-assert-proj))
+      (lazy-assert-proj))
     (unless prefix
       (setq prefix ""))
     (unless buffer
       (setq buffer (current-buffer)))
     (let ((unique-completions '())
           (case-fold-search nil))
-      (when (not (gethash proj-name mk-proj-completions-cache))
-        (mk-proj-update-completions-cache proj-name))
-      (when (hash-table-p (gethash proj-name mk-proj-completions-cache))
+      (when (not (gethash proj-name lazy-completions-cache))
+        (lazy-update-completions-cache proj-name))
+      (when (hash-table-p (gethash proj-name lazy-completions-cache))
         (maphash (lambda (k v)
                    (when (or (string-equal prefix "")
                              (string-match (concat "^" prefix) k))
                      (push k unique-completions)))
-                 (gethash proj-name mk-proj-completions-cache)))
+                 (gethash proj-name lazy-completions-cache)))
       (reverse unique-completions))))
 
-(defun mk-proj-merge-obarray-jumps (obarray-jumps &rest rest)
+(defun lazy-merge-obarray-jumps (obarray-jumps &rest rest)
   (if obarray-jumps
       (let ((obarray-map (make-hash-table :test 'equal :size 100000))
             (merged-jumps nil))
@@ -2178,7 +2163,7 @@ recieves when it acts as process sentinel."
                     (jump-docstring (plist-get jump :docstring))
                     (jump-definition (plist-get jump :definition))
                     (new-jump obarray-jump))
-                (when (position 'elisp (mk-proj-src-pattern-languages (list jump-path)))
+                (when (cl-position 'elisp (lazy-src-pattern-languages (list jump-path)))
                   (plist-put new-jump :file-path jump-path)
                   (plist-put new-jump :line-number jump-line-number)
                   (when (and (= (length (plist-get obarray-jump :docstring)) 0)
@@ -2194,61 +2179,61 @@ recieves when it acts as process sentinel."
         merged-jumps)
     (apply #'append rest)))
 
-(defun project-jump-definition (word &optional proj-name proj-alist buffer)
+(defun lazy-jump-definition (word &optional proj-name proj-alist buffer)
   (interactive (list (let* ((ido-enable-flex-matching t)
                             (case-fold-search nil)
                             (ido-case-fold nil))
                        (substring-no-properties (ido-completing-read "Symbol: "
-                                                                     (mk-proj-completions) nil nil
-                                                                     (substring-no-properties (or (thing-at-point mk-proj-thing-selector) "")))))))
-  (when (and (not mk-proj-name) (not proj-alist))
-    (let ((guessed-name (cadr (assoc 'name (mk-proj-guess-alist)))))
+                                                                     (lazy-completions) nil nil
+                                                                     (substring-no-properties (or (thing-at-point lazy-thing-selector) "")))))))
+  (when (and (not lazy-name) (not proj-alist))
+    (let ((guessed-name (cadr (assoc 'name (lazy-guess-alist)))))
       (when guessed-name (setq proj-name guessed-name))))
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-alist proj-name)
-                       (mk-proj-find-alist mk-proj-name)
-                       (mk-proj-guess-alist)))
+                       (lazy-find-alist proj-name)
+                       (lazy-find-alist lazy-name)
+                       (lazy-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
-    (mk-proj-assert-proj))
+    (lazy-assert-proj))
   (unless buffer
     (setq buffer (current-buffer)))
-  (let ((jumps (mk-proj-merge-obarray-jumps (mk-proj-find-symbol proj-name proj-alist 'obarray (concat "^" word "$"))
-                                            (or (mk-proj-find-symbol proj-name proj-alist 'gtags word (concat "global -x -d " (prin1-to-string word)))
-                                                (mk-proj-find-symbol proj-name proj-alist 'gtags word (concat "global -x -s " (prin1-to-string word))))
-                                            (mk-proj-find-symbol proj-name proj-alist 'imenu (concat "^" word "$")))))
-    (mk-proj-select-jumps (mk-proj-score-jumps jumps (regexp-quote word) buffer))))
+  (let ((jumps (lazy-merge-obarray-jumps (lazy-find-symbol proj-name proj-alist 'obarray (concat "^" word "$"))
+                                            (or (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -d " (prin1-to-string word)))
+                                                (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -s " (prin1-to-string word))))
+                                            (lazy-find-symbol proj-name proj-alist 'imenu (concat "^" word "$")))))
+    (lazy-select-jumps (lazy-score-jumps jumps (regexp-quote word) buffer))))
 
-(defun project-jump-regexp (regexp &optional proj-name proj-alist buffer)
+(defun lazy-jump-regexp (regexp &optional proj-name proj-alist buffer)
   (interactive (list (let* ((ido-enable-flex-matching t))
                        (substring-no-properties (ido-completing-read "Match: "
-                                                                     (mk-proj-completions))))))
-  (when (and mk-proj-name (not proj-alist))
-    (let ((guessed-name (cadr (assoc 'name (mk-proj-guess-alist)))))
+                                                                     (lazy-completions))))))
+  (when (and lazy-name (not proj-alist))
+    (let ((guessed-name (cadr (assoc 'name (lazy-guess-alist)))))
       (when guessed-name (setq proj-name guessed-name))))
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-alist proj-name)
-                       (mk-proj-find-alist mk-proj-name)
-                       (mk-proj-guess-alist)))
+                       (lazy-find-alist proj-name)
+                       (lazy-find-alist lazy-name)
+                       (lazy-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
-    (mk-proj-assert-proj))
+    (lazy-assert-proj))
   (unless buffer
     (setq buffer (current-buffer)))
-  (let ((jumps (mk-proj-merge-obarray-jumps (mk-proj-find-symbol proj-name proj-alist 'obarray (concat "^" regexp))
-                                            (or (mk-proj-find-symbol proj-name proj-alist 'gtags regexp (concat "global -x -e " (prin1-to-string (concat regexp ".*"))))
-                                                (mk-proj-find-symbol proj-name proj-alist 'gtags regexp (concat "global -x -s " (prin1-to-string (concat regexp ".*")))))
-                                            (mk-proj-find-symbol proj-name proj-alist 'imenu regexp))))
-    (mk-proj-select-jumps (mk-proj-score-jumps jumps regexp buffer))))
+  (let ((jumps (lazy-merge-obarray-jumps (lazy-find-symbol proj-name proj-alist 'obarray (concat "^" regexp))
+                                            (or (lazy-find-symbol proj-name proj-alist 'gtags regexp (concat "global -x -e " (prin1-to-string (concat regexp ".*"))))
+                                                (lazy-find-symbol proj-name proj-alist 'gtags regexp (concat "global -x -s " (prin1-to-string (concat regexp ".*")))))
+                                            (lazy-find-symbol proj-name proj-alist 'imenu regexp))))
+    (lazy-select-jumps (lazy-score-jumps jumps regexp buffer))))
 
-(defun project-jump-references (word &optional proj-name buffer)
+(defun lazy-jump-references (word &optional proj-name buffer)
   )
 
-(defun project-jump-callees (word &optional proj-name buffer)
+(defun lazy-jump-callees (word &optional proj-name buffer)
   ;; only supported by cscope afaik
   )
 
-(defun project-jump-callers (word &optional proj-name buffer)
+(defun lazy-jump-callers (word &optional proj-name buffer)
   ;; only supported by cscope afaik
   )
 
@@ -2256,17 +2241,17 @@ recieves when it acts as process sentinel."
 ;; Compile
 ;; ---------------------------------------------------------------------
 
-(defun mk-proj-buffer-lang (&optional buffer)
+(defun lazy-buffer-lang (&optional buffer)
   (when (buffer-file-name (or buffer (current-buffer)))
     (cadr (assoc (car (last (split-string (buffer-file-name (or buffer (current-buffer))) "\\.")))
-                 mk-proj-src-pattern-table))))
+                 lazy-src-pattern-table))))
 
-(defun project-compile ()
+(defun lazy-compile ()
   (interactive)
   (if (and (called-interactively-p 'interactive)
-           (not mk-proj-name))
+           (not lazy-name))
       (call-interactively 'compile)
-    (mk-proj-assert-proj nil)
+    (lazy-assert-proj nil)
     (cl-flet ((internal-compile (&optional cmd)
                                 (let ((saved-compile-command compile-command)
                                       (compile-command (or cmd compile-command))
@@ -2279,58 +2264,58 @@ recieves when it acts as process sentinel."
                                   (setq result-compile-command compile-command
                                         compile-command saved-compile-command)
                                   result-compile-command)))
-      ;;(mk-proj-save-state)
-      (with-current-buffer (get-buffer (mk-proj-fib-name))
+      ;;(lazy-save-state)
+      (with-current-buffer (get-buffer (lazy-fib-name))
         (save-buffer))
-      (let ((cmd (mk-proj-get-config-val 'compile-cmd)))
+      (let ((cmd (lazy-get-config-val 'compile-cmd)))
         (when (string-equal (buffer-name (current-buffer)) "*compilation*")
           (call-interactively 'other-window))
-        (mk-proj-with-directory (mk-proj-get-config-val 'basedir)
+        (lazy-with-directory (lazy-get-config-val 'basedir)
                                 (cond ((listp cmd)
                                        (let* ((old-history cmd)
-                                              (compile-history (remove-duplicates (append old-history compile-history) :test 'equal :from-end t))
+                                              (compile-history (cl-remove-duplicates (append old-history compile-history) :test 'equal :from-end t))
                                               (old-cmd (car cmd))
                                               (new-cmd (internal-compile old-cmd)))
                                          (unless (string-equal old-cmd new-cmd)
-                                           (mk-proj-set-config-val 'compile-cmd (remove-duplicates (append (list new-cmd) old-history) :test 'equal :from-end t)))))
+                                           (lazy-set-config-val 'compile-cmd (cl-remove-duplicates (append (list new-cmd) old-history) :test 'equal :from-end t)))))
                                       ((stringp cmd)
                                        (let* ((old-cmd cmd)
                                               (new-cmd (internal-compile old-cmd))
                                               (new-list (list new-cmd old-cmd)))
                                          (unless (string-equal old-cmd new-cmd)
-                                           (mk-proj-set-config-val 'compile-cmd new-list))))
+                                           (lazy-set-config-val 'compile-cmd new-list))))
                                       ((commandp cmd)
                                        (call-interactively cmd))
                                       ((functionp cmd)
                                        (funcall cmd))
                                       (t
-                                       (mk-proj-set-config-val 'compile-cmd (list (internal-compile))))))
-        ;;(project-after-save-update)
+                                       (lazy-set-config-val 'compile-cmd (list (internal-compile))))))
+        ;;(lazy-update)
         ))))
 
 ;; ---------------------------------------------------------------------
 ;; Files
 ;; ---------------------------------------------------------------------
 
-(defun mk-proj-fib-init (&optional proj-name quiet)
+(defun lazy-fib-init (&optional proj-name quiet)
   "Either load the *file-index* buffer from the file cache, or create it afresh."
-  (if (and (mk-proj-get-config-val 'file-list-cache proj-name t)
-           (file-readable-p (mk-proj-get-config-val 'file-list-cache proj-name t)))
+  (if (and (lazy-get-config-val 'file-list-cache proj-name t)
+           (file-readable-p (lazy-get-config-val 'file-list-cache proj-name t)))
       (let ((zeitgeist-prevent-send t))
-        (with-current-buffer (find-file-noselect (mk-proj-get-config-val 'file-list-cache proj-name t))
-          (with-current-buffer (rename-buffer (mk-proj-fib-name proj-name))
+        (with-current-buffer (find-file-noselect (lazy-get-config-val 'file-list-cache proj-name t))
+          (with-current-buffer (rename-buffer (lazy-fib-name proj-name))
             (setq buffer-read-only t)
             (set-buffer-modified-p nil)
             (unless quiet
-              (message (concat "Loading " (mk-proj-fib-name proj-name) " from %s") (mk-proj-get-config-val 'file-list-cache proj-name t))))))
-    (project-index proj-name)))
+              (message (concat "Loading " (lazy-fib-name proj-name) " from %s") (lazy-get-config-val 'file-list-cache proj-name t))))))
+    (lazy-index proj-name)))
 
-(defun mk-proj-fib-clear (&optional proj-name)
+(defun lazy-fib-clear (&optional proj-name)
   "Clear the contents of the fib buffer"
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (let ((buf (get-buffer (mk-proj-fib-name proj-name))))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (let ((buf (get-buffer (lazy-fib-name proj-name))))
     (when buf
       (with-current-buffer buf
         (setq buffer-read-only nil)
@@ -2338,45 +2323,45 @@ recieves when it acts as process sentinel."
         (set-buffer-modified-p nil)
         (setq buffer-read-only t)))))
 
-(defun mk-proj-fib-cb (process event &optional proj-name proj-alist quiet)
+(defun lazy-fib-cb (process event &optional proj-name proj-alist quiet)
   "Handle failure to complete fib building"
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-alist proj-name)
-                       (mk-proj-find-alist mk-proj-name)
-                       (mk-proj-guess-alist)))
+                       (lazy-find-alist proj-name)
+                       (lazy-find-alist lazy-name)
+                       (lazy-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
   (cond
    ((string= event "finished\n")
     (let ((zeitgeist-prevent-send t))
-      (with-current-buffer (get-buffer (mk-proj-fib-name proj-name))
-        (when (mk-proj-get-config-val 'file-list-cache proj-name t proj-alist)
-          (write-file (mk-proj-get-config-val 'file-list-cache proj-name t proj-alist))
-          (rename-buffer (mk-proj-fib-name proj-name))
+      (with-current-buffer (get-buffer (lazy-fib-name proj-name))
+        (when (lazy-get-config-val 'file-list-cache proj-name t proj-alist)
+          (write-file (lazy-get-config-val 'file-list-cache proj-name t proj-alist))
+          (rename-buffer (lazy-fib-name proj-name))
           (set-buffer-modified-p nil))
         (setq buffer-read-only t)))
     (unless quiet
-      (message "Refreshing %s buffer...done" (mk-proj-fib-name proj-name))))
+      (message "Refreshing %s buffer...done" (lazy-fib-name proj-name))))
    (t
-    (mk-proj-fib-clear proj-name)
+    (lazy-fib-clear proj-name)
     (unless quiet
-      (message "Failed to generate the %s buffer!" (mk-proj-fib-name proj-name))))))
+      (message "Failed to generate the %s buffer!" (lazy-fib-name proj-name))))))
 
-(defun mk-proj-find-cmd-src-args (src-patterns &optional proj-name proj-alist)
+(defun lazy-find-cmd-src-args (src-patterns &optional proj-name proj-alist)
   "Generate the ( -name <pat1> -o -name <pat2> ...) pattern for find cmd"
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-alist proj-name)
-                       (mk-proj-find-alist mk-proj-name)
-                       (mk-proj-guess-alist)))
+                       (lazy-find-alist proj-name)
+                       (lazy-find-alist lazy-name)
+                       (lazy-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
   (if src-patterns
       (let ((name-expr (if (eq system-type 'windows-nt) " \(" " \\("))
-            (regex-or-name-arg (if (mk-proj-get-config-val 'patterns-are-regex proj-name t proj-alist)
+            (regex-or-name-arg (if (lazy-get-config-val 'patterns-are-regex proj-name t proj-alist)
                                    "-regex"
                                  "-name")))
         (dolist (pat src-patterns)
@@ -2389,76 +2374,76 @@ recieves when it acts as process sentinel."
                   "\\) ")))
     ""))
 
-(defun mk-proj-find-cmd-ignore-args (ignore-patterns &optional proj-name proj-alist)
+(defun lazy-find-cmd-ignore-args (ignore-patterns &optional proj-name proj-alist)
   "Generate the -not ( -name <pat1> -o -name <pat2> ...) pattern for find cmd"
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-alist proj-name)
-                       (mk-proj-find-alist mk-proj-name)
-                       (mk-proj-guess-alist)))
+                       (lazy-find-alist proj-name)
+                       (lazy-find-alist lazy-name)
+                       (lazy-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (concat " -not " (mk-proj-find-cmd-src-args (append ignore-patterns (list ".*/flycheck_.*")) proj-name proj-alist)))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (concat " -not " (lazy-find-cmd-src-args (append ignore-patterns (list ".*/flycheck_.*")) proj-name proj-alist)))
 
-(defvar mk-proj-index-processes (make-hash-table))
+(defvar lazy-index-processes (make-hash-table))
 
-(defun* project-index (&optional proj-name proj-alist (async t) (do-friends nil) (quiet nil) (terminator nil) (parent nil))
-  "Regenerate the *file-index* buffer that is used for project-find-file"
+(cl-defun lazy-index (&optional proj-name proj-alist (async t) (do-friends nil) (quiet nil) (terminator nil) (parent nil))
+  "Regenerate the *file-index* buffer that is used for lazy-find-file"
   (interactive)
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-alist proj-name)
-                       (mk-proj-find-alist mk-proj-name)
-                       (mk-proj-guess-alist)
+                       (lazy-find-alist proj-name)
+                       (lazy-find-alist lazy-name)
+                       (lazy-guess-alist)
                        ))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
-    (mk-proj-assert-proj))
+    (lazy-assert-proj))
   (unless do-friends
-    (setq do-friends (and (string-equal proj-name mk-proj-name)
-                          (mk-proj-has-univ-arg))))
+    (setq do-friends (and (string-equal proj-name lazy-name)
+                          (lazy-has-univ-arg))))
   (let* ((process)
-         (friends (mk-proj-get-config-val 'friends proj-name nil proj-alist))
-         (default-directory (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t proj-alist)))
-         (start-dir (if mk-proj-file-index-relative-paths
+         (friends (lazy-get-config-val 'friends proj-name nil proj-alist))
+         (default-directory (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist)))
+         (start-dir (if lazy-file-index-relative-paths
                         "."
-                      (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t proj-alist))))
+                      (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist))))
          (find-exe (or (executable-find "gfind.exe")
                        (executable-find "find")))
          (find-cmd (concat "\"" find-exe "\" \"" start-dir "\" -type f "
-                           (mk-proj-find-cmd-src-args (mk-proj-get-config-val 'src-patterns proj-name t proj-alist) proj-name proj-alist)
-                           (mk-proj-find-cmd-ignore-args (mk-proj-get-config-val 'ignore-patterns proj-name t proj-alist) proj-name proj-alist)
+                           (lazy-find-cmd-src-args (lazy-get-config-val 'src-patterns proj-name t proj-alist) proj-name proj-alist)
+                           (lazy-find-cmd-ignore-args (lazy-get-config-val 'ignore-patterns proj-name t proj-alist) proj-name proj-alist)
                            ;; - had a problem under windows where gfind could not read some file and then always exit with error, this hack
                            ;; works around that and makes the command always exit with 0, may be neccessary on linux at some point too
                            (when (eq system-type 'windows-nt)
                                " 2> nul & exit /b 0")))
          (proc-name (concat "index-process-" proj-name)))
-    (when (mk-proj-get-config-val 'file-list-cache proj-name t proj-alist)
-      (mk-proj-fib-clear proj-name)
-      (when (mk-proj-get-vcs-path proj-name)
-        (setq find-cmd (concat find-cmd " -not -path " (concat "'*/" (mk-proj-get-vcs-path proj-name) "/*'"))))
-      (with-current-buffer (get-buffer-create (mk-proj-fib-name proj-name))
+    (when (lazy-get-config-val 'file-list-cache proj-name t proj-alist)
+      (lazy-fib-clear proj-name)
+      (when (lazy-get-vcs-path proj-name)
+        (setq find-cmd (concat find-cmd " -not -path " (concat "'*/" (lazy-get-vcs-path proj-name) "/*'"))))
+      (with-current-buffer (get-buffer-create (lazy-fib-name proj-name))
         (buffer-disable-undo) ;; this is a large change we don't need to undo
         (setq buffer-read-only nil))
       (unless quiet
-        (message "project-index cmd: \"%s\"" find-cmd)
-        (message "Refreshing %s buffer..." (mk-proj-fib-name proj-name)))
-      (setq process (start-process-shell-command proc-name (mk-proj-fib-name proj-name) find-cmd))
+        (message "lazy-index cmd: \"%s\"" find-cmd)
+        (message "Refreshing %s buffer..." (lazy-fib-name proj-name)))
+      (setq process (start-process-shell-command proc-name (lazy-fib-name proj-name) find-cmd))
       (if parent
-          (push process (cadr (gethash parent mk-proj-index-processes)))
-        (puthash process (list (length friends) nil) mk-proj-index-processes)
+          (push process (cadr (gethash parent lazy-index-processes)))
+        (puthash process (list (length friends) nil) lazy-index-processes)
         (setq parent process))
       (set-process-sentinel (get-process proc-name) `(lambda (p e)
-                                                       (mk-proj-fib-cb p e ,proj-name (quote ,proj-alist) ,quiet)
-                                                       (let ((tuple (gethash ,parent mk-proj-index-processes)))
+                                                       (lazy-fib-cb p e ,proj-name (quote ,proj-alist) ,quiet)
+                                                       (let ((tuple (gethash ,parent lazy-index-processes)))
                                                          (when (and tuple (quote ,terminator))
                                                            (let ((friends-num (nth 0 tuple))
                                                                  (friends-list (nth 1 tuple)))
                                                              (when (and (eq (process-status ,parent) 'exit)
                                                                         (or (not ,do-friends)
                                                                             (and (= friends-num (length friends-list))
-                                                                                 (every (lambda (o) (eq (process-status o) 'exit)) friends-list))))
-                                                               (remhash ,parent mk-proj-index-processes)
+                                                                                 (cl-every (lambda (o) (eq (process-status o) 'exit)) friends-list))))
+                                                               (remhash ,parent lazy-index-processes)
                                                                (funcall (quote ,terminator) ,proj-name (quote ,proj-alist))))))))
       (unless async
         (while (or (string-equal (process-status process) "run")
@@ -2466,11 +2451,11 @@ recieves when it acts as process sentinel."
           (sleep-for 0 4)))
       (when do-friends
         (dolist (friend friends)
-          (let ((friend-alist (mk-proj-find-alist friend)))
+          (let ((friend-alist (lazy-find-alist friend)))
             (when friend-alist
-              (project-index friend friend-alist async nil quiet terminator parent))))))))
+              (lazy-index friend friend-alist async nil quiet terminator parent))))))))
 
-(defun mk-proj-fib-matches (&optional regex proj-name proj-alist)
+(defun lazy-fib-matches (&optional regex proj-name proj-alist)
   "Return list of files in *file-index* matching regex.
 
 REGEX can be a list or a single regex.
@@ -2478,149 +2463,149 @@ If it is nil, return all files.
 
 Returned file paths are relative to the project's basedir."
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-alist proj-name)
-                       (mk-proj-find-alist mk-proj-name)
-                       (mk-proj-guess-alist)))
+                       (lazy-find-alist proj-name)
+                       (lazy-find-alist lazy-name)
+                       (lazy-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
-  (unless (get-buffer (mk-proj-fib-name proj-name))
-    (mk-proj-fib-init proj-name))
-  (when (or proj-alist (gethash proj-name mk-proj-list nil))
-    (with-current-buffer (mk-proj-fib-name proj-name)
-      (let ((basedir (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t proj-alist)))
+  (unless (get-buffer (lazy-fib-name proj-name))
+    (lazy-fib-init proj-name))
+  (when (or proj-alist (gethash proj-name lazy-list nil))
+    (with-current-buffer (lazy-fib-name proj-name)
+      (let ((basedir (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist)))
             (current-filename nil)
             (case-fold-search nil))
-        (sort (loop for line in (split-string (buffer-string) "\n" t)
-                    if (> (length line) 0)
-                    do (setq current-filename (if (file-name-absolute-p line)
-                                                  (file-relative-name line basedir)
-                                                line))
-                    if (or (not regex)
-                           (and (stringp regex)
-                                (string-match regex current-filename))
-                           (and (listp regex)
-                                (some (lambda (re) (string-match re current-filename)) regex)))
-                    collect current-filename)
+        (sort (cl-loop for line in (split-string (buffer-string) "\n" t)
+                       if (> (length line) 0)
+                       do (setq current-filename (if (file-name-absolute-p line)
+                                                     (file-relative-name line basedir)
+                                                   line))
+                       if (or (not regex)
+                              (and (stringp regex)
+                                   (string-match regex current-filename))
+                              (and (listp regex)
+                                   (cl-some (lambda (re) (string-match re current-filename)) regex)))
+                       collect current-filename)
               #'string-lessp)))))
 
-(defun mk-proj-files (&optional proj-name proj-alist truenames)
+(defun lazy-files (&optional proj-name proj-alist truenames)
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-alist proj-name)
-                       (mk-proj-find-alist mk-proj-name)
-                       (mk-proj-guess-alist)))
+                       (lazy-find-alist proj-name)
+                       (lazy-find-alist lazy-name)
+                       (lazy-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (let ((basedir (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t proj-alist))))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (let ((basedir (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist))))
     (when truenames (setq basedir (file-truename basedir)))
     (mapcar (lambda (f) (expand-file-name (concat basedir f)))
-            (mk-proj-fib-matches nil proj-name proj-alist))))
+            (lazy-fib-matches nil proj-name proj-alist))))
 
-(defun mk-proj-unique-files (&optional proj-name)
+(defun lazy-unique-files (&optional proj-name)
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (let ((proj-files (mk-proj-files proj-name nil t))
-        (friendly-files (mk-proj-friendly-files proj-name nil t))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (let ((proj-files (lazy-files proj-name nil t))
+        (friendly-files (lazy-friendly-files proj-name nil t))
         (unique-friends '()))
     (dolist (f friendly-files)
-      (unless (find f proj-files :test 'equal)
+      (unless (cl-find f proj-files :test 'equal)
         (setq unique-friends (append (list f) unique-friends))))
     (append proj-files unique-friends)))
 
-(defun mk-proj-friendly-files (&optional proj-name proj-alist truenames)
+(defun lazy-friendly-files (&optional proj-name proj-alist truenames)
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-alist proj-name)
-                       (mk-proj-find-alist mk-proj-name)
-                       (mk-proj-guess-alist)))
+                       (lazy-find-alist proj-name)
+                       (lazy-find-alist lazy-name)
+                       (lazy-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (let* ((basedir (file-truename (mk-proj-get-config-val 'basedir proj-name t proj-alist)))
-         (friendly-files (mapcan (lambda (friend)
-                                   (let ((friend-file (mk-proj-with-directory basedir (expand-file-name friend))))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (let* ((basedir (file-truename (lazy-get-config-val 'basedir proj-name t proj-alist)))
+         (friendly-files (cl-mapcan (lambda (friend)
+                                   (let ((friend-file (lazy-with-directory basedir (expand-file-name friend))))
                                      (if (file-exists-p friend-file)
                                          (list friend-file)
-                                       (mk-proj-files friend nil truenames))))
-                                 (mk-proj-get-config-val 'friends proj-name t proj-alist))))
+                                       (lazy-files friend nil truenames))))
+                                 (lazy-get-config-val 'friends proj-name t proj-alist))))
     friendly-files))
 
-(defun project-dired ()
+(defun lazy-dired ()
   "Open dired in the project's basedir (or jump to the existing dired buffer)"
   (interactive)
-  (mk-proj-assert-proj t)
-  (dired (mk-proj-get-config-val 'basedir)))
+  (lazy-assert-proj t)
+  (dired (lazy-get-config-val 'basedir)))
 
-(defun project-multi-occur (regex)
+(defun lazy-multi-occur (regex)
   "Search all open project files for 'regex' using `multi-occur'.
 
-Act like `project-multi-occur-with-friends' if called with prefix arg."
+Act like `lazy-multi-occur-with-friends' if called with prefix arg."
   (interactive "sRegex: ")
-  (mk-proj-assert-proj t)
-  (if (mk-proj-has-univ-arg)
-      (project-multi-occur-with-friends regex)
-    (multi-occur (mk-proj-filter (lambda (b) (if (buffer-file-name b) b nil))
-                                 (mk-proj-buffers))
+  (lazy-assert-proj t)
+  (if (lazy-has-univ-arg)
+      (lazy-multi-occur-with-friends regex)
+    (multi-occur (lazy-filter (lambda (b) (if (buffer-file-name b) b nil))
+                                 (lazy-buffers))
                  regex)))
 
 ;; ---------------------------------------------------------------------
 ;; Friends
 ;; ---------------------------------------------------------------------
 
-(defun mk-proj-find-friendly-projects (&optional proj-name)
+(defun lazy-find-friendly-projects (&optional proj-name)
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
   ;; go through all configs
   ;; collect all projects which have the requested name in their friend list
   ;; remove duplicates and return
   (let ((r '()))
     (maphash (lambda (k c)
                (unless (string-equal k proj-name)
-                 (when (some (lambda (f)
+                 (when (cl-some (lambda (f)
                                (string-equal f proj-name))
-                             (mk-proj-config-val 'friends c))
-                   (setq r (append r `(,k)))))) mk-proj-list)
-    (remove-duplicates (append r (mk-proj-config-val 'friends proj-name t)) :test #'string-equal)))
+                             (lazy-config-val 'friends c))
+                   (setq r (append r `(,k)))))) lazy-list)
+    (cl-remove-duplicates (append r (lazy-config-val 'friends proj-name t)) :test #'string-equal)))
 
-(defun mk-proj-fib-friend-matches (&optional regex proj-name proj-alist)
+(defun lazy-fib-friend-matches (&optional regex proj-name proj-alist)
   (setq proj-alist (or proj-alist
-                       (mk-proj-find-alist proj-name)
-                       (mk-proj-find-alist mk-proj-name)
-                       (mk-proj-guess-alist)))
+                       (lazy-find-alist proj-name)
+                       (lazy-find-alist lazy-name)
+                       (lazy-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
   (let ((resulting-matches '())
         (case-fold-search nil))
-    (dolist (friend (mk-proj-get-config-val 'friends proj-name t proj-alist) resulting-matches)
-      (if (file-exists-p (mk-proj-with-directory (mk-proj-get-config-val 'basedir proj-name t proj-alist)
+    (dolist (friend (lazy-get-config-val 'friends proj-name t proj-alist) resulting-matches)
+      (if (file-exists-p (lazy-with-directory (lazy-get-config-val 'basedir proj-name t proj-alist)
                                                  (expand-file-name friend)))
           (if regex
               (when (string-match regex friend) (add-to-list 'resulting-matches (expand-file-name friend)))
             (add-to-list 'resulting-matches (expand-file-name friend)))
         (setq resulting-matches (append resulting-matches
-                                        (let ((friend-alist (mk-proj-find-alist friend)))
+                                        (let ((friend-alist (lazy-find-alist friend)))
                                           (when friend-alist
                                             (mapcar (lambda (f)
-                                                      (expand-file-name (concat (file-name-as-directory (mk-proj-get-config-val 'basedir friend t friend-alist)) f)))
-                                                    (mk-proj-fib-matches regex friend friend-alist))))))))
+                                                      (expand-file-name (concat (file-name-as-directory (lazy-get-config-val 'basedir friend t friend-alist)) f)))
+                                                    (lazy-fib-matches regex friend friend-alist))))))))
     ))
 
-(defun mk-proj-friendly-buffer-p (buf &optional proj-name)
+(defun lazy-friendly-buffer-p (buf &optional proj-name)
   "Check if BUF is a friend of PROJ-NAME."
-  (unless (mk-proj-buffer-p buf)
-    (let ((file-name (mk-proj-buffer-name buf)))
+  (unless (lazy-buffer-p buf)
+    (let ((file-name (lazy-buffer-name buf)))
       (if (and file-name
-               (block "friend-loop"
-                 (dolist (f (mk-proj-find-friendly-projects proj-name))
+               (cl-block "friend-loop"
+                 (dolist (f (lazy-find-friendly-projects proj-name))
                    (if (file-exists-p (expand-file-name f))
                        (when (string-equal f file-name)
-                         (return-from "friend-loop" t))
-                     (when (mk-proj-find-alist f t)
-                       (let* ((friend-config (mk-proj-find-alist f t))
+                         (cl-return-from "friend-loop" t))
+                     (when (lazy-find-alist f t)
+                       (let* ((friend-config (lazy-find-alist f t))
                               (non-slash-basedir (expand-file-name (car (cdr (assoc 'basedir friend-config)))))
                               (slash-basedir (if (string-equal (substring non-slash-basedir -1) "/")
                                                   non-slash-basedir
@@ -2628,81 +2613,81 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                               (case-fold-search nil))
                          (when (or (string-match (concat "^" (regexp-quote slash-basedir)) file-name)
                                    (string-match (concat "^" (regexp-quote (file-truename slash-basedir))) file-name))
-                           (return-from "friend-loop" t))))))))
+                           (cl-return-from "friend-loop" t))))))))
           t
         nil))))
 
-(defun mk-proj-friendly-file-buffer-p (buf &optional proj-name)
+(defun lazy-friendly-file-buffer-p (buf &optional proj-name)
   (and (buffer-file-name buf)
-       (mk-proj-friendly-buffer-p buf proj-name)))
+       (lazy-friendly-buffer-p buf proj-name)))
 
-(defun mk-proj-friendly-special-buffer-p (buf &optional proj-name)
+(defun lazy-friendly-special-buffer-p (buf &optional proj-name)
   (let ((case-fold-search nil))
     (and (string-match "\*[^\*]\*" (buffer-name buf))
-         (mk-proj-friendly-buffer-p buf proj-name))))
+         (lazy-friendly-buffer-p buf proj-name))))
 
-(defun mk-proj-friendly-dired-buffer-p (buf &optional proj-name)
+(defun lazy-friendly-dired-buffer-p (buf &optional proj-name)
   (and (with-current-buffer buf
          (eq major-mode 'dired-mode))
-       (mk-proj-friendly-buffer-p buf proj-name)))
+       (lazy-friendly-buffer-p buf proj-name)))
 
 
-(defun mk-proj-friendly-buffers (&optional proj-name)
+(defun lazy-friendly-buffers (&optional proj-name)
   "Return all buffers that are friendly to the project"
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
   (let ((buffers nil))
     (dolist (b (buffer-list))
-      (when (mk-proj-friendly-buffer-p b proj-name)
+      (when (lazy-friendly-buffer-p b proj-name)
         (push b buffers)))
       buffers))
 
-(defun mk-proj-friendly-file-buffers (&optional proj-name)
+(defun lazy-friendly-file-buffers (&optional proj-name)
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (remove-if (lambda (buf) (not (buffer-file-name buf))) (mk-proj-friendly-buffers proj-name)))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (cl-remove-if (lambda (buf) (not (buffer-file-name buf))) (lazy-friendly-buffers proj-name)))
 
-(defun mk-proj-friendly-special-buffers (&optional proj-name friends-only)
+(defun lazy-friendly-special-buffers (&optional proj-name friends-only)
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
   (let ((case-fold-search nil))
-    (append (remove-if (lambda (buf) (not (string-match "\*[^\*]\*" (buffer-name buf)))) (mk-proj-friendly-buffers proj-name))
-            (remove-if (lambda (buf) (or (and (symbolp 'mk-org-project-buffer-name)
-                                              (not (string-equal (mk-org-project-buffer-name proj-name) (buffer-name buf))))
+    (append (cl-remove-if (lambda (buf) (not (string-match "\*[^\*]\*" (buffer-name buf)))) (lazy-friendly-buffers proj-name))
+            (cl-remove-if (lambda (buf) (or (and (symbolp 'lazy-org-project-buffer-name)
+                                              (not (string-equal (lazy-org-project-buffer-name proj-name) (buffer-name buf))))
                                          (compilation-buffer-p buf)))
                        (buffer-list)))))
 
-(defun mk-proj-friendly-dired-buffers (&optional proj-name)
+(defun lazy-friendly-dired-buffers (&optional proj-name)
   (unless proj-name
-    (mk-proj-assert-proj)
-    (setq proj-name mk-proj-name))
-  (remove-if (lambda (buf) (not (mk-proj-friendly-dired-buffer-p buf))) (mk-proj-friendly-buffers proj-name)))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (cl-remove-if (lambda (buf) (not (lazy-friendly-dired-buffer-p buf))) (lazy-friendly-buffers proj-name)))
 
-(defun mk-proj-save-open-friends-info ()
-  (when (mk-proj-get-config-val 'open-friends-cache)
+(defun lazy-save-open-friends-info ()
+  (when (lazy-get-config-val 'open-friends-cache)
     (let ((zeitgeist-prevent-send t))
       (with-temp-buffer
-        (dolist (f (remove-duplicates (mapcar (lambda (b) (mk-proj-buffer-name b)) (mk-proj-friendly-buffers)) :test #'string-equal))
+        (dolist (f (cl-remove-duplicates (mapcar (lambda (b) (lazy-buffer-name b)) (lazy-friendly-buffers)) :test #'string-equal))
           (when f
-            (unless (string-equal (mk-proj-get-config-val 'etags-file) f)
+            (unless (string-equal (lazy-get-config-val 'etags-file) f)
               (insert f "\n"))))
-        (if (file-writable-p (mk-proj-get-config-val 'open-friends-cache))
+        (if (file-writable-p (lazy-get-config-val 'open-friends-cache))
             (write-region (point-min)
                           (point-max)
-                          (mk-proj-get-config-val 'open-friends-cache))
-          (message "Wrote open friends to %s" (mk-proj-get-config-val 'open-friends-cache))
-          (message "Cannot write to %s" (mk-proj-get-config-val 'open-friends-cache)))))))
+                          (lazy-get-config-val 'open-friends-cache))
+          (message "Wrote open friends to %s" (lazy-get-config-val 'open-friends-cache))
+          (message "Cannot write to %s" (lazy-get-config-val 'open-friends-cache)))))))
 
-(defun mk-proj-visit-saved-open-friends ()
+(defun lazy-visit-saved-open-friends ()
   (let ((zeitgeist-prevent-send t))
-    (when (mk-proj-get-config-val 'open-friends-cache)
-      (when (file-readable-p (mk-proj-get-config-val 'open-friends-cache))
-        (message "Reading open friends from %s" (mk-proj-get-config-val 'open-friends-cache))
+    (when (lazy-get-config-val 'open-friends-cache)
+      (when (file-readable-p (lazy-get-config-val 'open-friends-cache))
+        (message "Reading open friends from %s" (lazy-get-config-val 'open-friends-cache))
         (with-temp-buffer
-          (insert-file-contents (mk-proj-get-config-val 'open-friends-cache))
+          (insert-file-contents (lazy-get-config-val 'open-friends-cache))
           (goto-char (point-min))
           (while (not (eobp))
             (let ((start (point)))
@@ -2717,14 +2702,14 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                   (kill-line))))
             (forward-line)))))))
 
-(defun project-close-friends ()
+(defun lazy-close-friends ()
   (interactive)
-  (mk-proj-assert-proj)
+  (lazy-assert-proj)
   (let ((closed nil)
         (dirty nil)
         (zeitgeist-prevent-send t)
         (continue-prevent-save t))
-    (dolist (b (append (mk-proj-friendly-buffers) (mk-proj-friendly-dired-buffers)))
+    (dolist (b (append (lazy-friendly-buffers) (lazy-friendly-dired-buffers)))
       (cond
        ((buffer-modified-p b)
         (push (buffer-name) dirty))
@@ -2734,54 +2719,54 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
     (message "Closed %d friendly buffers, %d modified friendly buffers where left open"
              (length closed) (length dirty))))
 
-(defun project-multi-occur-with-friends (regex)
+(defun lazy-multi-occur-with-friends (regex)
   "Search all open project files (including friends) for 'regex' using `multi-occur'."
   (interactive "sRegex: ")
-  (mk-proj-assert-proj t)
-  (multi-occur (mk-proj-filter (lambda (b) (if (buffer-file-name b) b nil))
-                               (append (mk-proj-buffers) (mk-proj-friendly-buffers)))
+  (lazy-assert-proj t)
+  (multi-occur (lazy-filter (lambda (b) (if (buffer-file-name b) b nil))
+                               (append (lazy-buffers) (lazy-friendly-buffers)))
                regex))
 
-(defun mk-proj-friend-basedirs ()
+(defun lazy-friend-basedirs ()
   "Return all friends basedirs. This may also return single filenames instead of a directory."
   (let* ((basedirs '()))
-    (dolist (f (mk-proj-find-friendly-projects) basedirs)
+    (dolist (f (lazy-find-friendly-projects) basedirs)
       (if (file-exists-p (expand-file-name f))
           (add-to-list 'basedirs f)
-        (when (and f (mk-proj-config-val 'basedir f))
-          (add-to-list 'basedirs (mk-proj-config-val 'basedir f)))))))
+        (when (and f (lazy-config-val 'basedir f))
+          (add-to-list 'basedirs (lazy-config-val 'basedir f)))))))
 
 ;; ---------------------------------------------------------------------
 ;; After saving
 ;; ---------------------------------------------------------------------
 
-(defun mk-proj-after-save-add-pattern (&optional buffer)
+(defun lazy-after-save-add-pattern (&optional buffer)
   (unless buffer
     (setq buffer (current-buffer)))
-  (when mk-proj-name
+  (when lazy-name
     (let* ((file-name (expand-file-name (buffer-file-name buffer)))
            (extension (car (last (split-string file-name "\\."))))
            (new-pattern (concat ".*\\." extension))
-           (src-patterns (mk-proj-get-config-val 'src-patterns mk-proj-name t))
+           (src-patterns (lazy-get-config-val 'src-patterns lazy-name t))
            (case-fold-search nil)
-           (buildsystem-files (loop for bs in mk-proj-buildsystems
-                                    append (cadr (assoc 'files (cadr bs)))))
-           (buildsystem-file-found (some (lambda (buildsystem-file)
+           (buildsystem-files (cl-loop for bs in lazy-buildsystems
+                                       append (cadr (assoc 'files (cadr bs)))))
+           (buildsystem-file-found (cl-some (lambda (buildsystem-file)
                                            (when (string-match (concat (regexp-quote buildsystem-file) "$") file-name)
                                              buildsystem-file)) buildsystem-files)))
-      (when (and (assoc extension mk-proj-src-pattern-table)
-                 (or (string-match (concat "^" (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t)))) file-name)
-                     (string-match (concat "^" (regexp-quote (file-name-as-directory (mk-proj-get-config-val 'basedir mk-proj-name t)))) (file-truename file-name)))
-                 (not (some (lambda (pattern) (string-match pattern file-name)) src-patterns)))
-        (mk-proj-set-config-val 'src-patterns (add-to-list 'src-patterns new-pattern)))
+      (when (and (assoc extension lazy-src-pattern-table)
+                 (or (string-match (concat "^" (regexp-quote (file-name-as-directory (lazy-get-config-val 'basedir lazy-name t)))) file-name)
+                     (string-match (concat "^" (regexp-quote (file-name-as-directory (lazy-get-config-val 'basedir lazy-name t)))) (file-truename file-name)))
+                 (not (cl-some (lambda (pattern) (string-match pattern file-name)) src-patterns)))
+        (lazy-set-config-val 'src-patterns (add-to-list 'src-patterns new-pattern)))
       (when (and buildsystem-file-found
-                 (not (some (lambda (pattern) (string-match pattern buildsystem-file-found)) src-patterns)))
-        (mk-proj-set-config-val 'src-patterns (add-to-list 'src-patterns (concat ".*" (regexp-quote buildsystem-file-found) "$")))))))
+                 (not (cl-some (lambda (pattern) (string-match pattern buildsystem-file-found)) src-patterns)))
+        (lazy-set-config-val 'src-patterns (add-to-list 'src-patterns (concat ".*" (regexp-quote buildsystem-file-found) "$")))))))
 
 
-(defun mk-proj-after-save-update (&optional proj-name)
-  (unless mk-proj-after-save-update-in-progress
-    (if (and (not (or mk-proj-prevent-after-save-update
+(defun lazy-after-save-update (&optional proj-name)
+  (unless lazy-after-save-update-in-progress
+    (if (and (not (or lazy-prevent-after-save-update
                       (string-match ".*recentf.*" (buffer-name (current-buffer)))
                       (string-match ".*file-list-cache.*" (buffer-name (current-buffer)))
                       (string-match ".*sourcemarker-db.*" (buffer-name (current-buffer)))
@@ -2792,132 +2777,132 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
              (get-buffer-window (current-buffer) 'visible))
         (progn
           (setq proj-name (or proj-name
-                              mk-proj-name
-                              (cadr (assoc 'name (mk-proj-guess-alist)))))
+                              lazy-name
+                              (cadr (assoc 'name (lazy-guess-alist)))))
           (when proj-name
-            (setq mk-proj-after-save-update-in-progress t
-                  mk-proj-after-save-current-buffer (current-buffer)
-                  mk-proj-after-save-current-project proj-name)
-            (run-with-idle-timer 10 nil 'project-after-save-update))))))
+            (setq lazy-after-save-update-in-progress t
+                  lazy-after-save-current-buffer (current-buffer)
+                  lazy-after-save-current-project proj-name)
+            (run-with-idle-timer 10 nil 'lazy-update))))))
 
-(defun project-after-save-update (&optional p proj-name buffer)
+(defun lazy-update (&optional p proj-name buffer)
   (interactive "p")
   (setq proj-name (or proj-name
-                      mk-proj-after-save-current-project
-                      mk-proj-name
-                      (cadr (assoc 'name (mk-proj-guess-alist)))))
-  (when mk-proj-name
-    (let ((guessed-name (cadr (assoc 'name (mk-proj-guess-alist)))))
+                      lazy-after-save-current-project
+                      lazy-name
+                      (cadr (assoc 'name (lazy-guess-alist)))))
+  (when lazy-name
+    (let ((guessed-name (cadr (assoc 'name (lazy-guess-alist)))))
       (when guessed-name (setq proj-name guessed-name))))
   (unless proj-name
-    (mk-proj-assert-proj))
+    (lazy-assert-proj))
   (unless buffer
-    (setq buffer (or mk-proj-after-save-current-buffer
+    (setq buffer (or lazy-after-save-current-buffer
                      (current-buffer))))
   (condition-case e
       (progn
-        (if (or p (mk-proj-buffer-p buffer proj-name) (mk-proj-friendly-buffer-p buffer proj-name))
+        (if (or p (lazy-buffer-p buffer proj-name) (lazy-friendly-buffer-p buffer proj-name))
             (progn
               (when (buffer-file-name buffer)
-                (mk-proj-after-save-add-pattern buffer))
-              (project-index proj-name nil t nil t
+                (lazy-after-save-add-pattern buffer))
+              (lazy-index proj-name nil t nil t
                              (lambda (&optional proj-name proj-alist files debug)
-                               (project-update-tags proj-name proj-alist files debug)
-                               (setq mk-proj-after-save-update-in-progress nil
-                                     mk-proj-after-save-current-buffer nil
-                                     mk-proj-after-save-current-project nil))))
-          (setq mk-proj-after-save-update-in-progress nil
-                mk-proj-after-save-current-buffer nil
-                mk-proj-after-save-current-project nil)))
+                               (lazy-update-tags proj-name proj-alist files debug)
+                               (setq lazy-after-save-update-in-progress nil
+                                     lazy-after-save-current-buffer nil
+                                     lazy-after-save-current-project nil))))
+          (setq lazy-after-save-update-in-progress nil
+                lazy-after-save-current-buffer nil
+                lazy-after-save-current-project nil)))
     (error (progn
-             (setq mk-proj-after-save-update-in-progress nil
-                   mk-proj-after-save-current-buffer nil
-                   mk-proj-after-save-current-project nil)
-             (message "error in project-after-save-update: %s" (prin1-to-string e)))))
+             (setq lazy-after-save-update-in-progress nil
+                   lazy-after-save-current-buffer nil
+                   lazy-after-save-current-project nil)
+             (message "error in lazy-after-save-update: %s" (prin1-to-string e)))))
   t)
 
 
-(defun mk-proj-pre-command-remove-jump-delete-buffer ()
-  (unless (or (eq this-command 'mk-proj-jump-next)
-              (eq this-command 'mk-proj-jump-prev)
-              (eq this-command 'mk-proj-jump-abort)
-              (eq this-command 'mk-proj-jump))
+(defun lazy-pre-command-remove-jump-delete-buffer ()
+  (unless (or (eq this-command 'lazy-jump-next)
+              (eq this-command 'lazy-jump-prev)
+              (eq this-command 'lazy-jump-abort)
+              (eq this-command 'lazy-jump))
     (mapc (lambda (ov)
             (when (eq (overlay-buffer ov) (current-buffer))
               (overlay-put ov 'delete-buffer nil)))
-          mk-proj-jump-overlays)))
+          lazy-jump-overlays)))
 
-(eval-after-load "mk-project"
+(with-eval-after-load "lazyect"
   '(progn
-     (run-with-idle-timer 60 t 'mk-proj-save-state)
-     (add-hook 'after-save-hook 'mk-proj-after-save-update)
-     (add-hook 'after-load-hook 'mk-proj-after-save-update)
-     (add-hook 'after-save-hook 'mk-proj-jump-cleanup-highlight)
-     (add-hook 'pre-command-hook 'mk-proj-pre-command-remove-jump-delete-buffer)
-     (load-file (concat (file-name-as-directory mk-global-cache-root) "projects.el"))))
+     (run-with-idle-timer 60 t 'lazy-save-state)
+     (add-hook 'after-save-hook 'lazy-after-save-update)
+     (add-hook 'after-load-hook 'lazy-after-save-update)
+     (add-hook 'after-save-hook 'lazy-jump-cleanup-highlight)
+     (add-hook 'pre-command-hook 'lazy-pre-command-remove-jump-delete-buffer)
+     (load-file (concat (file-name-as-directory lazy-global-cache-root) "projects.el"))))
 
 ;; ---------------------------------------------------------------------
 ;; Guessing
 ;; ---------------------------------------------------------------------
 
-(defun mk-proj-find-projects-matching-patterns (test-patterns &optional name-list)
+(defun lazy-find-projects-matching-patterns (test-patterns &optional name-list)
   (let ((results nil)
         (case-fold-search nil))
     (maphash (lambda (k v)
                (let ((proj-patterns))
                  (when (and (setq proj-patterns (cadr (assoc 'src-patterns v)))
-                            (loop for tp in test-patterns
-                                  for pp in proj-patterns
-                                  if (string-match tp pp)
-                                  return t
-                                  finally return nil))
+                            (cl-loop for tp in test-patterns
+                                     for pp in proj-patterns
+                                     if (string-match tp pp)
+                                     return t
+                                     finally return nil))
                    (add-to-list 'results k))))
              (or (and name-list
                       (let ((temp-hash (make-hash-table :test 'equal)))
-                        (mapc (lambda (name) (puthash name (gethash name mk-proj-list) temp-hash)) name-list)
+                        (mapc (lambda (name) (puthash name (gethash name lazy-list) temp-hash)) name-list)
                         temp-hash))
-                 mk-proj-list))
+                 lazy-list))
     results))
 
 
-(defun* mk-proj-find-projects-in-directory (path &optional name-list)
+(cl-defun lazy-find-projects-in-directory (path &optional name-list)
   (let ((results nil))
     (maphash (lambda (k v)
                (when (or (string-equal (expand-file-name (concat path "/"))
-                                       (expand-file-name (concat (mk-proj-get-config-val 'basedir k t) "")))
+                                       (expand-file-name (concat (lazy-get-config-val 'basedir k t) "")))
                          (string-equal (file-truename (expand-file-name (concat path "/")))
-                                       (file-truename (expand-file-name (concat (mk-proj-get-config-val 'basedir k t) "")))))
+                                       (file-truename (expand-file-name (concat (lazy-get-config-val 'basedir k t) "")))))
                  (add-to-list 'results k)))
              (or (and name-list
                       (let ((temp-hash (make-hash-table :test 'equal)))
-                        (mapc (lambda (name) (puthash name (gethash name mk-proj-list) temp-hash)) name-list)
+                        (mapc (lambda (name) (puthash name (gethash name lazy-list) temp-hash)) name-list)
                         temp-hash))
-                 mk-proj-list))
+                 lazy-list))
     results))
 
-(defun mk-proj-find-projects-owning-buffer (buf &optional name-list)
+(defun lazy-find-projects-owning-buffer (buf &optional name-list)
   (let ((projects nil)
         (case-fold-search nil))
     (maphash (lambda (k v)
                (when (and (buffer-file-name buf)
-                          (mk-proj-get-config-val 'basedir k t)
-                          (mk-proj-path-equal (buffer-file-name buf) (mk-proj-get-config-val 'basedir k t))
-                          (some (lambda (re) (string-match re (buffer-file-name buf))) (mk-proj-get-config-val 'src-patterns k t)))
+                          (lazy-get-config-val 'basedir k t)
+                          (lazy-path-equal (buffer-file-name buf) (lazy-get-config-val 'basedir k t))
+                          (cl-some (lambda (re) (string-match re (buffer-file-name buf))) (lazy-get-config-val 'src-patterns k t)))
                  (add-to-list 'projects k)))
              (or (and name-list
                       (let ((temp-hash (make-hash-table :test 'equal)))
-                        (mapc (lambda (name) (puthash name (gethash name mk-proj-list) temp-hash)) name-list)
+                        (mapc (lambda (name) (puthash name (gethash name lazy-list) temp-hash)) name-list)
                         temp-hash))
-                 mk-proj-list))
+                 lazy-list))
     projects))
 
-(defun mk-proj-find-unique-paths (paths)
+(defun lazy-find-unique-paths (paths)
   (let ((result '()))
     (dolist (path paths result)
-      (unless (some (lambda (a) (mk-proj-path-equal path a)) (mk-proj-filter (lambda (p) (not (string-equal p path))) paths))
+      (unless (cl-some (lambda (a) (lazy-path-equal path a)) (lazy-filter (lambda (p) (not (string-equal p path))) paths))
         (add-to-list 'result path)))))
 
-(defun mk-proj-find-common-path-of-buffers (&optional buffers ignore-paths)
+(defun lazy-find-common-path-of-buffers (&optional buffers ignore-paths)
   (let* ((common-path 'undefined)
          (result (dolist (buf
                           (or buffers (buffer-list))
@@ -2930,29 +2915,29 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
                      (if (eq common-path 'undefined)
                          ;; set common-path on first iteration if it is undefined, we'll be unecessarily
                          ;; checking it against itself once
-                         (setq common-path (split-string (mk-proj-dirname (expand-file-name (buffer-file-name buf))) "/" (not (eq system-type 'windows-nt))))
+                         (setq common-path (split-string (lazy-dirname (expand-file-name (buffer-file-name buf))) "/" (not (eq system-type 'windows-nt))))
                        ;; we split both paths by "/" and create a zipper from the resulting lists
                        ;; /foo/bar     -> '\("foo" "bar"\)
                        ;; /foo/bar/bla -> '\("foo" "bar" "bla"\)
                        ;; -> '\(\("foo" "foo"\) \("bar" "bar"\) \(nil "bla"\)\)
                        ;; then walking over the zipper while both tuple's strings match, stopping at a mismatch
                        ;; and collecting matching strings on the way along
-                       (let ((tuples (mk-proj-zip common-path (split-string (expand-file-name (buffer-file-name buf)) "/" (not (eq system-type 'windows-nt)))))
+                       (let ((tuples (lazy-zip common-path (split-string (expand-file-name (buffer-file-name buf)) "/" (not (eq system-type 'windows-nt)))))
                              (temp-path '()))
-                         (while (string-equal (first (car tuples)) (second (car tuples)))
-                           (add-to-list 'temp-path (first (car tuples)))
+                         (while (string-equal (cl-first (car tuples)) (cl-second (car tuples)))
+                           (add-to-list 'temp-path (cl-first (car tuples)))
                            (setq tuples (cdr tuples)))
                          ;; we'll set the new common-path before the next iteration, but only if it wouldn't be
-                         ;; 'equal' (see mk-proj-path-equal) to any of the ignore-paths
-                         (unless (loop for ig in ignore-paths
-                                       if (mk-proj-path-equal (file-name-as-directory (expand-file-name ig))
+                         ;; 'equal' (see lazy-path-equal) to any of the ignore-paths
+                         (unless (cl-loop for ig in ignore-paths
+                                          if (lazy-path-equal (file-name-as-directory (expand-file-name ig))
                                                               (expand-file-name (apply 'concat (mapcar 'file-name-as-directory (reverse temp-path)))))
-                                       return t
-                                       finally return nil)
+                                          return t
+                                          finally return nil)
                            (setq common-path (reverse temp-path)))))))))
     result))
 
-(defun* mk-proj-guess-buffers (&optional test-buffer ignore-paths mode)
+(cl-defun lazy-guess-buffers (&optional test-buffer ignore-paths mode)
   (unless test-buffer
     (setq test-buffer (current-buffer)))
   (let ((buffers (buffer-list)))
@@ -2961,59 +2946,59 @@ Act like `project-multi-occur-with-friends' if called with prefix arg."
       (setq test-buffer (car buffers)
             buffers (cdr buffers))))
   (unless (buffer-file-name test-buffer)
-    (return-from "mk-proj-guess-buffers" nil))
+    (cl-return-from "lazy-guess-buffers" nil))
   (let* ((ignore-paths (sort ignore-paths (lambda (a b) (> (length a) (length b)))))
          (test-mode (with-current-buffer test-buffer major-mode))
-         (test-path (or (mk-proj-dirname (buffer-file-name test-buffer))
+         (test-path (or (lazy-dirname (buffer-file-name test-buffer))
                         default-directory))
-         (buffer-projects (mk-proj-find-projects-owning-buffer test-buffer))
+         (buffer-projects (lazy-find-projects-owning-buffer test-buffer))
          result)
-    (setq result (remove-if-not 'identity
+    (setq result (cl-remove-if-not 'identity
                                 (mapcar (lambda (buf)
                                           (let (buf-projects)
                                             (when (and (buffer-file-name buf)
-                                                       (mk-proj-path-complement (mk-proj-dirname (buffer-file-name buf)) test-path)
+                                                       (lazy-path-complement (lazy-dirname (buffer-file-name buf)) test-path)
                                                        ;; same projects for all buffers considered, all guessed buffers must belong to the
                                                        ;; same projects as test-buffer, even if test-buffer belongs to multiple projects
-                                                       (or (mk-proj-path-equal test-path (mk-proj-dirname (buffer-file-name buf)) t)
-                                                           (loop for ig in ignore-paths
-                                                                 if (mk-proj-path-equal ig (mk-proj-dirname (buffer-file-name buf)) t)
-                                                                 return nil
-                                                                 finally return t))
-                                                       (equal (setq buf-projects (mk-proj-find-projects-owning-buffer buf)) buffer-projects))
+                                                       (or (lazy-path-equal test-path (lazy-dirname (buffer-file-name buf)) t)
+                                                           (cl-loop for ig in ignore-paths
+                                                                    if (lazy-path-equal ig (lazy-dirname (buffer-file-name buf)) t)
+                                                                    return nil
+                                                                    finally return t))
+                                                       (equal (setq buf-projects (lazy-find-projects-owning-buffer buf)) buffer-projects))
                                               ;; special treatment for buffers when a project is loaded, exclude project buffers of loaded
                                               ;; project if test-buffer does not belong to loaded project, exclude buffers that do not
                                               ;; belong to loaded project when test-buffer belongs to the loaded project
-                                              (unless (or (and (boundp 'mk-proj-name)
-                                                               mk-proj-name
-                                                               (not (some (lambda (p) (string-equal p mk-proj-name)) buffer-projects))
-                                                               (some (lambda (p) (string-equal p mk-proj-name)) buf-projects))
-                                                          (and (boundp 'mk-proj-name)
-                                                               mk-proj-name
+                                              (unless (or (and (boundp 'lazy-name)
+                                                               lazy-name
+                                                               (not (cl-some (lambda (p) (string-equal p lazy-name)) buffer-projects))
+                                                               (cl-some (lambda (p) (string-equal p lazy-name)) buf-projects))
+                                                          (and (boundp 'lazy-name)
+                                                               lazy-name
                                                                (not (eq buf test-buffer))
-                                                               (not (some (lambda (p) (string-equal p mk-proj-name)) buffer-projects))
-                                                               (mk-proj-friendly-buffer-p buf mk-proj-name)))
+                                                               (not (cl-some (lambda (p) (string-equal p lazy-name)) buffer-projects))
+                                                               (lazy-friendly-buffer-p buf lazy-name)))
                                                 buf))))
                                         (if mode
-                                            (remove-if-not (lambda (b) (eq (with-current-buffer b major-mode) mode)) (buffer-list))
+                                            (cl-remove-if-not (lambda (b) (eq (with-current-buffer b major-mode) mode)) (buffer-list))
                                           (buffer-list)))))
     result))
 
-(defun mk-proj-src-pattern-languages (src-patterns)
+(defun lazy-src-pattern-languages (src-patterns)
   (let ((lang nil)
         (languages nil))
-    (loop for pattern in src-patterns
-          do (let* ((parts (split-string pattern "\\." t))
-                    (ending (if (and (> (length parts) 2)
-                                     (string-equal (car (last parts)) "gz"))
-                                (concat (nth 0 (last parts 2)) "." (nth 1 (last parts 2)))
-                              (car (last parts)))))
-               (setq lang (cadr (assoc ending mk-proj-src-pattern-table))))
-          if (not (eq lang nil))
-          do (add-to-list 'languages lang))
+    (cl-loop for pattern in src-patterns
+             do (let* ((parts (split-string pattern "\\." t))
+                       (ending (if (and (> (length parts) 2)
+                                        (string-equal (car (last parts)) "gz"))
+                                   (concat (nth 0 (last parts 2)) "." (nth 1 (last parts 2)))
+                                 (car (last parts)))))
+                  (setq lang (cadr (assoc ending lazy-src-pattern-table))))
+             if (not (eq lang nil))
+             do (add-to-list 'languages lang))
     languages))
 
-(defvar mk-proj-incubator-paths `(,(expand-file-name "~"))
+(defvar lazy-incubator-paths `(,(expand-file-name "~"))
   "An incubator is a location where multiple projects are kept. These will be
 ignored when guessing a projects basedir thus giving preference to subdirectories
 within it.
@@ -3022,12 +3007,12 @@ It is not impossible for an incubator path to be guessed as project basedir thou
 If you'll guess while in a buffer with a file from an incubator root open, that
 incubator root could be guessed as basedir.")
 
-(defvar mk-proj-common-project-subdir-names '("src" "include" "demo[?s]" "example[?s]" "doc[?s]" "build" "tool[?s]" "test[?s]" "misc")
+(defvar lazy-common-project-subdir-names '("src" "include" "demo[?s]" "example[?s]" "doc[?s]" "build" "tool[?s]" "test[?s]" "misc")
   "Common subdirectory names found in projects as regular expressions. These
 help guessing a projects basedir. Matching directory names will be ignored
 and their parent directory used as basedir.")
 
-(defvar mk-proj-guess-functions '((buffer . ((()
+(defvar lazy-guess-functions '((buffer . ((()
                                               `(1 . ,(current-buffer)))))
                                   (mode . (((buffer)
                                             `(1 . ,(with-current-buffer buffer major-mode)))))
@@ -3037,33 +3022,33 @@ and their parent directory used as basedir.")
                                               ;; buffer-file-name
                                               ((buffer)
                                                (when (buffer-file-name buffer)
-                                                 `(10 . ,(mk-proj-dirname (expand-file-name (buffer-file-name buffer))))))
+                                                 `(10 . ,(lazy-dirname (expand-file-name (buffer-file-name buffer))))))
                                               ;; longest-common-path of buffers with same mode
                                               ((mode buffer)
-                                               (let ((found-path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths mode))))
+                                               (let ((found-path (lazy-find-common-path-of-buffers (lazy-guess-buffers buffer lazy-incubator-paths mode))))
                                                  (when (and found-path
                                                             (not (string-equal (expand-file-name "~") found-path)))
                                                    `(50 . ,found-path))))
                                               ;; find directory that is not a common project subdir
                                               ((buffer)
-                                               (let* ((path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths)))
+                                               (let* ((path (lazy-find-common-path-of-buffers (lazy-guess-buffers buffer lazy-incubator-paths)))
                                                       (splitted-path (when path (split-string path "/"))))
                                                  (while (and path
                                                              splitted-path
-                                                             (not (some (lambda (incubator-path) (mk-proj-path-equal incubator-path path))
-                                                                        mk-proj-incubator-paths))
+                                                             (not (cl-some (lambda (incubator-path) (lazy-path-equal incubator-path path))
+                                                                        lazy-incubator-paths))
                                                              (some (lambda (dir) (string-equal dir (car (last splitted-path))))
-                                                                   mk-proj-common-project-subdir-names))
+                                                                   lazy-common-project-subdir-names))
                                                    (setq splitted-path (butlast splitted-path)
-                                                         path (reduce (lambda (a b) (concat a "/" b)) splitted-path)))
+                                                         path (cl-reduce (lambda (a b) (concat a "/" b)) splitted-path)))
                                                  (when path
                                                    `(100 . ,path))))
                                               ;; find basedir by searching for buildsystem patterns
                                               ((buffer)
-                                               (let ((path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths))))
+                                               (let ((path (lazy-find-common-path-of-buffers (lazy-guess-buffers buffer lazy-incubator-paths))))
                                                  (when path
-                                                   (let ((found-paths (sort (loop for re in (mk-proj-buildsystem-patterns)
-                                                                                  collect (mk-proj-search-path re path mk-proj-incubator-paths mk-proj-common-project-subdir-names))
+                                                   (let ((found-paths (sort (loop for re in (lazy-buildsystem-patterns)
+                                                                                  collect (lazy-search-path re path lazy-incubator-paths lazy-common-project-subdir-names))
                                                                             (lambda (a b) (> (length a) (length b))))))
                                                      (when (car found-paths)
                                                        `(200 . ,(car found-paths)))))))
@@ -3071,30 +3056,30 @@ and their parent directory used as basedir.")
                                               ((buffer)
                                                (let* ((filename (buffer-file-name buffer))
                                                       (found-paths (when filename
-                                                                     (sort (loop for re in (mapcar 'regexp-quote (mapcar 'cdr mk-proj-vcs-path))
-                                                                                 collect (mk-proj-search-path re (file-name-directory (expand-file-name filename)) mk-proj-incubator-paths mk-proj-common-project-subdir-names))
+                                                                     (sort (loop for re in (mapcar 'regexp-quote (mapcar 'cdr lazy-vcs-path))
+                                                                                 collect (lazy-search-path re (file-name-directory (expand-file-name filename)) lazy-incubator-paths lazy-common-project-subdir-names))
                                                                            (lambda (a b) (> (length a) (length b)))))))
                                                  (if (car found-paths)
                                                      `(500 . ,(car found-paths))
-                                                   (let ((path (mk-proj-find-common-path-of-buffers (mk-proj-guess-buffers buffer mk-proj-incubator-paths))))
+                                                   (let ((path (lazy-find-common-path-of-buffers (lazy-guess-buffers buffer lazy-incubator-paths))))
                                                      (when path
-                                                       (let ((found-paths (sort (loop for re in (mapcar 'regexp-quote (mapcar 'cdr mk-proj-vcs-path))
-                                                                                      collect (mk-proj-search-path re path mk-proj-incubator-paths mk-proj-common-project-subdir-names))
+                                                       (let ((found-paths (sort (loop for re in (mapcar 'regexp-quote (mapcar 'cdr lazy-vcs-path))
+                                                                                      collect (lazy-search-path re path lazy-incubator-paths lazy-common-project-subdir-names))
                                                                                 (lambda (a b) (> (length a) (length b))))))
                                                          (when (car found-paths)
                                                            `(300 . ,(car found-paths)))))))))
                                               ;; find basedir by trying to match buffers directory to project basedirs
                                               ((buffer)
                                                (let ((basedirs '()))
-                                                 (dolist (proj-name (mk-proj-find-projects-owning-buffer buffer))
-                                                   (let ((basedir (file-name-as-directory (mk-proj-get-config-val 'basedir proj-name t))))
-                                                     (unless (some (apply-partially 'string-equal basedir) basedirs)
+                                                 (dolist (proj-name (lazy-find-projects-owning-buffer buffer))
+                                                   (let ((basedir (file-name-as-directory (lazy-get-config-val 'basedir proj-name t))))
+                                                     (unless (cl-some (apply-partially 'string-equal basedir) basedirs)
                                                        (add-to-list 'basedirs basedir))))
-                                                 (let ((basedirs-without-incubators (remove-if (lambda (dir)
-                                                                                                 (some (lambda (incubator)
+                                                 (let ((basedirs-without-incubators (cl-remove-if (lambda (dir)
+                                                                                                 (cl-some (lambda (incubator)
                                                                                                          (string-equal (file-name-as-directory dir)
                                                                                                                        (file-name-as-directory incubator)))
-                                                                                                       mk-proj-incubator-paths))
+                                                                                                       lazy-incubator-paths))
                                                                                                basedirs)))
                                                    (if (and (eq (length basedirs) 1)
                                                             (eq (length basedirs-without-incubators) 1))
@@ -3113,8 +3098,8 @@ and their parent directory used as basedir.")
                                                 `(10 . ,(car (split-string (file-name-nondirectory (expand-file-name (buffer-file-name buffer))) "\\."))))))
                                            ((basedir)
                                             (let ((pname (car (reverse (split-string basedir "/" t)))))
-                                              (when (loop for ig in mk-proj-incubator-paths
-                                                          if (mk-proj-path-equal ig basedir)
+                                              (when (loop for ig in lazy-incubator-paths
+                                                          if (lazy-path-equal ig basedir)
                                                           return nil
                                                           finally return t)
                                                 `(100 . ,pname))))))
@@ -3124,12 +3109,12 @@ and their parent directory used as basedir.")
                                                            ;; guess buffers, collect files and set all-incubator, files from incubator
                                                            ;; roots are ignored except the current buffers file, if all relevant files
                                                            ;; we found are from incubator roots all-incubator will be true
-                                                           (files (loop for buf in (mk-proj-guess-buffers (current-buffer) nil mode)
-                                                                        do (cond ((and (some (lambda (ig)
+                                                           (files (loop for buf in (lazy-guess-buffers (current-buffer) nil mode)
+                                                                        do (cond ((and (cl-some (lambda (ig)
                                                                                                (let ((file-name (buffer-file-name buf)))
                                                                                                  (when file-name
-                                                                                                   (mk-proj-path-equal (mk-proj-dirname (expand-file-name file-name)) ig t))))
-                                                                                             mk-proj-incubator-paths)
+                                                                                                   (lazy-path-equal (lazy-dirname (expand-file-name file-name)) ig t))))
+                                                                                             lazy-incubator-paths)
                                                                                        all-incubator)
                                                                                   (setq all-incubator t))
                                                                                  (t
@@ -3138,9 +3123,9 @@ and their parent directory used as basedir.")
                                                                                 (stringp basedir)
                                                                                 (string-match (regexp-quote (expand-file-name basedir)) (expand-file-name (buffer-file-name buf)))
                                                                                 (or (eq (current-buffer) buf)
-                                                                                    (not (some (lambda (ig)
-                                                                                                 (mk-proj-path-equal (mk-proj-dirname (expand-file-name (buffer-file-name buf))) ig t))
-                                                                                               mk-proj-incubator-paths))))
+                                                                                    (not (cl-some (lambda (ig)
+                                                                                                 (lazy-path-equal (lazy-dirname (expand-file-name (buffer-file-name buf))) ig t))
+                                                                                               lazy-incubator-paths))))
                                                                         append (list (file-name-nondirectory (expand-file-name (buffer-file-name buf))))))
                                                            patterns)
                                                       ;; get unique file endings from filenames and make regexp patterns
@@ -3153,7 +3138,7 @@ and their parent directory used as basedir.")
                                                               do (let ((file-ending (mapconcat 'identity (reverse (butlast (reverse (split-string f "\\." t)))) ".")))
                                                                    (mapc (lambda (s)
                                                                            (add-to-list 'patterns s))
-                                                                         (cddr (assoc file-ending mk-proj-src-pattern-table))))
+                                                                         (cddr (assoc file-ending lazy-src-pattern-table))))
                                                               else
                                                               do (add-to-list 'patterns (regexp-quote f))))
                                                       (when files
@@ -3172,9 +3157,9 @@ and their parent directory used as basedir.")
                                                    (let ((bsystem))
                                                      (loop for filename in (directory-files basedir)
                                                            until (let ((r nil))
-                                                                   (loop for bs in mk-proj-buildsystems
+                                                                   (loop for bs in lazy-buildsystems
                                                                          until (setq r (when (assoc 'files (cadr bs))
-                                                                                         (some (apply-partially 'string-equal filename) (cadr (assoc 'files (cadr bs))))))
+                                                                                         (cl-some (apply-partially 'string-equal filename) (cadr (assoc 'files (cadr bs))))))
                                                                          finally return (when r
                                                                                           (setq bsystem bs)))))
                                                      (cond ((and bsystem
@@ -3187,16 +3172,16 @@ and their parent directory used as basedir.")
                                   (vcs . (((basedir)
                                            (let ((r nil))
                                              (loop for f in (directory-files basedir)
-                                                   if (some (lambda (y)
-                                                              (string-equal (cdr y) f)) mk-proj-vcs-path)
-                                                   return `(10 . ,(car (rassoc f mk-proj-vcs-path))))))))
+                                                   if (cl-some (lambda (y)
+                                                              (string-equal (cdr y) f)) lazy-vcs-path)
+                                                   return `(10 . ,(car (rassoc f lazy-vcs-path))))))))
                                   (languages . (((src-patterns)
-                                                 (let ((languages (mk-proj-src-pattern-languages src-patterns)))
+                                                 (let ((languages (lazy-src-pattern-languages src-patterns)))
                                                    (when languages
                                                      `(10 . ,languages))))))))
 
-(defun mk-proj-guess-alist (&optional ask-basedir ask-name)
-  ;; go through mk-proj-guess-functions and collect all symbols that are used
+(defun lazy-guess-alist (&optional ask-basedir ask-name)
+  ;; go through lazy-guess-functions and collect all symbols that are used
   ;; as arguments, we'll bind those in a closure around the execution
   ;; of the function bodies
   (let ((languages 'undefined)
@@ -3219,9 +3204,9 @@ and their parent directory used as basedir.")
                                          bestresult (cdr tuple))))))
                 (guess-symbol (sym)
                               (let ((scores '()))
-                                (dolist (flist (cdr (assoc sym mk-proj-guess-functions)) (best-result scores))
-                                  (let ((args (first flist))
-                                        (expr (second flist)))
+                                (dolist (flist (cdr (assoc sym lazy-guess-functions)) (best-result scores))
+                                  (let ((args (cl-first flist))
+                                        (expr (cl-second flist)))
                                     (dolist (arg args)
                                       ;; check if neccessary symbols are set, this sets a symbol after guessing it so
                                       ;; we do not have to guess something twice
@@ -3231,9 +3216,9 @@ and their parent directory used as basedir.")
                                     (let ((r (condition-case e (eval expr)
                                                (error (message "error while guessing %S: %S in %s" sym e (prin1-to-string expr))))))
                                       (when r (add-to-list 'scores r))))))))
-      (dolist (varchecks (append mk-proj-required-vars mk-proj-optional-vars))
+      (dolist (varchecks (append lazy-required-vars lazy-optional-vars))
         ;; for each var check if it is already set, if not use guess-symbol to guess it
-        ;; since only args from mk-proj-guess-functions are defined by the alet, not all
+        ;; since only args from lazy-guess-functions are defined by the alet, not all
         ;; possible project symbols, we have to check if a var is bound before setting it
         ;; with setf or returning its value if it is not 'undefined, default is to just
         ;; guess and not set anything
@@ -3269,27 +3254,27 @@ and their parent directory used as basedir.")
           (if gv
               (add-to-list 'result `(,var ,gv))
             ;; when a required var couldn't be found, abort
-            (when (some (apply-partially 'eq var) mk-proj-required-vars)
-              (return-from "mk-proj-guess-alist" nil)))))
+            (when (cl-some (apply-partially 'eq var) lazy-required-vars)
+              (cl-return-from "lazy-guess-alist" nil)))))
       ;; find already defined project that fits the guessed project so well that we'll use that instead
       ;; creates list of all projects in same basedir, then selects those matching the same src-patterns
       ;; as the guessed, uses the first of those if multiple match
       (let ((already-defined (or (and (buffer-file-name (current-buffer))
-                                      (mk-proj-find-projects-in-directory (mk-proj-dirname (buffer-file-name (current-buffer)))))
-                                 (mk-proj-find-projects-in-directory (cadr (assoc 'basedir result)))))
+                                      (lazy-find-projects-in-directory (lazy-dirname (buffer-file-name (current-buffer)))))
+                                 (lazy-find-projects-in-directory (cadr (assoc 'basedir result)))))
             (pattern-projects nil))
         (if already-defined
-            (loop for proj-name in already-defined
-                  if (setq pattern-projects
-                           (mk-proj-find-projects-matching-patterns (mk-proj-get-config-val 'src-patterns proj-name t)
+            (cl-loop for proj-name in already-defined
+                     if (setq pattern-projects
+                              (lazy-find-projects-matching-patterns (lazy-get-config-val 'src-patterns proj-name t)
                                                                     already-defined))
-                  return (let ((already-defined-result (gethash (car pattern-projects) mk-proj-list)))
-                           ;; add name if it does not already exist to alist, doubles functionality in project-def
-                           (unless (assoc 'name already-defined-result)
-                             (add-to-list 'already-defined-result `(name ,(car pattern-projects))))
-                           already-defined-result))
+                     return (let ((already-defined-result (gethash (car pattern-projects) lazy-list)))
+                              ;; add name if it does not already exist to alist, doubles functionality in lazy-def
+                              (unless (assoc 'name already-defined-result)
+                                (add-to-list 'already-defined-result `(name ,(car pattern-projects))))
+                              already-defined-result))
           result)))))
 
 (provide 'lazy)
 
-;; mk-project.el ends here
+;; lazy.el ends here
