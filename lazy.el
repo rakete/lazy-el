@@ -304,19 +304,19 @@ Only gtags and gtags+exuberant-ctags are implemented.")
 ;; Customization
 ;; ---------------------------------------------------------------------
 
-(defgroup lazyect nil
+(defgroup lazy nil
   "A programming project management library."
   :group 'tools)
 
 (defcustom lazy-use-ido-selection nil
   "If ido-mode is available, use ido selection where appropriate."
   :type 'boolean
-  :group 'lazyect)
+  :group 'lazy)
 
 (defcustom lazy-file-index-relative-paths t
   "If non-nil, generate relative path names in the file-index buffer"
   :type 'boolean
-  :group 'lazyect)
+  :group 'lazy)
 
 ;; ---------------------------------------------------------------------
 ;; Utils
@@ -1453,7 +1453,7 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-history'
            ;; - I am a setting gtags-root to / and then just make it scan all project files and friendly files,
            ;; that way I can get tags and completions for everything related to this project, I just have to
            ;; set the root again when building the query command
-           ;; - the database is stored in the dbpath, that should be ~/.lazyect/project
+           ;; - the database is stored in the dbpath, that should be ~/.lazy/project
            (gtags-dbpath (file-name-as-directory (file-truename (lazy-get-root-cache-dir nil proj-name))))
            (gtags-config (or (let ((c (lazy-get-config-val 'gtags-config proj-name nil proj-alist)))
                                (when (and c (> (length c) 0) (file-exists-p c))
@@ -2832,15 +2832,6 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
               (overlay-put ov 'delete-buffer nil)))
           lazy-jump-overlays)))
 
-(with-eval-after-load "lazyect"
-  '(progn
-     (run-with-idle-timer 60 t 'lazy-save-state)
-     (add-hook 'after-save-hook 'lazy-after-save-update)
-     (add-hook 'after-load-hook 'lazy-after-save-update)
-     (add-hook 'after-save-hook 'lazy-jump-cleanup-highlight)
-     (add-hook 'pre-command-hook 'lazy-pre-command-remove-jump-delete-buffer)
-     (load-file (concat (file-name-as-directory lazy-global-cache-root) "projects.el"))))
-
 ;; ---------------------------------------------------------------------
 ;; Guessing
 ;; ---------------------------------------------------------------------
@@ -3274,6 +3265,15 @@ and their parent directory used as basedir.")
                                 (add-to-list 'already-defined-result `(name ,(car pattern-projects))))
                               already-defined-result))
           result)))))
+
+(with-eval-after-load "lazy"
+  '(progn
+     (run-with-idle-timer 60 t 'lazy-save-state)
+     (add-hook 'after-save-hook 'lazy-after-save-update)
+     (add-hook 'after-load-hook 'lazy-after-save-update)
+     (add-hook 'after-save-hook 'lazy-jump-cleanup-highlight)
+     (add-hook 'pre-command-hook 'lazy-pre-command-remove-jump-delete-buffer)
+     (load-file (concat (file-name-as-directory lazy-global-cache-root) "projects.el"))))
 
 (provide 'lazy)
 
