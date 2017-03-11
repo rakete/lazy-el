@@ -1,4 +1,4 @@
-;;; mk-project-sourcemarker.el ---  Sourcemarker for mk-project.
+;;; lazy-sourcemarker.el ---  Sourcemarker for lazy-el.
 
 ;; Copyright (C) 2011  Andreas Raster <lazor at affenbande dot org>
 ;;
@@ -20,68 +20,19 @@
 (require 'lazy)
 (require 'continue)
 
-(defvar mk-sourcemarker-per-project-db t)
+(require 'cl-lib)
+(require 'etags-table)
 
-(eval-after-load "mk-project-sourcemarker"
-  '(progn
-     (add-to-list 'mk-proj-optional-vars '(sourcemarker-db-path . (stringp)))
-     (add-to-list 'mk-proj-optional-vars '(sourcemarker-db-symbol . (stringp)))
+(defvar lazy-sourcemarker-per-project-db t)
 
-     (add-to-list 'mk-proj-var-before-get-functions
-                  '(sourcemarker-db-path . (lambda (var val &optional proj-name config-alist)
-                                             (if mk-sourcemarker-per-project-db
-                                                 (if val
-                                                     (expand-file-name val)
-                                                   (mk-proj-get-cache-file 'sourcemarker-db nil 'copy))
-                                               (or (and val (expand-file-name val))
-                                                   continue-db-path)))))
-     (add-to-list 'mk-proj-var-before-get-functions
-                  '(sourcemarker-db-symbol . (lambda (var val &optional proj-name config-alist)
-                                               (let ((proj-name (or proj-name
-                                                                    (and (boundp 'mk-proj-name)
-                                                                         mk-proj-name))))
-                                                 (cond (val val)
-                                                       ((and proj-name mk-sourcemarker-per-project-db)
-                                                        (concat proj-name "-sourcemarker-db"))
-                                                       (t continue-db-symbol))))))
-
-     (remove-hook 'find-file-hook 'continue-restore)
-     (add-hook 'find-file-hook 'mk-sourcemarker-restore)
-
-     (remove-hook 'after-save-hook 'continue-save)
-     (add-hook 'after-save-hook 'mk-sourcemarker-save)
-     (add-hook 'kill-buffer-hook 'mk-sourcemarker-save)
-     (run-with-idle-timer 120 t 'mk-sourcemarker-write-project-db)
-
-     (add-hook 'mk-proj-before-files-load-hook (lambda ()
-                                                 (remove-hook 'find-file-hook 'mk-sourcemarker-restore)
-                                                 (dolist (proj-name (append (list mk-proj-name) (mk-proj-get-config-val 'friends)))
-                                                   (dolist (buf (append (mk-proj-file-buffers proj-name)))
-                                                     (when buf
-                                                       (with-current-buffer buf
-                                                         (mk-sourcemarker-save)))))
-                                                 (mk-sourcemarker-load-project-db)
-                                                 ))
-     (add-hook 'mk-proj-after-load-hook (lambda ()
-                                          (mk-sourcemarker-restore-all)
-                                          (add-hook 'find-file-hook 'mk-sourcemarker-restore)
-                                          (mk-sourcemarker-display-most-recent-buffer)))
-
-     (add-hook 'mk-proj-before-files-unload-hook (lambda ()
-                                                   (mk-sourcemarker-save-all)
-                                                   (remove-hook 'kill-buffer-hook 'mk-sourcemarker-save)))
-     (add-hook 'mk-proj-after-unload-hook (lambda ()
-                                            (add-hook 'kill-buffer-hook 'mk-sourcemarker-save)))
-     ))
-
-(defmacro mk-sourcemarker-with-project-db (&rest body)
-  `(if (and mk-sourcemarker-per-project-db
-            (mk-proj-get-config-val 'sourcemarker-db-path)
-            (mk-proj-get-config-val 'sourcemarker-db-symbol))
+(defmacro lazy-sourcemarker-with-project-db (&rest body)
+  `(if (and lazy-sourcemarker-per-project-db
+            (lazy-get-config-val 'sourcemarker-db-path)
+            (lazy-get-config-val 'sourcemarker-db-symbol))
        (let ((global-db-symbol continue-db-symbol)
              (global-db-path continue-db-path)
-             (continue-db-path (mk-proj-get-config-val 'sourcemarker-db-path))
-             (continue-db-symbol (mk-proj-get-config-val 'sourcemarker-db-symbol)))
+             (continue-db-path (lazy-get-config-val 'sourcemarker-db-path))
+             (continue-db-symbol (lazy-get-config-val 'sourcemarker-db-symbol)))
          (condition-case nil
              (symbol-value (intern continue-db-symbol))
            (error (setf (symbol-value (intern continue-db-symbol))
@@ -89,60 +40,60 @@
          ,@body)
      ,@body))
 
-(defun mk-sourcemarker-load-project-db ()
+(defun lazy-sourcemarker-load-project-db ()
   (interactive)
-  (mk-proj-assert-proj)
-  (mk-sourcemarker-with-project-db
+  (lazy-assert-proj)
+  (lazy-sourcemarker-with-project-db
    (message "loading project db: %s" continue-db-symbol)
    (continue-load-db)))
 
-(defun mk-sourcemarker-write-project-db ()
+(defun lazy-sourcemarker-write-project-db ()
   (interactive)
-  (when mk-proj-name
-    (mk-sourcemarker-with-project-db
+  (when lazy-name
+    (lazy-sourcemarker-with-project-db
      (continue-write-db))))
 
-(defun mk-sourcemarker-restore ()
+(defun lazy-sourcemarker-restore ()
   (interactive)
-  (if (or (condition-case nil (mk-proj-assert-proj) (error t))
-          (not (or (mk-proj-buffer-p (current-buffer))
-                   (mk-proj-friendly-buffer-p (current-buffer)))))
+  (if (or (condition-case nil (lazy-assert-proj) (error t))
+          (not (or (lazy-buffer-p (current-buffer))
+                   (lazy-friendly-buffer-p (current-buffer)))))
       (continue-restore)
-    (if (and (not (condition-case nil (mk-proj-assert-proj) (error t)))
-             (not (mk-sourcemarker-with-project-db (or (gethash (buffer-file-name (current-buffer)) (symbol-value (intern continue-db-symbol)))
+    (if (and (not (condition-case nil (lazy-assert-proj) (error t)))
+             (not (lazy-sourcemarker-with-project-db (or (gethash (buffer-file-name (current-buffer)) (symbol-value (intern continue-db-symbol)))
                                                        (gethash (file-truename (buffer-file-name (current-buffer))) (symbol-value (intern continue-db-symbol))))))
-             (mk-proj-get-config-val 'parent))
-        (mk-proj-with-current-project (mk-proj-get-config-val 'parent)
-                                      (mk-sourcemarker-restore))
-      (mk-sourcemarker-with-project-db
+             (lazy-get-config-val 'parent))
+        (lazy-with-current-project (lazy-get-config-val 'parent)
+                                      (lazy-sourcemarker-restore))
+      (lazy-sourcemarker-with-project-db
        (when (continue-restore)
          (message "restoring sourcemarker in buffer %s (%s)" (buffer-name (current-buffer)) (buffer-file-name (current-buffer))))))))
 
-(defun mk-sourcemarker-restore-all ()
+(defun lazy-sourcemarker-restore-all ()
   (interactive)
-  (mk-proj-assert-proj)
-  (dolist (buf (append (mk-proj-file-buffers) (mk-proj-friendly-file-buffers)))
+  (lazy-assert-proj)
+  (dolist (buf (append (lazy-file-buffers) (lazy-friendly-file-buffers)))
     (with-current-buffer buf
-      (mk-sourcemarker-restore))))
+      (lazy-sourcemarker-restore))))
 
-(defun mk-sourcemarker-save ()
+(defun lazy-sourcemarker-save ()
   (interactive)
-  (if (or (condition-case nil (mk-proj-assert-proj) (error t))
-          (not (or (mk-proj-buffer-p (current-buffer))
-                   (mk-proj-friendly-buffer-p (current-buffer)))))
+  (if (or (condition-case nil (lazy-assert-proj) (error t))
+          (not (or (lazy-buffer-p (current-buffer))
+                   (lazy-friendly-buffer-p (current-buffer)))))
       (continue-save)
-    (mk-sourcemarker-with-project-db
+    (lazy-sourcemarker-with-project-db
        (continue-save))))
 
-(defun mk-sourcemarker-save-all ()
+(defun lazy-sourcemarker-save-all ()
   (interactive)
   (let* ((results '())
-         (sorted-buffers (dolist (buf (append (mk-proj-buffers) (mk-proj-friendly-buffers))
+         (sorted-buffers (dolist (buf (append (lazy-buffers) (lazy-friendly-buffers))
                                       (sort results (lambda (a b) (< (car a) (car b)))))
                            (when (buffer-file-name buf)
                              (when (eq buf (current-buffer))
-                               (mk-sourcemarker-save))
-                             (mk-sourcemarker-with-project-db
+                               (lazy-sourcemarker-save))
+                             (lazy-sourcemarker-with-project-db
                               (let* ((filename (buffer-file-name buf))
                                      (sm (or (gethash filename (symbol-value (intern-soft continue-db-symbol)) nil)
                                              (gethash (file-truename filename) (symbol-value (intern-soft continue-db-symbol)) nil)))
@@ -152,16 +103,16 @@
                                   (add-to-list 'results `(-1 . ,buf)))))))))
     (dolist (tuple sorted-buffers)
       (with-current-buffer (cdr tuple)
-        (mk-sourcemarker-save)))
-    (mk-sourcemarker-write-project-db)))
+        (lazy-sourcemarker-save)))
+    (lazy-sourcemarker-write-project-db)))
 
-(defun mk-sourcemarker-display-most-recent-buffer ()
-  (mk-proj-assert-proj)
+(defun lazy-sourcemarker-display-most-recent-buffer ()
+  (lazy-assert-proj)
   (let* ((results '())
          (buffer (progn
-                   (dolist (buf (append (mk-proj-buffers)))
+                   (dolist (buf (append (lazy-buffers)))
                      (when (buffer-file-name buf)
-                       (mk-sourcemarker-with-project-db
+                       (lazy-sourcemarker-with-project-db
                         (let* ((filename (buffer-file-name buf))
                                (sm (or (gethash filename (symbol-value (intern continue-db-symbol)))
                                        (gethash (file-truename filename) (symbol-value (intern continue-db-symbol)))))
@@ -170,7 +121,7 @@
                             (add-to-list 'results `(,timestamp . ,buf)))))))
                    (cdar (sort results (lambda (a b) (> (car a) (car b))))))))
     (let* ((display-buffer-reuse-frames nil)
-           (buffer (or buffer (car (mk-proj-file-buffers))))
+           (buffer (or buffer (car (lazy-file-buffers))))
            (window (get-buffer-window buffer 'visible))
            (popwin-close 'popwin:close-popup-window))
       (when buffer
@@ -184,5 +135,57 @@
     ))
 
 ;;(sort '((0 . "foo") (1 . "bar")) (lambda (a b) (> (car a) (car b))))
+
+(with-eval-after-load "lazy-sourcemarker"
+  '(progn
+     (add-to-list 'lazy-optional-vars '(sourcemarker-db-path . (stringp)))
+     (add-to-list 'lazy-optional-vars '(sourcemarker-db-symbol . (stringp)))
+
+     (add-to-list 'lazy-var-before-get-functions
+                  '(sourcemarker-db-path . (lambda (var val &optional proj-name config-alist)
+                                             (if lazy-sourcemarker-per-project-db
+                                                 (if val
+                                                     (expand-file-name val)
+                                                   (lazy-get-cache-file 'sourcemarker-db nil 'copy))
+                                               (or (and val (expand-file-name val))
+                                                   continue-db-path)))))
+     (add-to-list 'lazy-var-before-get-functions
+                  '(sourcemarker-db-symbol . (lambda (var val &optional proj-name config-alist)
+                                               (let ((proj-name (or proj-name
+                                                                    (and (boundp 'lazy-name)
+                                                                         lazy-name))))
+                                                 (cond (val val)
+                                                       ((and proj-name lazy-sourcemarker-per-project-db)
+                                                        (concat proj-name "-sourcemarker-db"))
+                                                       (t continue-db-symbol))))))
+
+     (remove-hook 'find-file-hook 'continue-restore)
+     (add-hook 'find-file-hook 'lazy-sourcemarker-restore)
+
+     (remove-hook 'after-save-hook 'continue-save)
+     (add-hook 'after-save-hook 'lazy-sourcemarker-save)
+     (add-hook 'kill-buffer-hook 'lazy-sourcemarker-save)
+     (run-with-idle-timer 120 t 'lazy-sourcemarker-write-project-db)
+
+     (add-hook 'lazy-before-files-load-hook (lambda ()
+                                              (remove-hook 'find-file-hook 'lazy-sourcemarker-restore)
+                                              (dolist (proj-name (append (list lazy-name) (lazy-get-config-val 'friends)))
+                                                (dolist (buf (append (lazy-file-buffers proj-name)))
+                                                  (when buf
+                                                    (with-current-buffer buf
+                                                      (lazy-sourcemarker-save)))))
+                                              (lazy-sourcemarker-load-project-db)
+                                              ))
+     (add-hook 'lazy-after-load-hook (lambda ()
+                                       (lazy-sourcemarker-restore-all)
+                                       (add-hook 'find-file-hook 'lazy-sourcemarker-restore)
+                                       (lazy-sourcemarker-display-most-recent-buffer)))
+
+     (add-hook 'lazy-before-files-unload-hook (lambda ()
+                                                (lazy-sourcemarker-save-all)
+                                                (remove-hook 'kill-buffer-hook 'lazy-sourcemarker-save)))
+     (add-hook 'lazy-after-unload-hook (lambda ()
+                                         (add-hook 'kill-buffer-hook 'lazy-sourcemarker-save)))
+     ))
 
 (provide 'lazy-sourcemarker)
