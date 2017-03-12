@@ -73,7 +73,7 @@
     (company-dabbrev-code 'candidates arg)))
 
 
-(defun company-project-history (command &optional arg &rest ignored)
+(defun lazy-company-project-history (command &optional arg &rest ignored)
   (interactive (list 'interactive))
   (cl-case command
     (interactive (company-begin-backend 'company-project))
