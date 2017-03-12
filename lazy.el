@@ -30,6 +30,7 @@
 (require 'imenu)
 
 (declare-function lazy-org-project-buffer-name "lazy-orgmode")
+(declare-function lazy-sourcemarker-restore "lazy-sourcemarker")
 
 (defvar lazy-version "2.0.0")
 
@@ -1334,7 +1335,8 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-history'
     (when (and (eq system-type 'windows-nt)
                (not (eq (default-value 'buffer-file-coding-system) buffer-file-coding-system)))
       (recode-region (point-min) (point-max) (default-value 'buffer-file-coding-system) buffer-file-coding-system)
-      (lazy-sourcemarker-restore)
+      (when (fboundp 'lazy-sourcemarker-restore)
+        (lazy-sourcemarker-restore))
       (set-buffer-modified-p nil))
     (set-auto-mode)))
 (ad-activate 'switch-to-buffer)
@@ -1345,7 +1347,8 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-history'
     (when (and (eq system-type 'windows-nt)
                (not (eq (default-value 'buffer-file-coding-system) buffer-file-coding-system)))
       (recode-region (point-min) (point-max) (default-value 'buffer-file-coding-system) buffer-file-coding-system)
-      (lazy-sourcemarker-restore)
+      (when (fboundp 'lazy-sourcemarker-restore)
+        (lazy-sourcemarker-restore))
       (set-buffer-modified-p nil))
     (set-auto-mode)))
 (ad-activate 'pop-to-buffer)
@@ -1357,7 +1360,8 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-history'
       (when (and (eq system-type 'windows-nt)
                  (not (eq (default-value 'buffer-file-coding-system) buffer-file-coding-system)))
         (recode-region (point-min) (point-max) (default-value 'buffer-file-coding-system) buffer-file-coding-system)
-        (lazy-sourcemarker-restore)
+        (when (fboundp 'lazy-sourcemarker-restore)
+          (lazy-sourcemarker-restore))
         (set-buffer-modified-p nil))
       (set-auto-mode))))
 (ad-activate 'display-buffer)
