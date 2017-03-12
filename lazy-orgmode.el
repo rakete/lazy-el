@@ -1,6 +1,6 @@
 ;;; lazy-orgmode.el ---  Org-Mode integration for lazy-el
 
-;; Copyright (C) 2011  Andreas Raster <lazor at affenbande dot org>
+;; Copyright (C) 2011-2017 Andreas Raster <lazor at affenbande dot org>
 ;;
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as

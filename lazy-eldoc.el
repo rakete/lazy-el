@@ -2,7 +2,7 @@
 
 (require 'which-func)
 
-(defun mk-eldoc-cleanup-thing (thing)
+(defun lazy-eldoc-cleanup-thing (thing)
   (when thing
     ;; nuke newlines
     (setq thing (replace-regexp-in-string "\n" " " thing))
@@ -13,7 +13,7 @@
     (setq thing (replace-regexp-in-string "[ \t]+$" "" thing)))
   thing)
 
-(defun mk-eldoc-thing-at-point-function-synopsis ()
+(defun lazy-eldoc-thing-at-point-function-synopsis ()
   (let ((a (point-at-bol))
         (b (point-at-eol)))
     (save-excursion
@@ -25,7 +25,7 @@
       (setq a (point)))
     (buffer-substring a b)))
 
-(defun mk-eldoc-thing-at-point-function-name ()
+(defun lazy-eldoc-thing-at-point-function-name ()
   (let ((a (point-at-bol))
         (b (point-at-eol)))
     (condition-case nil
@@ -62,7 +62,7 @@
           (buffer-substring a b))
       (error nil))))
 
-(defun mk-eldoc-function-meta (&optional symbol proj-name proj-alist)
+(defun lazy-eldoc-function-meta (&optional symbol proj-name proj-alist)
   (condition-case nil
       (unless (or (window-minibuffer-p)
                   (string-match "\*.*\*" (buffer-name (current-buffer))))
@@ -71,16 +71,16 @@
                                   (boundp 'company-candidates)
                                   company-candidates
                                   (car-safe company-candidates))
-                             (mk-eldoc-thing-at-point-function-name))))
+                             (lazy-eldoc-thing-at-point-function-name))))
         (setq proj-alist (or proj-alist
-                             (mk-proj-find-alist proj-name)
-                             (mk-proj-find-alist mk-proj-name)
-                             (mk-proj-guess-alist)))
+                             (lazy-find-alist proj-name)
+                             (lazy-find-alist lazy-name)
+                             (lazy-guess-alist)))
         (setq proj-name (cadr (assoc 'name proj-alist)))
         (unless (and proj-name proj-alist)
-          (mk-proj-assert-proj))
+          (lazy-assert-proj))
         (when symbol
-          (let* ((gtags-plist (car-safe (mk-proj-find-symbol proj-name proj-alist 'gtags symbol (concat "global -x -d -e \"^" symbol ".*\""))))
+          (let* ((gtags-plist (car-safe (lazy-find-symbol proj-name proj-alist 'gtags symbol (concat "global -x -d -e \"^" symbol ".*\""))))
                  (line-number (plist-get gtags-plist :line-number))
                  (file-path (plist-get gtags-plist :file-path))
                  (definition (plist-get gtags-plist :definition)))
@@ -92,15 +92,15 @@
                 (with-temp-buffer
                   (insert-file-contents file-path)
                   (forward-line (1- line-number))
-                  (mk-eldoc-cleanup-thing (mk-eldoc-thing-at-point-function-synopsis))))))))
+                  (lazy-eldoc-cleanup-thing (lazy-eldoc-thing-at-point-function-synopsis))))))))
     (error nil)))
 
-(defun mk-eldoc-function-doc ()
+(defun lazy-eldoc-function-doc ()
   "yoinks!")
 
-;; (defvar mk-proj-definitions-cache (make-hash-table :test 'equal))
+;; (defvar lazy-definitions-cache (make-hash-table :test 'equal))
 
-;; (defun mk-proj-update-obarray-definitions-cache (proj-name)
+;; (defun lazy-update-obarray-definitions-cache (proj-name)
 ;;   (do-all-symbols (sym)
 ;;     (when (or (fboundp sym)
 ;;               (boundp sym))
@@ -114,14 +114,14 @@
 ;;              (docstring (and (stringp doc)
 ;;                              (string-match ".*$" doc)
 ;;                              (match-string 0 doc)))
-;;              (cached-definition (when docstring (gethash completion mk-proj-definitions-cache))))
+;;              (cached-definition (when docstring (gethash completion lazy-definitions-cache))))
 ;;         (if (and docstring cached-definition)
 ;;             (plist-put cached-definition :docstring docstring)
 ;;           (puthash completion
 ;;                    (plist-put cached-definition :docstring docstring)
-;;                    mk-proj-definitions-cache))))))
+;;                    lazy-definitions-cache))))))
 
-;; (defun mk-proj-update-gtags-definitions-cache (proj-name)
+;; (defun lazy-update-gtags-definitions-cache (proj-name)
 ;;   (let* ((cmd (concat "global --match-part=first -xGq -d \".*\""))
 ;;          (lines (split-string (condition-case nil (shell-command-to-string cmd) (error nil)) "\n" t))
 ;;          (case-fold-search nil))
@@ -135,13 +135,13 @@
 ;;                                            "$")
 ;;                                    line)
 ;;                  (let* ((completion (match-string 1 line))
-;;                         (cached-definition (gethash completion mk-proj-definitions-cache)))
+;;                         (cached-definition (gethash completion lazy-definitions-cache)))
 ;;                    (plist-put cached-definition :line-number (match-string 2 line))
 ;;                    (plist-put cached-definition :file-path (match-string 3 line))
 ;;                    (plist-put cached-definition :definition (match-string 4 line))
 ;;                    (unless cached-definition
 ;;                      (puthash completion
 ;;                               cached-definition
-;;                               mk-proj-definitions-cache))))))))
+;;                               lazy-definitions-cache))))))))
 
 (provide 'lazy-eldoc)

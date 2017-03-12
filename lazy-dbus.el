@@ -1,6 +1,6 @@
-;;; mk-project-dbus.el --- DBUS communications module for mk-project
+;;; lazy-dbus.el --- DBUS communications module for lazy
 
-;; Copyright (C) 2010 Andreas Raster <lazor at affenbande dot org>
+;; Copyright (C) 2011-2017 Andreas Raster <lazor at affenbande dot org>
 ;;
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -17,35 +17,37 @@
 ;; Free Software Foundation, Inc., 59 Temple Place - Suite 330,
 ;; Boston, MA 02111-1307, USA.
 
+(require 'lazy)
+
 (require 'dbus)
 
-(defvar mk-dbus-node "MkProject")
-(defvar mk-dbus-path (concat "/" mk-dbus-node))
-(defvar mk-dbus-interface "org.gnu.Emacs.MkProject")
+(defvar lazy-dbus-node "LazyEl")
+(defvar lazy-dbus-path (concat "/" lazy-dbus-node))
+(defvar lazy-dbus-interface "org.gnu.Emacs.LazyEl")
 
-(defun mk-dbus-service-node-names (&optional service)
+(defun lazy-dbus-service-node-names (&optional service)
   ;; alle nodenames zusammen suchen um in zukunft keine
   ;; probleme zu kriegen mit zeug das emacs definiert
-  (concat "\n" "<node name='" mk-dbus-node "'></node>"))
+  (concat "\n" "<node name='" lazy-dbus-node "'></node>"))
 
-(defun mk-dbus-root-introspect ()
+(defun lazy-dbus-root-introspect ()
   (concat "<node name='/'>
   <interface name='org.freedesktop.DBus.Introspectable'>
   <method name='Introspect'>
   <arg name='xml_data' type='s' direction='out'/>
   </method>
   </interface>"
-  (mk-dbus-service-node-names)
+  (lazy-dbus-service-node-names)
   "</node>"))
 
-(defun mk-dbus-mkproject-introspect ()
-  (concat "<node name='" mk-dbus-path "'>
+(defun lazy-dbus-lazy-introspect ()
+  (concat "<node name='" lazy-dbus-path "'>
   <interface name='org.freedesktop.DBus.Introspectable'>
   <method name='Introspect'>
   <arg name='xml_data' type='s' direction='out'/>
   </method>
   </interface>
-  <interface name='" mk-dbus-interface "'>
+  <interface name='" lazy-dbus-interface "'>
   <method name='CurrentProject'>
   <arg name='' direction='out' type='s' />
   </method>
@@ -62,21 +64,21 @@
   </interface>
   </node>"))
 
-(defvar mk-dbus-root-introspect-object (dbus-register-method
+(defvar lazy-dbus-root-introspect-object (dbus-register-method
                                         :session
                                         dbus-service-emacs
                                         "/"
                                         dbus-interface-introspectable
                                         "Introspect"
-                                        'mk-dbus-root-introspect))
+                                        'lazy-dbus-root-introspect))
 
-(defvar mk-dbus-mkproject-introspect-object (dbus-register-method
+(defvar lazy-dbus-lazy-introspect-object (dbus-register-method
                                              :session
                                              dbus-service-emacs
-                                             mk-dbus-path
+                                             lazy-dbus-path
                                              dbus-interface-introspectable
                                              "Introspect"
-                                             'mk-dbus-mkproject-introspect))
+                                             'lazy-dbus-lazy-introspect))
 
 (defun encode-umlauts (string)
   (apply #'concat (mapcar (lambda (c)
@@ -111,28 +113,28 @@
           "&Auml;" "Ä"
           string))))))))
 
-(defun mk-dbus-current-project ()
-  (encode-umlauts (or mk-proj-name "")))
+(defun lazy-dbus-current-project ()
+  (encode-umlauts (or lazy-name "")))
 
-(defun mk-dbus-project-names ()
-  (mapcar #'encode-umlauts (mk-proj-names)))
+(defun lazy-dbus-project-names ()
+  (mapcar #'encode-umlauts (lazy-names)))
 
-(defun* mk-dbus-project-load (name)
+(defun* lazy-dbus-project-load (name)
   (condition-case nil
-      (mk-proj-load name)
-    (error (return-from "mk-dbus-project-load" (list :boolean nil))))
+      (lazy-load name)
+    (error (return-from "lazy-dbus-project-load" (list :boolean nil))))
   (list :boolean t))
 
-(defun mk-dbus-project-unload ()
-  (if mk-proj-name
+(defun lazy-dbus-project-unload ()
+  (if lazy-name
       (progn
-       (project-unload)
+       (lazy-unload)
        (list :boolean t))
     (list :boolean nil)))
 
-(eval-after-load
+(with-eval-after-load "lazy-dbus"
     '(progn
-       (dbus-register-method :session dbus-service-emacs mk-dbus-path mk-dbus-interface "CurrentProject" 'mk-dbus-current-project)
-       (dbus-register-method :session dbus-service-emacs mk-dbus-path mk-dbus-interface "ProjectNames" 'mk-dbus-project-names)
-       (dbus-register-method :session dbus-service-emacs mk-dbus-path mk-dbus-interface "ProjectLoad" 'mk-dbus-project-load)
-       (dbus-register-method :session dbus-service-emacs mk-dbus-path mk-dbus-interface "ProjectUnload" 'mk-dbus-project-unload)))
+       (dbus-register-method :session dbus-service-emacs lazy-dbus-path lazy-dbus-interface "CurrentProject" 'lazy-dbus-current-project)
+       (dbus-register-method :session dbus-service-emacs lazy-dbus-path lazy-dbus-interface "ProjectNames" 'lazy-dbus-project-names)
+       (dbus-register-method :session dbus-service-emacs lazy-dbus-path lazy-dbus-interface "ProjectLoad" 'lazy-dbus-project-load)
+       (dbus-register-method :session dbus-service-emacs lazy-dbus-path lazy-dbus-interface "ProjectUnload" 'lazy-dbus-project-unload)))
