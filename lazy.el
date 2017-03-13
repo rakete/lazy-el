@@ -34,7 +34,12 @@
 
 (defvar lazy-version "2.0.0")
 
-(defvar lazy-global-cache-root (expand-file-name "~/.lazy/")
+(defvar lazy-global-cache-root (let ((filename (expand-file-name "~/.lazy/")))
+                                 (unless (file-exists-p filename)
+                                   (let ((dir (file-name-directory filename)))
+                                     (unless (file-exists-p dir)
+                                       (make-directory dir))))
+                                 filename)
   "Root path under which to create files that contain project metadata like open
 files, open friends etc. These are automatically created for a project under a
 directory created under this path. Makes the open-files-cache, file-list-cache,
