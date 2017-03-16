@@ -1289,8 +1289,8 @@ This is taken almost directly from `org-babel-read'."
       (lazy-org-assert-org proj-name)
       (org-clock-out))))
 
-(with-eval-after-load "lazy-orgmode"
-  '(progn
+(with-eval-after-load 'lazy-orgmode
+  (progn
      (add-to-list 'lazy-optional-vars '(org-file . (stringp)))
      (add-to-list 'lazy-optional-vars '(org-headline . (stringp)))
 

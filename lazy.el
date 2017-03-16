@@ -3272,14 +3272,14 @@ and their parent directory used as basedir.")
                               already-defined-result))
           result)))))
 
-(with-eval-after-load "lazy"
-  '(progn
-     (run-with-idle-timer 60 t 'lazy-save-state)
-     (add-hook 'after-save-hook 'lazy-after-save-update)
-     (add-hook 'after-load-hook 'lazy-after-save-update)
-     (add-hook 'after-save-hook 'lazy-jump-cleanup-highlight)
-     (add-hook 'pre-command-hook 'lazy-pre-command-remove-jump-delete-buffer)
-     (load-file (concat (file-name-as-directory lazy-global-cache-root) "projects.el"))))
+(with-eval-after-load 'lazy
+  (progn
+    (run-with-idle-timer 60 t 'lazy-save-state)
+    (add-hook 'after-save-hook 'lazy-after-save-update)
+    (add-hook 'after-load-hook 'lazy-after-save-update)
+    (add-hook 'after-save-hook 'lazy-jump-cleanup-highlight)
+    (add-hook 'pre-command-hook 'lazy-pre-command-remove-jump-delete-buffer)
+    (load-file (concat (file-name-as-directory lazy-global-cache-root) "projects.el"))))
 
 (provide 'lazy)
 

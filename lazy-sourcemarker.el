@@ -133,8 +133,8 @@
 
 ;;(sort '((0 . "foo") (1 . "bar")) (lambda (a b) (> (car a) (car b))))
 
-(with-eval-after-load "lazy-sourcemarker"
-  '(progn
+(with-eval-after-load 'lazy-sourcemarker
+  (progn
      (add-to-list 'lazy-optional-vars '(sourcemarker-db-path . (stringp)))
      (add-to-list 'lazy-optional-vars '(sourcemarker-db-symbol . (stringp)))
 

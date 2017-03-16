@@ -132,8 +132,8 @@
        (list :boolean t))
     (list :boolean nil)))
 
-(with-eval-after-load "lazy-dbus"
-    '(progn
+(with-eval-after-load 'lazy-dbus
+  (progn
        (dbus-register-method :session dbus-service-emacs lazy-dbus-path lazy-dbus-interface "CurrentProject" 'lazy-dbus-current-project)
        (dbus-register-method :session dbus-service-emacs lazy-dbus-path lazy-dbus-interface "ProjectNames" 'lazy-dbus-project-names)
        (dbus-register-method :session dbus-service-emacs lazy-dbus-path lazy-dbus-interface "ProjectLoad" 'lazy-dbus-project-load)
