@@ -1545,19 +1545,28 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-history'
                       global-executable
                       rtags-executable)
                  (cl-return (puthash 'gtags+rtags
-                                  (append (list f) (gethash 'gtags+rtags sys-files))
-                                  sys-files)))
+                                     (append (list f) (gethash 'gtags+rtags sys-files))
+                                     sys-files)))
                 ((and (eq sys 'rtags)
                       rtags-executable)
                  (cl-return (puthash 'rtags
-                                  (append (list f) (gethash 'rtags sys-files))
-                                  sys-files)))
+                                     (append (list f) (gethash 'rtags sys-files))
+                                     sys-files)))
                 ((and (eq sys 'gtags)
                       gtags-executable
                       global-executable)
                  (cl-return (puthash 'gtags
-                                  (append (list f) (gethash 'gtags sys-files))
-                                  sys-files)))
+                                     (append (list f) (gethash 'gtags sys-files))
+                                     sys-files)))
+                ((and (or (eq sys 'gtags)
+                          (eq sys 'gtags+exuberant-ctags)
+                          (eq sys 'gtags+universal-ctags))
+                      gtags-executable
+                      global-executable
+                      ctags-universal-executable)
+                 (cl-return (puthash 'gtags+universal-ctags
+                                     (append (list f) (gethash 'gtags+universal-ctags sys-files))
+                                     sys-files)))
                 ((and (eq sys 'gtags+exuberant-ctags)
                       gtags-executable
                       global-executable
@@ -1566,8 +1575,16 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-history'
                  ;; it does not make sense, while exuberant can parse many languages, gtags alone
                  ;; can only parse a few
                  (cl-return (puthash 'gtags+exuberant-ctags
-                                  (append (list f) (gethash 'gtags+exuberant-ctags sys-files))
-                                  sys-files)))))))
+                                     (append (list f) (gethash 'gtags+exuberant-ctags sys-files))
+                                     sys-files)))
+                ((and (or (eq sys 'gtags)
+                          (eq sys 'gtags+pygments))
+                      gtags-executable
+                      global-executable
+                      pygments-executable)
+                 (cl-return (puthash 'gtags+pygments
+                                     (append (list f) (gethash 'gtags+pygments sys-files))
+                                     sys-files)))))))
     ;; - why did I do this, I don't know anymore
     ;; - it looks like it was supposed to make sure everything that scanned with either gtags
     ;; or gtags+exuberant-ctags is guaranteed to be scanned by both, but I can't remember
@@ -1588,35 +1605,34 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-history'
            (gtags-config (or (let ((c (lazy-get-config-val 'gtags-config proj-name nil proj-alist)))
                                (when (and c (> (length c) 0) (file-exists-p c))
                                  c))
-                             (let ((c (concat (lazy-get-config-val 'basedir proj-name nil proj-alist) "/.globalrc")))
+                             (let ((c (expand-file-name "~/.globalrc") ))
                                (when (file-exists-p c)
                                  c))
-                             (when (and lazy-c++-gtags-config
-                                        (cl-find 'cpp languages)
-                                        (file-exists-p (expand-file-name lazy-c++-gtags-config)))
-                               (expand-file-name lazy-c++-gtags-config))
+                             (let ((c (expand-file-name "gtags.conf" (lazy-get-config-val 'basedir proj-name nil proj-alist))))
+                               (when (file-exists-p c)
+                                 c))
                              (when (and lazy-default-gtags-config
                                         (file-exists-p (expand-file-name lazy-default-gtags-config)))
                                (expand-file-name lazy-default-gtags-config))
-                             (let ((c (expand-file-name "~/.globalrc")))
-                               (when (file-exists-p c)
-                                 c))
                              nil))
            (gtags-arguments (or (lazy-get-config-val 'gtags-arguments proj-name nil proj-alist)
                                 ""))
            (gtags-commands (make-hash-table))
-           (cmd-seperator (if (eq system-type 'windows-nt) " & " " ; ")))
+           (cmd-seperator (if (eq system-type 'windows-nt) " & " " ; "))
+           (debug t))
       ;; - hack, gnu global under windows has problems with directories that have a trailing slash
       ;; so this just removes the last slash from the path
       (when (eq system-type 'windows-nt)
         (string-match "\\(.*\\)/" gtags-dbpath)
         (setq gtags-dbpath (match-string 1 gtags-dbpath)))
+      ;; - the following when section put gtags commands to execute into a hashmap, one for each type
+      ;; (gtags, exuberant-ctags, etc ) of system
       (when (gethash 'gtags sys-files)
         (puthash 'gtags
                  (concat "cd " gtags-root cmd-seperator
                          "env GTAGSROOT=" gtags-root " "
                          (when gtags-config (concat "GTAGSCONF=" gtags-config " "))
-                         "gtags " gtags-dbpath " -i -v -f - " gtags-arguments cmd-seperator)
+                         "gtags " gtags-dbpath (when debug " -v") " -i -f - " gtags-arguments cmd-seperator)
                  gtags-commands))
       (when (gethash 'gtags+exuberant-ctags sys-files)
         (puthash 'gtags+exuberant-ctags
@@ -1624,16 +1640,38 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-history'
                          "env GTAGSLABEL=exuberant-ctags "
                          (when gtags-config (concat "GTAGSCONF=" gtags-config " "))
                          "GTAGSROOT=" gtags-root " "
-                         "gtags " gtags-dbpath " -i -v -f - " gtags-arguments cmd-seperator)
+                         "gtags " gtags-dbpath (when debug " -v") " -i -f - " gtags-arguments cmd-seperator)
                  gtags-commands))
-      (let* ((ordering (list 'gtags+exuberant-ctags 'gtags))
+      (when (gethash 'gtags+universal-ctags sys-files)
+        (puthash 'gtags+universal-ctags
+                 (concat "cd " gtags-root cmd-seperator
+                         "env GTAGSLABEL=universal-ctags "
+                         (when gtags-config (concat "GTAGSCONF=" gtags-config " "))
+                         "GTAGSROOT=" gtags-root " "
+                         "gtags " gtags-dbpath (when debug " -v") " -i -f - " gtags-arguments cmd-seperator)
+                 gtags-commands))
+      (when (gethash 'gtags+pygments sys-files)
+        (puthash 'gtags+pygments
+                 (concat "cd " gtags-root cmd-seperator
+                         "env GTAGSLABEL=pygments-parser "
+                         (when gtags-config (concat "GTAGSCONF=" gtags-config " "))
+                         "GTAGSROOT=" gtags-root " "
+                         "gtags " gtags-dbpath (when debug " -v") " -i -f - " gtags-arguments cmd-seperator)
+                 gtags-commands))
+      ;; - I define an ordering so I can control which system is allowed to overwrite what other systems, the
+      ;; one that comes first in the order can be overwritten by every following system so that means lower
+      ;; position in list is lower priority
+      ;; - a system generates entries in the tag database, but two system may actually create conflicting
+      ;; entries, although this should only happen rarely, I still want higher quality systems to overwrite lower
+      ;; quality ones
+      (let* ((ordering (list 'gtags+pygments 'gtags+exuberant-ctags 'gtags+universal-ctags 'gtags))
              (commands (cl-loop for sys in ordering
                                 if (gethash sys gtags-commands)
                                 collect (gethash sys gtags-commands)))
              (inputs (cl-loop for sys in ordering
                               if (gethash sys gtags-commands)
                               collect (concat (mapconcat #'identity (gethash sys sys-files) "\n") "\n"))))
-        (lazy-process-group "gtags" commands inputs 'lazy-update-completions-cache (list proj-name) nil)
+        (lazy-process-group "gtags" commands inputs 'lazy-update-completions-cache (list proj-name) debug)
         ))
     ;; - if I'd ever implement rtags, or any other system really, then this would become another section
     (when (gethash 'rtags sys-files)
@@ -1659,6 +1697,7 @@ recieves when it acts as process sentinel."
              (shell-file-name (if (eq system-type 'windows-nt) (default-value 'shell-file-name) "/bin/sh"))
              (process (start-process-shell-command proc-name (when debug proc-name) (nth n commands)))
              (input (nth n inputs)))
+        (when debug (message "%s" (nth n commands)))
         (set-process-sentinel process (apply-partially 'lazy-process-group name commands inputs terminator terminator-args debug (1+ n)))
         (when input
           (process-send-string process input))
@@ -2194,8 +2233,8 @@ recieves when it acts as process sentinel."
   (tabulated-list-init-header))
 
 (defun lazy-update-gtags-completions-cache (proj-name)
-  (let* ((cmd (concat "global --match-part=first -Gq -c \"\""))
-         (completions (split-string (condition-case nil (shell-command-to-string cmd) (error nil)) "\n" t))
+  (let* ((cmd "global --match-part=first -Gq -dc \"\"; global --match-part=first -Gq -sc \"\"")
+         (completions (split-string (condition-case nil (shell-command-to-string cmd) (error "")) "\n" t))
          (completions-cache (gethash proj-name lazy-completions-cache)))
     (when completions
       (cl-loop for completion in completions
