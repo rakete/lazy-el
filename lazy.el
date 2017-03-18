@@ -65,11 +65,11 @@ used by `lazy-find-file' to quickly locate project files."
     (concat "*" (or top-level-parent proj-name) " file-index*")))
 
 (defconst lazy-vcs-path '((git . ".git")
-                             (cvs . ".CVS")
-                             (svn . ".svn")
-                             (bzr . ".bzr")
-                             (hg  . ".hg")
-                             (darcs . "_darcs"))
+                          (cvs . ".CVS")
+                          (svn . ".svn")
+                          (bzr . ".bzr")
+                          (hg  . ".hg")
+                          (darcs . "_darcs"))
   "When `lazy-vcs' is one of the VCS types listed here, ignore
 the associated paths when greping or indexing the project.")
 
@@ -84,20 +84,20 @@ basedir: root directory of the project
 See also `lazy-optional-vars' `lazy-var-before-get-functions'.")
 
 (defvar lazy-optional-vars '((parent . (stringp)) ;; parent needs to come first!
-                                (languages . (listp))
-                                (src-patterns . (listp))
-                                (ignore-patterns . (listp))
-                                (vcs . (symbolp))
-                                (compile-cmd . ((lambda (v) (or (functionp v) (commandp v) (stringp v) (listp v)))))
-                                (startup-hook . ((lambda (v) (or (functionp v) (commandp v) (stringp v) (listp v)))))
-                                (shutdown-hook . ((lambda (v) (or (functionp v) (commandp v) (stringp v) (listp v)))))
-                                (file-list-cache . (stringp))
-                                (open-files-cache . (stringp))
-                                (patterns-are-regex . (symbolp))
-                                (friends . (listp))
-                                (open-friends-cache . (stringp))
-                                (gtags-config . (stringp file-exists-p))
-                                (gtags-arguments . (stringp)))
+                             (languages . (listp))
+                             (src-patterns . (listp))
+                             (ignore-patterns . (listp))
+                             (vcs . (symbolp))
+                             (compile-cmd . ((lambda (v) (or (functionp v) (commandp v) (stringp v) (listp v)))))
+                             (startup-hook . ((lambda (v) (or (functionp v) (commandp v) (stringp v) (listp v)))))
+                             (shutdown-hook . ((lambda (v) (or (functionp v) (commandp v) (stringp v) (listp v)))))
+                             (file-list-cache . (stringp))
+                             (open-files-cache . (stringp))
+                             (patterns-are-regex . (symbolp))
+                             (friends . (listp))
+                             (open-friends-cache . (stringp))
+                             (gtags-config . (stringp file-exists-p))
+                             (gtags-arguments . (stringp)))
   "Project config vars that are optional. Each entry is a (symbol . (functions)) tuple where the
 functions are used by `lazy-check-optional-vars' to test if a value given to symbol is valid.
 
@@ -152,19 +152,19 @@ See also `lazy-required-vars' `lazy-var-before-get-functions'")
   (or val (lazy-src-pattern-languages (lazy-get-config-val 'src-patterns proj-name))))
 
 (defvar lazy-var-before-get-functions '((basedir . lazy-basedir-expand)
-                                           (file-list-cache . lazy-var-get-file-list-cache)
-                                           (open-files-cache . lazy-var-get-open-file-cache)
-                                           (open-friends-cache . lazy-var-get-open-file-cache)
-                                           (languages . lazy-var-guess-languages)
-                                           (patterns-are-regex . (lambda (var val &optional proj-name config-alist)
-                                                                   (if (and config-alist
-                                                                            (not (assoc 'patterns-are-regex config-alist)))
-                                                                       t
-                                                                     val)))
-                                           (friends . (lambda (var val &optional proj-name config-alist)
-                                                        (loop for friend in val
-                                                              if (gethash friend lazy-list)
-                                                              collect friend))))
+                                        (file-list-cache . lazy-var-get-file-list-cache)
+                                        (open-files-cache . lazy-var-get-open-file-cache)
+                                        (open-friends-cache . lazy-var-get-open-file-cache)
+                                        (languages . lazy-var-guess-languages)
+                                        (patterns-are-regex . (lambda (var val &optional proj-name config-alist)
+                                                                (if (and config-alist
+                                                                         (not (assoc 'patterns-are-regex config-alist)))
+                                                                    t
+                                                                  val)))
+                                        (friends . (lambda (var val &optional proj-name config-alist)
+                                                     (loop for friend in val
+                                                           if (gethash friend lazy-list)
+                                                           collect friend))))
   "Config vars from `lazy-required-vars' and `lazy-optional-vars' (except 'name')
 can be associated with a function in this association list, which will be
 applied to the value of the var right after it is taken from the config-alist.
@@ -176,34 +176,34 @@ applied to the var symbol and var value pair and its result used as new var valu
 See also `lazy-get-config-val'.")
 
 (defvar lazy-var-ask-functions '((name . (lambda ()
-                                              (read-string "Name: " super)))
-                                    (basedir . (lambda ()
-                                                 (expand-file-name (concat "~/" (ido-completing-read "Basedir: " (ido-file-name-all-completions "~"))))))
-                                    (src-patterns . (lambda ()
+                                           (read-string "Name: " super)))
+                                 (basedir . (lambda ()
+                                              (expand-file-name (concat "~/" (ido-completing-read "Basedir: " (ido-file-name-all-completions "~"))))))
+                                 (src-patterns . (lambda ()
+                                                   (let ((xs '()))
+                                                     (loop for p = (read-string "Source pattern regex: " super) then (read-string (concat "Source pattern regex " (prin1-to-string xs) ": "))
+                                                           until (string-equal p "")
+                                                           if (condition-case nil (listp (read p)) (error nil))
+                                                           append (read p) into xs
+                                                           else
+                                                           collect p into xs
+                                                           finally return xs))))
+                                 (ignore-patterns . (lambda ()
                                                       (let ((xs '()))
-                                                        (loop for p = (read-string "Source pattern regex: " super) then (read-string (concat "Source pattern regex " (prin1-to-string xs) ": "))
+                                                        (loop for p = (read-string "Ignore pattern regex: " super) then (read-string (concat "Ignore pattern regex " (prin1-to-string xs) ": "))
                                                               until (string-equal p "")
                                                               if (condition-case nil (listp (read p)) (error nil))
                                                               append (read p) into xs
                                                               else
                                                               collect p into xs
                                                               finally return xs))))
-                                    (ignore-patterns . (lambda ()
-                                                         (let ((xs '()))
-                                                           (loop for p = (read-string "Ignore pattern regex: " super) then (read-string (concat "Ignore pattern regex " (prin1-to-string xs) ": "))
-                                                                 until (string-equal p "")
-                                                                 if (condition-case nil (listp (read p)) (error nil))
-                                                                 append (read p) into xs
-                                                                 else
-                                                                 collect p into xs
-                                                                 finally return xs))))
-                                    (vcs . (lambda ()
-                                             (loop for v = (read-string "vcs: " super) then (read-string "vcs: " super)
-                                                   until (cl-some (lambda (x) (eq (car x) (read v))) lazy-vcs-path)
-                                                   finally return (read v))))
-                                    (compile-cmd . (lambda ()
-                                                     (read-string "Compile command: " super)))
-                                    (patterns-are-regex . (lambda () t)))
+                                 (vcs . (lambda ()
+                                          (loop for v = (read-string "vcs: " super) then (read-string "vcs: " super)
+                                                until (cl-some (lambda (x) (eq (car x) (read v))) lazy-vcs-path)
+                                                finally return (read v))))
+                                 (compile-cmd . (lambda ()
+                                                  (read-string "Compile command: " super)))
+                                 (patterns-are-regex . (lambda () t)))
   "Functions that are used to ask the user about what a vars value should be.")
 
 (defvar lazy-before-load-hook '()
@@ -607,9 +607,9 @@ See also `lazy-var-before-get-functions'."
                     (funcall fn key (cadr (assoc key proj-alist)) proj-name proj-alist))
                   (and (assoc key proj-alist)
                        (cadr (assoc key proj-alist)))
-                   (let ((parent (cadr (assoc 'parent proj-alist))))
-                     (when (and inherit parent)
-                       (lazy-get-config-val key parent t))))))
+                  (let ((parent (cadr (assoc 'parent proj-alist))))
+                    (when (and inherit parent)
+                      (lazy-get-config-val key parent t))))))
     (if fn (funcall fn key val proj-name proj-alist) val)))
 
 (defalias 'lazy-config-val 'lazy-get-config-val
@@ -2422,7 +2422,7 @@ recieves when it acts as process sentinel."
                            ;; - had a problem under windows where gfind could not read some file and then always exit with error, this hack
                            ;; works around that and makes the command always exit with 0, may be neccessary on linux at some point too
                            (when (eq system-type 'windows-nt)
-                               " 2> nul & exit /b 0")))
+                             " 2> nul & exit /b 0")))
          (proc-name (concat "index-process-" proj-name)))
     (when (lazy-get-config-val 'file-list-cache proj-name t proj-alist)
       (lazy-fib-clear proj-name)
@@ -2530,11 +2530,11 @@ Returned file paths are relative to the project's basedir."
     (setq proj-name lazy-name))
   (let* ((basedir (file-truename (lazy-get-config-val 'basedir proj-name t proj-alist)))
          (friendly-files (cl-mapcan (lambda (friend)
-                                   (let ((friend-file (lazy-with-directory basedir (expand-file-name friend))))
-                                     (if (file-exists-p friend-file)
-                                         (list friend-file)
-                                       (lazy-files friend nil truenames))))
-                                 (lazy-get-config-val 'friends proj-name t proj-alist))))
+                                      (let ((friend-file (lazy-with-directory basedir (expand-file-name friend))))
+                                        (if (file-exists-p friend-file)
+                                            (list friend-file)
+                                          (lazy-files friend nil truenames))))
+                                    (lazy-get-config-val 'friends proj-name t proj-alist))))
     friendly-files))
 
 (defun lazy-dired ()
@@ -2552,7 +2552,7 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
   (if (lazy-has-univ-arg)
       (lazy-multi-occur-with-friends regex)
     (multi-occur (lazy-filter (lambda (b) (if (buffer-file-name b) b nil))
-                                 (lazy-buffers))
+                              (lazy-buffers))
                  regex)))
 
 ;; ---------------------------------------------------------------------
@@ -2570,8 +2570,8 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
     (maphash (lambda (k c)
                (unless (string-equal k proj-name)
                  (when (cl-some (lambda (f)
-                               (string-equal f proj-name))
-                             (lazy-config-val 'friends c))
+                                  (string-equal f proj-name))
+                                (lazy-config-val 'friends c))
                    (setq r (append r `(,k)))))) lazy-list)
     (cl-remove-duplicates (append r (lazy-config-val 'friends proj-name t)) :test #'string-equal)))
 
@@ -2588,7 +2588,7 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
         (case-fold-search nil))
     (dolist (friend (lazy-get-config-val 'friends proj-name t proj-alist) resulting-matches)
       (if (file-exists-p (lazy-with-directory (lazy-get-config-val 'basedir proj-name t proj-alist)
-                                                 (expand-file-name friend)))
+                                              (expand-file-name friend)))
           (if regex
               (when (string-match regex friend) (add-to-list 'resulting-matches (expand-file-name friend)))
             (add-to-list 'resulting-matches (expand-file-name friend)))
@@ -2614,8 +2614,8 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
                        (let* ((friend-config (lazy-find-alist f t))
                               (non-slash-basedir (expand-file-name (car (cdr (assoc 'basedir friend-config)))))
                               (slash-basedir (if (string-equal (substring non-slash-basedir -1) "/")
-                                                  non-slash-basedir
-                                                (concat non-slash-basedir "/")))
+                                                 non-slash-basedir
+                                               (concat non-slash-basedir "/")))
                               (case-fold-search nil))
                          (when (or (string-match (concat "^" (regexp-quote slash-basedir)) file-name)
                                    (string-match (concat "^" (regexp-quote (file-truename slash-basedir))) file-name))
@@ -2647,7 +2647,7 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
     (dolist (b (buffer-list))
       (when (lazy-friendly-buffer-p b proj-name)
         (push b buffers)))
-      buffers))
+    buffers))
 
 (defun lazy-friendly-file-buffers (&optional proj-name)
   (unless proj-name
@@ -2662,9 +2662,9 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
   (let ((case-fold-search nil))
     (append (cl-remove-if (lambda (buf) (not (string-match "\*[^\*]\*" (buffer-name buf)))) (lazy-friendly-buffers proj-name))
             (cl-remove-if (lambda (buf) (or (and (symbolp 'lazy-org-project-buffer-name)
-                                              (not (string-equal (lazy-org-project-buffer-name proj-name) (buffer-name buf))))
-                                         (compilation-buffer-p buf)))
-                       (buffer-list)))))
+                                                 (not (string-equal (lazy-org-project-buffer-name proj-name) (buffer-name buf))))
+                                            (compilation-buffer-p buf)))
+                          (buffer-list)))))
 
 (defun lazy-friendly-dired-buffers (&optional proj-name)
   (unless proj-name
@@ -2730,7 +2730,7 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
   (interactive "sRegex: ")
   (lazy-assert-proj t)
   (multi-occur (lazy-filter (lambda (b) (if (buffer-file-name b) b nil))
-                               (append (lazy-buffers) (lazy-friendly-buffers)))
+                            (append (lazy-buffers) (lazy-friendly-buffers)))
                regex))
 
 (defun lazy-friend-basedirs ()
@@ -2758,8 +2758,8 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
            (buildsystem-files (cl-loop for bs in lazy-buildsystems
                                        append (cadr (assoc 'files (cadr bs)))))
            (buildsystem-file-found (cl-some (lambda (buildsystem-file)
-                                           (when (string-match (concat (regexp-quote buildsystem-file) "$") file-name)
-                                             buildsystem-file)) buildsystem-files)))
+                                              (when (string-match (concat (regexp-quote buildsystem-file) "$") file-name)
+                                                buildsystem-file)) buildsystem-files)))
       (when (and (assoc extension lazy-src-pattern-table)
                  (or (string-match (concat "^" (regexp-quote (file-name-as-directory (lazy-get-config-val 'basedir lazy-name t)))) file-name)
                      (string-match (concat "^" (regexp-quote (file-name-as-directory (lazy-get-config-val 'basedir lazy-name t)))) (file-truename file-name)))
@@ -2812,11 +2812,11 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
               (when (buffer-file-name buffer)
                 (lazy-after-save-add-pattern buffer))
               (lazy-index proj-name nil t nil t
-                             (lambda (&optional proj-name proj-alist files debug)
-                               (lazy-update-tags proj-name proj-alist files debug)
-                               (setq lazy-after-save-update-in-progress nil
-                                     lazy-after-save-current-buffer nil
-                                     lazy-after-save-current-project nil))))
+                          (lambda (&optional proj-name proj-alist files debug)
+                            (lazy-update-tags proj-name proj-alist files debug)
+                            (setq lazy-after-save-update-in-progress nil
+                                  lazy-after-save-current-buffer nil
+                                  lazy-after-save-current-project nil))))
           (setq lazy-after-save-update-in-progress nil
                 lazy-after-save-current-buffer nil
                 lazy-after-save-current-project nil)))
@@ -2951,34 +2951,34 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
          (buffer-projects (lazy-find-projects-owning-buffer test-buffer))
          result)
     (setq result (cl-remove-if-not 'identity
-                                (mapcar (lambda (buf)
-                                          (let (buf-projects)
-                                            (when (and (buffer-file-name buf)
-                                                       (lazy-path-complement (lazy-dirname (buffer-file-name buf)) test-path)
-                                                       ;; same projects for all buffers considered, all guessed buffers must belong to the
-                                                       ;; same projects as test-buffer, even if test-buffer belongs to multiple projects
-                                                       (or (lazy-path-equal test-path (lazy-dirname (buffer-file-name buf)) t)
-                                                           (cl-loop for ig in ignore-paths
-                                                                    if (lazy-path-equal ig (lazy-dirname (buffer-file-name buf)) t)
-                                                                    return nil
-                                                                    finally return t))
-                                                       (equal (setq buf-projects (lazy-find-projects-owning-buffer buf)) buffer-projects))
-                                              ;; special treatment for buffers when a project is loaded, exclude project buffers of loaded
-                                              ;; project if test-buffer does not belong to loaded project, exclude buffers that do not
-                                              ;; belong to loaded project when test-buffer belongs to the loaded project
-                                              (unless (or (and (boundp 'lazy-name)
-                                                               lazy-name
-                                                               (not (cl-some (lambda (p) (string-equal p lazy-name)) buffer-projects))
-                                                               (cl-some (lambda (p) (string-equal p lazy-name)) buf-projects))
-                                                          (and (boundp 'lazy-name)
-                                                               lazy-name
-                                                               (not (eq buf test-buffer))
-                                                               (not (cl-some (lambda (p) (string-equal p lazy-name)) buffer-projects))
-                                                               (lazy-friendly-buffer-p buf lazy-name)))
-                                                buf))))
-                                        (if mode
-                                            (cl-remove-if-not (lambda (b) (eq (with-current-buffer b major-mode) mode)) (buffer-list))
-                                          (buffer-list)))))
+                                   (mapcar (lambda (buf)
+                                             (let (buf-projects)
+                                               (when (and (buffer-file-name buf)
+                                                          (lazy-path-complement (lazy-dirname (buffer-file-name buf)) test-path)
+                                                          ;; same projects for all buffers considered, all guessed buffers must belong to the
+                                                          ;; same projects as test-buffer, even if test-buffer belongs to multiple projects
+                                                          (or (lazy-path-equal test-path (lazy-dirname (buffer-file-name buf)) t)
+                                                              (cl-loop for ig in ignore-paths
+                                                                       if (lazy-path-equal ig (lazy-dirname (buffer-file-name buf)) t)
+                                                                       return nil
+                                                                       finally return t))
+                                                          (equal (setq buf-projects (lazy-find-projects-owning-buffer buf)) buffer-projects))
+                                                 ;; special treatment for buffers when a project is loaded, exclude project buffers of loaded
+                                                 ;; project if test-buffer does not belong to loaded project, exclude buffers that do not
+                                                 ;; belong to loaded project when test-buffer belongs to the loaded project
+                                                 (unless (or (and (boundp 'lazy-name)
+                                                                  lazy-name
+                                                                  (not (cl-some (lambda (p) (string-equal p lazy-name)) buffer-projects))
+                                                                  (cl-some (lambda (p) (string-equal p lazy-name)) buf-projects))
+                                                             (and (boundp 'lazy-name)
+                                                                  lazy-name
+                                                                  (not (eq buf test-buffer))
+                                                                  (not (cl-some (lambda (p) (string-equal p lazy-name)) buffer-projects))
+                                                                  (lazy-friendly-buffer-p buf lazy-name)))
+                                                   buf))))
+                                           (if mode
+                                               (cl-remove-if-not (lambda (b) (eq (with-current-buffer b major-mode) mode)) (buffer-list))
+                                             (buffer-list)))))
     result))
 
 (defun lazy-src-pattern-languages (src-patterns)
@@ -3010,172 +3010,172 @@ help guessing a projects basedir. Matching directory names will be ignored
 and their parent directory used as basedir.")
 
 (defvar lazy-guess-functions '((buffer . ((()
-                                              `(1 . ,(current-buffer)))))
-                                  (mode . (((buffer)
-                                            `(1 . ,(with-current-buffer buffer major-mode)))))
-                                  (basedir . (;; default-directory
-                                              (()
-                                               `(1 . ,(expand-file-name default-directory)))
-                                              ;; buffer-file-name
-                                              ((buffer)
-                                               (when (buffer-file-name buffer)
-                                                 `(10 . ,(lazy-dirname (expand-file-name (buffer-file-name buffer))))))
-                                              ;; longest-common-path of buffers with same mode
-                                              ((mode buffer)
-                                               (let ((found-path (lazy-find-common-path-of-buffers (lazy-guess-buffers buffer lazy-incubator-paths mode))))
-                                                 (when (and found-path
-                                                            (not (string-equal (expand-file-name "~") found-path)))
-                                                   `(50 . ,found-path))))
-                                              ;; find directory that is not a common project subdir
-                                              ((buffer)
-                                               (let* ((path (lazy-find-common-path-of-buffers (lazy-guess-buffers buffer lazy-incubator-paths)))
-                                                      (splitted-path (when path (split-string path "/"))))
-                                                 (while (and path
-                                                             splitted-path
-                                                             (not (cl-some (lambda (incubator-path) (lazy-path-equal incubator-path path))
+                                           `(1 . ,(current-buffer)))))
+                               (mode . (((buffer)
+                                         `(1 . ,(with-current-buffer buffer major-mode)))))
+                               (basedir . (;; default-directory
+                                           (()
+                                            `(1 . ,(expand-file-name default-directory)))
+                                           ;; buffer-file-name
+                                           ((buffer)
+                                            (when (buffer-file-name buffer)
+                                              `(10 . ,(lazy-dirname (expand-file-name (buffer-file-name buffer))))))
+                                           ;; longest-common-path of buffers with same mode
+                                           ((mode buffer)
+                                            (let ((found-path (lazy-find-common-path-of-buffers (lazy-guess-buffers buffer lazy-incubator-paths mode))))
+                                              (when (and found-path
+                                                         (not (string-equal (expand-file-name "~") found-path)))
+                                                `(50 . ,found-path))))
+                                           ;; find directory that is not a common project subdir
+                                           ((buffer)
+                                            (let* ((path (lazy-find-common-path-of-buffers (lazy-guess-buffers buffer lazy-incubator-paths)))
+                                                   (splitted-path (when path (split-string path "/"))))
+                                              (while (and path
+                                                          splitted-path
+                                                          (not (cl-some (lambda (incubator-path) (lazy-path-equal incubator-path path))
                                                                         lazy-incubator-paths))
-                                                             (some (lambda (dir) (string-equal dir (car (last splitted-path))))
-                                                                   lazy-common-project-subdir-names))
-                                                   (setq splitted-path (butlast splitted-path)
-                                                         path (cl-reduce (lambda (a b) (concat a "/" b)) splitted-path)))
-                                                 (when path
-                                                   `(100 . ,path))))
-                                              ;; find basedir by searching for buildsystem patterns
-                                              ((buffer)
-                                               (let ((path (lazy-find-common-path-of-buffers (lazy-guess-buffers buffer lazy-incubator-paths))))
-                                                 (when path
-                                                   (let ((found-paths (sort (loop for re in (lazy-buildsystem-patterns)
-                                                                                  collect (lazy-search-path re path lazy-incubator-paths lazy-common-project-subdir-names))
-                                                                            (lambda (a b) (> (length a) (length b))))))
-                                                     (when (car found-paths)
-                                                       `(200 . ,(car found-paths)))))))
-                                              ;; find basedir by searching for vcs pattern
-                                              ((buffer)
-                                               (let* ((filename (buffer-file-name buffer))
-                                                      (found-paths (when filename
-                                                                     (sort (loop for re in (mapcar 'regexp-quote (mapcar 'cdr lazy-vcs-path))
-                                                                                 collect (lazy-search-path re (file-name-directory (expand-file-name filename)) lazy-incubator-paths lazy-common-project-subdir-names))
-                                                                           (lambda (a b) (> (length a) (length b)))))))
-                                                 (if (car found-paths)
-                                                     `(500 . ,(car found-paths))
-                                                   (let ((path (lazy-find-common-path-of-buffers (lazy-guess-buffers buffer lazy-incubator-paths))))
-                                                     (when path
-                                                       (let ((found-paths (sort (loop for re in (mapcar 'regexp-quote (mapcar 'cdr lazy-vcs-path))
-                                                                                      collect (lazy-search-path re path lazy-incubator-paths lazy-common-project-subdir-names))
-                                                                                (lambda (a b) (> (length a) (length b))))))
-                                                         (when (car found-paths)
-                                                           `(300 . ,(car found-paths)))))))))
-                                              ;; find basedir by trying to match buffers directory to project basedirs
-                                              ((buffer)
-                                               (let ((basedirs '()))
-                                                 (dolist (proj-name (lazy-find-projects-owning-buffer buffer))
-                                                   (let ((basedir (file-name-as-directory (lazy-get-config-val 'basedir proj-name t))))
-                                                     (unless (cl-some (apply-partially 'string-equal basedir) basedirs)
-                                                       (add-to-list 'basedirs basedir))))
-                                                 (let ((basedirs-without-incubators (cl-remove-if (lambda (dir)
+                                                          (some (lambda (dir) (string-equal dir (car (last splitted-path))))
+                                                                lazy-common-project-subdir-names))
+                                                (setq splitted-path (butlast splitted-path)
+                                                      path (cl-reduce (lambda (a b) (concat a "/" b)) splitted-path)))
+                                              (when path
+                                                `(100 . ,path))))
+                                           ;; find basedir by searching for buildsystem patterns
+                                           ((buffer)
+                                            (let ((path (lazy-find-common-path-of-buffers (lazy-guess-buffers buffer lazy-incubator-paths))))
+                                              (when path
+                                                (let ((found-paths (sort (loop for re in (lazy-buildsystem-patterns)
+                                                                               collect (lazy-search-path re path lazy-incubator-paths lazy-common-project-subdir-names))
+                                                                         (lambda (a b) (> (length a) (length b))))))
+                                                  (when (car found-paths)
+                                                    `(200 . ,(car found-paths)))))))
+                                           ;; find basedir by searching for vcs pattern
+                                           ((buffer)
+                                            (let* ((filename (buffer-file-name buffer))
+                                                   (found-paths (when filename
+                                                                  (sort (loop for re in (mapcar 'regexp-quote (mapcar 'cdr lazy-vcs-path))
+                                                                              collect (lazy-search-path re (file-name-directory (expand-file-name filename)) lazy-incubator-paths lazy-common-project-subdir-names))
+                                                                        (lambda (a b) (> (length a) (length b)))))))
+                                              (if (car found-paths)
+                                                  `(500 . ,(car found-paths))
+                                                (let ((path (lazy-find-common-path-of-buffers (lazy-guess-buffers buffer lazy-incubator-paths))))
+                                                  (when path
+                                                    (let ((found-paths (sort (loop for re in (mapcar 'regexp-quote (mapcar 'cdr lazy-vcs-path))
+                                                                                   collect (lazy-search-path re path lazy-incubator-paths lazy-common-project-subdir-names))
+                                                                             (lambda (a b) (> (length a) (length b))))))
+                                                      (when (car found-paths)
+                                                        `(300 . ,(car found-paths)))))))))
+                                           ;; find basedir by trying to match buffers directory to project basedirs
+                                           ((buffer)
+                                            (let ((basedirs '()))
+                                              (dolist (proj-name (lazy-find-projects-owning-buffer buffer))
+                                                (let ((basedir (file-name-as-directory (lazy-get-config-val 'basedir proj-name t))))
+                                                  (unless (cl-some (apply-partially 'string-equal basedir) basedirs)
+                                                    (add-to-list 'basedirs basedir))))
+                                              (let ((basedirs-without-incubators (cl-remove-if (lambda (dir)
                                                                                                  (cl-some (lambda (incubator)
-                                                                                                         (string-equal (file-name-as-directory dir)
-                                                                                                                       (file-name-as-directory incubator)))
-                                                                                                       lazy-incubator-paths))
+                                                                                                            (string-equal (file-name-as-directory dir)
+                                                                                                                          (file-name-as-directory incubator)))
+                                                                                                          lazy-incubator-paths))
                                                                                                basedirs)))
-                                                   (if (and (eq (length basedirs) 1)
-                                                            (eq (length basedirs-without-incubators) 1))
-                                                       `(400 . ,(car basedirs))
-                                                     (if (eq (length basedirs-without-incubators) 1)
-                                                         `(250 . ,(car basedirs-without-incubators))
-                                                       (if (> (length basedirs-without-incubators) 1)
-                                                           `(25 . ,(car basedirs-without-incubators))
-                                                         (if (> (length basedirs) 1)
-                                                             `(10 . ,(car basedirs)))))))))))
-                                  (name . (((buffer)
-                                            (progn
-                                              (unless buffer
-                                                (setq buffer (current-buffer)))
-                                              (when (buffer-file-name buffer)
-                                                `(10 . ,(car (split-string (file-name-nondirectory (expand-file-name (buffer-file-name buffer))) "\\."))))))
-                                           ((basedir)
-                                            (let ((pname (car (reverse (split-string basedir "/" t)))))
-                                              (when (loop for ig in lazy-incubator-paths
-                                                          if (lazy-path-equal ig basedir)
-                                                          return nil
-                                                          finally return t)
-                                                `(100 . ,pname))))))
-                                  (src-patterns . (((basedir mode)
-                                                    (let* ((all-incubator 'undefined)
-                                                           (case-fold-search nil)
-                                                           ;; guess buffers, collect files and set all-incubator, files from incubator
-                                                           ;; roots are ignored except the current buffers file, if all relevant files
-                                                           ;; we found are from incubator roots all-incubator will be true
-                                                           (files (loop for buf in (lazy-guess-buffers (current-buffer) nil mode)
-                                                                        do (cond ((and (cl-some (lambda (ig)
+                                                (if (and (eq (length basedirs) 1)
+                                                         (eq (length basedirs-without-incubators) 1))
+                                                    `(400 . ,(car basedirs))
+                                                  (if (eq (length basedirs-without-incubators) 1)
+                                                      `(250 . ,(car basedirs-without-incubators))
+                                                    (if (> (length basedirs-without-incubators) 1)
+                                                        `(25 . ,(car basedirs-without-incubators))
+                                                      (if (> (length basedirs) 1)
+                                                          `(10 . ,(car basedirs)))))))))))
+                               (name . (((buffer)
+                                         (progn
+                                           (unless buffer
+                                             (setq buffer (current-buffer)))
+                                           (when (buffer-file-name buffer)
+                                             `(10 . ,(car (split-string (file-name-nondirectory (expand-file-name (buffer-file-name buffer))) "\\."))))))
+                                        ((basedir)
+                                         (let ((pname (car (reverse (split-string basedir "/" t)))))
+                                           (when (loop for ig in lazy-incubator-paths
+                                                       if (lazy-path-equal ig basedir)
+                                                       return nil
+                                                       finally return t)
+                                             `(100 . ,pname))))))
+                               (src-patterns . (((basedir mode)
+                                                 (let* ((all-incubator 'undefined)
+                                                        (case-fold-search nil)
+                                                        ;; guess buffers, collect files and set all-incubator, files from incubator
+                                                        ;; roots are ignored except the current buffers file, if all relevant files
+                                                        ;; we found are from incubator roots all-incubator will be true
+                                                        (files (loop for buf in (lazy-guess-buffers (current-buffer) nil mode)
+                                                                     do (cond ((and (cl-some (lambda (ig)
                                                                                                (let ((file-name (buffer-file-name buf)))
                                                                                                  (when file-name
                                                                                                    (lazy-path-equal (lazy-dirname (expand-file-name file-name)) ig t))))
                                                                                              lazy-incubator-paths)
-                                                                                       all-incubator)
-                                                                                  (setq all-incubator t))
-                                                                                 (t
-                                                                                  (setq all-incubator nil)))
-                                                                        if (and (buffer-file-name buf)
-                                                                                (stringp basedir)
-                                                                                (string-match (regexp-quote (expand-file-name basedir)) (expand-file-name (buffer-file-name buf)))
-                                                                                (or (eq (current-buffer) buf)
-                                                                                    (not (cl-some (lambda (ig)
+                                                                                    all-incubator)
+                                                                               (setq all-incubator t))
+                                                                              (t
+                                                                               (setq all-incubator nil)))
+                                                                     if (and (buffer-file-name buf)
+                                                                             (stringp basedir)
+                                                                             (string-match (regexp-quote (expand-file-name basedir)) (expand-file-name (buffer-file-name buf)))
+                                                                             (or (eq (current-buffer) buf)
+                                                                                 (not (cl-some (lambda (ig)
                                                                                                  (lazy-path-equal (lazy-dirname (expand-file-name (buffer-file-name buf))) ig t))
                                                                                                lazy-incubator-paths))))
-                                                                        append (list (file-name-nondirectory (expand-file-name (buffer-file-name buf))))))
-                                                           patterns)
-                                                      ;; get unique file endings from filenames and make regexp patterns
-                                                      (unless (and (= (length files) 1)
-                                                                   all-incubator)
-                                                        (loop for f in files
-                                                              if (let ((splits (split-string f "\\." t)))
-                                                                   (and (last splits)
-                                                                        (> (length splits) 1)))
-                                                              do (let ((file-ending (mapconcat 'identity (reverse (butlast (reverse (split-string f "\\." t)))) ".")))
-                                                                   (mapc (lambda (s)
-                                                                           (add-to-list 'patterns s))
-                                                                         (cddr (assoc file-ending lazy-src-pattern-table))))
-                                                              else
-                                                              do (add-to-list 'patterns (regexp-quote f))))
-                                                      (when files
-                                                        ;; add files full names as well to the pattern list
-                                                        (mapc (lambda (name) (add-to-list 'patterns name))
-                                                              (mapcar (lambda (fname) (concat ".*" (regexp-quote fname))) files))
-                                                        ;; patterns might look something like this: "foo\\.el" "bar\\.el" "*\\.el
-                                                        `(100 . ,patterns))))))
-                                  (patterns-are-regex . ((nil
-                                                          '(10 . t))))
-                                  (compile-cmd . ((nil
-                                                   (when (and (boundp 'compile-command)
+                                                                     append (list (file-name-nondirectory (expand-file-name (buffer-file-name buf))))))
+                                                        patterns)
+                                                   ;; get unique file endings from filenames and make regexp patterns
+                                                   (unless (and (= (length files) 1)
+                                                                all-incubator)
+                                                     (loop for f in files
+                                                           if (let ((splits (split-string f "\\." t)))
+                                                                (and (last splits)
+                                                                     (> (length splits) 1)))
+                                                           do (let ((file-ending (mapconcat 'identity (reverse (butlast (reverse (split-string f "\\." t)))) ".")))
+                                                                (mapc (lambda (s)
+                                                                        (add-to-list 'patterns s))
+                                                                      (cddr (assoc file-ending lazy-src-pattern-table))))
+                                                           else
+                                                           do (add-to-list 'patterns (regexp-quote f))))
+                                                   (when files
+                                                     ;; add files full names as well to the pattern list
+                                                     (mapc (lambda (name) (add-to-list 'patterns name))
+                                                           (mapcar (lambda (fname) (concat ".*" (regexp-quote fname))) files))
+                                                     ;; patterns might look something like this: "foo\\.el" "bar\\.el" "*\\.el
+                                                     `(100 . ,patterns))))))
+                               (patterns-are-regex . ((nil
+                                                       '(10 . t))))
+                               (compile-cmd . ((nil
+                                                (when (and (boundp 'compile-command)
+                                                           compile-command)
+                                                  `(50 . ,compile-command)))
+                                               ((basedir)
+                                                (let ((bsystem))
+                                                  (loop for filename in (directory-files basedir)
+                                                        until (let ((r nil))
+                                                                (loop for bs in lazy-buildsystems
+                                                                      until (setq r (when (assoc 'files (cadr bs))
+                                                                                      (cl-some (apply-partially 'string-equal filename) (cadr (assoc 'files (cadr bs))))))
+                                                                      finally return (when r
+                                                                                       (setq bsystem bs)))))
+                                                  (cond ((and bsystem
+                                                              (assoc 'build (cadr bsystem)))
+                                                         `(100 . ,(cadr (assoc 'build (cadr bsystem)))))
+                                                        ((and (boundp 'compile-command)
                                                               compile-command)
-                                                     `(50 . ,compile-command)))
-                                                  ((basedir)
-                                                   (let ((bsystem))
-                                                     (loop for filename in (directory-files basedir)
-                                                           until (let ((r nil))
-                                                                   (loop for bs in lazy-buildsystems
-                                                                         until (setq r (when (assoc 'files (cadr bs))
-                                                                                         (cl-some (apply-partially 'string-equal filename) (cadr (assoc 'files (cadr bs))))))
-                                                                         finally return (when r
-                                                                                          (setq bsystem bs)))))
-                                                     (cond ((and bsystem
-                                                                 (assoc 'build (cadr bsystem)))
-                                                            `(100 . ,(cadr (assoc 'build (cadr bsystem)))))
-                                                           ((and (boundp 'compile-command)
-                                                                 compile-command)
-                                                            `(100 . ,compile-command)))
-                                                     ))))
-                                  (vcs . (((basedir)
-                                           (let ((r nil))
-                                             (loop for f in (directory-files basedir)
-                                                   if (cl-some (lambda (y)
+                                                         `(100 . ,compile-command)))
+                                                  ))))
+                               (vcs . (((basedir)
+                                        (let ((r nil))
+                                          (loop for f in (directory-files basedir)
+                                                if (cl-some (lambda (y)
                                                               (string-equal (cdr y) f)) lazy-vcs-path)
-                                                   return `(10 . ,(car (rassoc f lazy-vcs-path))))))))
-                                  (languages . (((src-patterns)
-                                                 (let ((languages (lazy-src-pattern-languages src-patterns)))
-                                                   (when languages
-                                                     `(10 . ,languages))))))))
+                                                return `(10 . ,(car (rassoc f lazy-vcs-path))))))))
+                               (languages . (((src-patterns)
+                                              (let ((languages (lazy-src-pattern-languages src-patterns)))
+                                                (when languages
+                                                  `(10 . ,languages))))))))
 
 (defun lazy-guess-alist (&optional ask-basedir ask-name)
   ;; go through lazy-guess-functions and collect all symbols that are used
