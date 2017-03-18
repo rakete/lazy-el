@@ -1491,6 +1491,106 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-history'
 (defvar lazy-after-save-current-buffer nil)
 (defvar lazy-after-save-current-project nil)
 
+(defun lazy-parse-gtags-conf (&optional gtags-conf)
+  "A helper function to generate `lazy-language-tag-systems' and `lazy-src-pattern-table' by parsing
+a gtags.conf file. Can be given an specific GTAGS-CONF as argument, otherwise it just uses
+`lazy-default-gtags-config'.
+
+It will create a new buffer named lazy-parse-gtags-conf-result and insert the generated defvar
+statements in there. You need to manually copy, paste and modify those yourself."
+  (unless gtags-conf
+    (setq gtags-conf lazy-default-gtags-config))
+  (with-temp-buffer
+    (insert-file-contents-literally lazy-default-gtags-config)
+    ;; - I use gnu globals nomenclature 'parser' inside this function, for what is known as 'system'
+    ;; in the other gtags related functions, a parser/system is something like gtags itself, or ctags,
+    ;; or pygments
+    ;; - activeparser denotes the currently active parser section, it is set while going through the lines
+    ;; when a line does not start with whitespaces, it can be something like 'builtin-parser' or 'comman-ctags-maps'
+    ;; - parserbins is used to accumulate all langmap definitions, it is a hashmap of hashmaps which gets
+    ;; initialized below to contain one hashmap for each possible parser, in the end it should contain stuff
+    ;; like ("universal-ctags" . ("c++" . ".cpp" ".h" ".cc" ".hh"))
+    ;; - parserbins is the raw data, src-patterns and lang-patterns are the actual results that we want, these contain
+    ;; the lists specifying which file pattern belongs to which language, and what systems can parse a language, just
+    ;; like in the global lazy-src-pattern-table and lazy-language-tag-systems variables
+    (let ((activeparser nil)
+          (parserbins (make-hash-table :test 'equal))
+          ;; (extension . (lang patterns))
+          (src-patterns (make-hash-table :test 'equal))
+          ;; (lang . (systems))
+          (lang-systems (make-hash-table :test 'equal))
+          (parser-systems (make-hash-table :test 'equal)))
+      (puthash "builtin-parser" (make-hash-table :test 'equal) parserbins)
+      (puthash "common-ctags-maps" (make-hash-table :test 'equal) parserbins)
+      (puthash "exuberant-ctags" (make-hash-table :test 'equal) parserbins)
+      (puthash "universal-ctags" (make-hash-table :test 'equal) parserbins)
+      (puthash "pygments-parser" (make-hash-table :test 'equal) parserbins)
+      ;; - go throuhg gtags-conf line by line and look at each line if it is either a new parser, or a langmap definition,
+      ;; a parser means we just change activeparser to that new parser, a langmap means we parse what language and what
+      ;; extensions it defines and put those in parserbins, in the currently active parser hashmap
+      (dolist (line (split-string (buffer-string) "\n" t))
+        (unless (string-equal (substring line 0 1) "#")
+          (cond ((string-match "[\t ]+:langmap=\\(.*\\)" line)
+                 (let ((langmap (match-string 1 line)))
+                   (dolist (definition (split-string langmap "," t))
+                     (let* ((langext (split-string definition ":" t))
+                            (lang (replace-regexp-in-string "\\\\" "" (downcase (first langext))))
+                            (ext (second langext))
+                            (activebin (gethash activeparser parserbins)))
+                       (when activebin
+                         (puthash lang ext (gethash activeparser parserbins)))))))
+                ((string-match "^\\([^ \t\\|:]+\\)" line)
+                 (setq activeparser (match-string 0 line))))))
+      ;; - now go through parserbins, and for each parser go through all languages with extension and accumulate
+      ;; extensions for each language of all the different parsers in src-patterns, and accumulate the parser systems
+      ;; for all languges in lang-systems
+      (maphash
+       (lambda (parser languages)
+         (let ((systems (cond ((string-equal parser "builtin-parser")
+                               '(gtags))
+                              ((string-equal parser "common-ctags-maps")
+                               '(gtags+universal-ctags gtags+exuberant-ctags))
+                              ((string-equal parser "exuberant-ctags")
+                               '(gtags+exuberant-ctags))
+                              ((string-equal parser "universal-ctags")
+                               '(gtags+universal-ctags))
+                              ((string-equal parser "pygments-parser")
+                               '(gtags+pygments))))
+               (ordering '(gtags+pygments gtags+exuberant-ctags gtags+universal-ctags gtags)))
+           (maphash
+            (lambda (raw-lang extensions)
+              (let ((ext-list (split-string extensions "\\." t))
+                    (lang (replace-regexp-in-string (regexp-quote ".")  ""
+                           (replace-regexp-in-string (regexp-quote "++") "pp"
+                                                     (replace-regexp-in-string "#" "sharp" raw-lang)))))
+                (puthash lang (sort (cl-remove-duplicates (append (gethash lang lang-systems) systems))
+                                    (lambda (a b) (<= (cl-position b ordering) (cl-position a ordering)))) lang-systems)
+                (dolist (ext ext-list)
+                  (let* ((lang-ext (concat lang "-" ext))
+                         (ext-regexes (mapcar (lambda (e) (concat ".*" (regexp-quote (concat "." e)))) ext-list))
+                         (new-regexes (cl-remove-duplicates (append (cddr (gethash lang-ext src-patterns)) ext-regexes) :test 'equal))
+                         (lang-regexes (append (list (make-symbol lang)) new-regexes)))
+                    (puthash lang-ext (append (list ext) lang-regexes) src-patterns)))))
+            languages)))
+       parserbins)
+      ;; - create a buffer and insert new defvar statements for the lazy-language-tag-systems and lazy-src-pattern-table globals
+      (with-current-buffer (get-buffer-create "lazy-parse-gtags-conf-result")
+        (erase-buffer)
+        (emacs-lisp-mode)
+        (insert "(defvar lazy-language-tag-systems '(")
+        (maphash (lambda (lang systems)
+                   (insert "(" lang " . " (prin1-to-string systems) ")\n"))
+                 lang-systems)
+        (insert "))\n\n")
+        (insert "(defvar lazy-src-pattern-table '(")
+        (maphash (lambda (lang line)
+                   (let ((ext (car line))
+                         (lang-regexes (cdr line)))
+                     (insert "(" (prin1-to-string ext) " . " (prin1-to-string lang-regexes) ")\n")))
+                 src-patterns)
+        (insert "))\n")
+        (indent-region (point-min) (point-max))))))
+
 (defun lazy-find-ctags-executable (ctags-type)
   "Find ctags executable for either exuberant-ctags or universal-ctags, specified by CTAGS-TYPE."
   (or (cond ((eq ctags-type 'universal)
