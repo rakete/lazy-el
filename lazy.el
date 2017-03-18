@@ -1485,8 +1485,7 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-history'
 ;; Tagging
 ;; ---------------------------------------------------------------------
 
-(defvar lazy-default-gtags-config nil)
-(defvar lazy-c++-gtags-config nil)
+(defvar lazy-default-gtags-config (expand-file-name "gtags.conf" (file-name-directory (or buffer-file-name load-file-name))))
 (defvar lazy-after-save-update-in-progress nil)
 (defvar lazy-after-save-line-numbers (make-hash-table))
 (defvar lazy-after-save-current-buffer nil)
