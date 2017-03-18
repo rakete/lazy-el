@@ -1174,10 +1174,11 @@ See also `lazy-load', `lazy-unload', `lazy-fib-init', `lazy-visit-saved-open-fil
          (lazy-prevent-after-save-update t))
     (unless proj-name
       (error "lazy-load: proj-name is nil"))
-    (run-hooks 'lazy-before-load-hook)
     (unless (or (string= oldname proj-name)
                 (eq proj-alist nil))
       (lazy-unload))
+    (let ((lazy-name proj-name))
+      (run-hooks 'lazy-before-load-hook))
     (if (not  proj-alist)
         (error "Project %s does not exist!" proj-name)
       (lazy-check-required-vars proj-name proj-alist)
