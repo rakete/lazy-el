@@ -1491,6 +1491,26 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-history'
 (defvar lazy-after-save-current-buffer nil)
 (defvar lazy-after-save-current-project nil)
 
+(defun lazy-find-ctags-executable (ctags-type)
+  "Find ctags executable for either exuberant-ctags or universal-ctags, specified by CTAGS-TYPE."
+  (or (cond ((eq ctags-type 'universal)
+             (or (executable-find "ctags-universal")
+                 (executable-find "universal-ctags")))
+            (t
+             (or (executable-find "ctags-exuberant")
+                 (executable-find "exuberant-ctags"))))
+      (let* ((executable (or (executable-find "ctags") (executable-find "ctags.exe")))
+             (stdout (when executable (shell-command-to-string (concat executable " --version")))))
+        (when executable
+          (cond ((and (eq ctags-type 'universal)
+                      (string-match "Universal.*" stdout))
+                 executable)
+                ((and (eq ctags-type 'exuberant)
+                      (string-match "Exuberant.*" stdout))
+                 executable)
+                (t
+                 executable))))))
+
 (defun lazy-update-tags (&optional proj-name proj-alist files debug)
   "Create or update the projects TAG database."
   (interactive)
@@ -1507,7 +1527,9 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-history'
         (gtags-executable (executable-find "gtags"))
         (global-executable (executable-find "global"))
         (rtags-executable (executable-find "rtags"))
-        (ctags-exuberant-executable (or (executable-find "ctags-exuberant") (executable-find "ctags.exe")))
+        (ctags-exuberant-executable (lazy-find-ctags-executable 'exuberant))
+        (ctags-universal-executable (lazy-find-ctags-executable 'universal))
+        (pygments-executable (executable-find "pygmentize"))
         (sys-files (make-hash-table))
         (languages '()))
     ;; - go through all project files, decide which tagging system to use for each individual file
