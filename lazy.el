@@ -1384,7 +1384,7 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-history'
     (lazy-assert-proj)
     (setq proj-name lazy-name))
   (if (lazy-get-config-val 'basedir proj-name t)
-      (let ((b (get-buffer-create "*lazy: lazy-status*")))
+      (let ((b (get-buffer-create "*lazy: status*")))
         (with-current-buffer b
           (kill-region (point-min) (point-max))
           (dolist (v (append lazy-required-vars lazy-optional-vars))
