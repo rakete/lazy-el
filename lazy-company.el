@@ -86,7 +86,7 @@
                      lazy-company-project-name)
                  (or (eq lazy-company-complete-in-projects t)
                      (cl-find (or lazy-name
-                               lazy-company-project-name) lazy-company-complete-in-projects))
+                                  lazy-company-project-name) lazy-company-complete-in-projects))
                  (company-grab-symbol)))
     (candidates (lazy-company-history-candidates arg lazy-company-project-name))
     (meta (lazy-eldoc-function-meta arg lazy-company-project-name (lazy-find-alist lazy-company-project-name)))
@@ -109,7 +109,7 @@
                      lazy-name)
                  (or (eq lazy-company-complete-in-projects t)
                      (cl-find (or lazy-name
-                               lazy-company-project-name) lazy-company-complete-in-projects))
+                                  lazy-company-project-name) lazy-company-complete-in-projects))
                  (company-grab-symbol)))
     (candidates (append (lazy-completions arg lazy-company-project-name)
                         (lazy-company-dabbrev-candidates arg)))
@@ -133,7 +133,7 @@
                      lazy-company-project-name)
                  (or (eq lazy-company-complete-in-projects t)
                      (cl-find (or lazy-name
-                               lazy-company-project-name) lazy-company-complete-in-projects))
+                                  lazy-company-project-name) lazy-company-complete-in-projects))
                  (company-grab-symbol)))
     (candidates (append (lazy-company-gtags-candidates arg)
                         (lazy-company-imenu-candidates arg)
