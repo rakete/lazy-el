@@ -59,7 +59,8 @@
               (setq b (point))
               (skip-chars-forward "^(")
               (setq a (point))))
-          (buffer-substring a b))
+          (when (> b a)
+            (buffer-substring a b)))
       (error nil))))
 
 (defun lazy-eldoc-function-meta (&optional symbol proj-name proj-alist)
@@ -79,8 +80,9 @@
         (setq proj-name (cadr (assoc 'name proj-alist)))
         (unless (and proj-name proj-alist)
           (lazy-assert-proj))
-        (when symbol
-          (let* ((gtags-plist (car-safe (lazy-find-symbol proj-name proj-alist 'gtags symbol (concat "global -x -d -e \"^" symbol ".*\""))))
+        (when (and symbol (> (length symbol) 0))
+          (let* ((gtags-plist (or (car-safe (lazy-find-symbol proj-name proj-alist 'gtags symbol (concat "global -x -d -e \"^" symbol ".*\"")))
+                                  (car-safe (lazy-find-symbol proj-name proj-alist 'gtags symbol (concat "global -x -s -e \"^" symbol ".*\"")))))
                  (line-number (plist-get gtags-plist :line-number))
                  (file-path (plist-get gtags-plist :file-path))
                  (definition (plist-get gtags-plist :definition)))
