@@ -1616,7 +1616,24 @@ statements in there. You need to manually copy, paste and modify those yourself.
                  executable))))))
 
 (defun lazy-update-tags (&optional proj-name proj-alist files debug)
-  "Create or update the projects TAG database."
+  "Create or update the projects tags database. The current implementation uses gtags together with
+universal-ctags, exuberant-ctags and pygments to generate a tags database. It tries to use those in projects
+consisting of multiple languages to generate a tags database that contains all symbols from all languages.
+
+The generated tags is used for project specific completions as well as navigating to defintions of symbols.
+
+This function will ignore GTAGSLABEL, GTAGSROOT and GTAGSCONF and specify those itself without overwriting
+them. So that it can generate the tags database in a directory under ~/.lazy and have the tags reference paths
+relative the the root (/ under linux, c: under windows) directory, so that the tags database can contain
+references from multiple places in the filesystem, and not just the projects directory.
+
+Supply PROJ-NAME and/or PROJ-ALIST to apply this to a project other then the currently loaded one. Supply
+FILES to specify for which files to update the tags database for.
+
+With DEBUG true this leaves behind buffer(s) named gtags-0,1,... that contain the output of the gtags
+commands executed, and it also writes the gtags commands it executes into the *Messages* buffer.
+
+See also `lazy-setup-tags', `lazy-jump-definition' and `lazy-process-group'"
   (interactive)
   (setq proj-alist (or proj-alist
                        (lazy-find-alist proj-name)
@@ -1722,8 +1739,7 @@ statements in there. You need to manually copy, paste and modify those yourself.
            (gtags-arguments (or (lazy-get-config-val 'gtags-arguments proj-name nil proj-alist)
                                 ""))
            (gtags-commands (make-hash-table))
-           (cmd-seperator (if (eq system-type 'windows-nt) " & " " ; "))
-           (debug t))
+           (cmd-seperator (if (eq system-type 'windows-nt) " & " " ; ")))
       ;; - hack, gnu global under windows has problems with directories that have a trailing slash
       ;; so this just removes the last slash from the path
       (when (eq system-type 'windows-nt)
@@ -1792,7 +1808,9 @@ in COMMANDS.
 
 This function is called recursivly as process sentinel when a command finishes, increasing N to
 indicate which command to run next, and PROCESS and EVENT are the arguments this function
-recieves when it acts as process sentinel."
+recieves when it acts as process sentinel.
+
+I implemented it mainly to execute multiple gtags calls in the background, each after the other."
   (unless n (setq n 0))
   (if (and (nth n commands)
            (or (not event)
@@ -1818,7 +1836,13 @@ recieves when it acts as process sentinel."
     systems))
 
 (defun lazy-setup-tags (&optional proj-name)
-  "Setup environment for existing TAG database."
+  "Setup environment for existing tags database. Force current project by giving PROJ-NAME.
+
+This overwrites any existing GTAGSDBPATH and GTAGSROOT environment variables with `setenv'. It
+is called almost always before using any of the related tags functionality, like `lazy-jump-definition'
+or `lazy-completions'.
+
+See also `lazy-update-tags'."
   (interactive)
   (setq proj-name (or proj-name
                       lazy-name
