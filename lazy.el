@@ -651,7 +651,7 @@ Examples:
      (with-local-quit
        ,@body)))
 
-(defmacro with-or-without-marker (marker &rest body)
+(defmacro lazy-with-or-without-marker (marker &rest body)
   `(let ((marker ,marker))
      (if (markerp marker)
          (with-current-buffer (marker-buffer marker)
@@ -660,7 +660,7 @@ Examples:
              ,@body))
        ,@body)))
 
-(defmacro with-marker (marker &rest body)
+(defmacro lazy-with-marker (marker &rest body)
   `(let ((marker ,marker))
      (if (markerp marker)
          (with-current-buffer (marker-buffer marker)
@@ -871,7 +871,7 @@ See also `lazy-undef', `lazy-required-vars' and `lazy-optional-vars'."
 
 (defun lazy-config-save (proj-name config-alist)
   (let ((marker (lazy-find-save-location-marker proj-name config-alist)))
-    (with-marker marker
+    (lazy-with-marker marker
                  (let ((mod (buffer-modified-p)))
                    (cond ((looking-at "(lazy-def.*")
                           (let* ((begin (point))

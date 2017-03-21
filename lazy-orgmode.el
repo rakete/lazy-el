@@ -474,7 +474,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
 
 (defun lazy-org-entry-name (&optional marker)
   (interactive)
-  (with-or-without-marker marker
+  (lazy-with-or-without-marker marker
    (if (and (boundp 'lazy-org-map-entry-name)
             (eq (point) lazy-org-map-entry-point))
        lazy-org-map-entry-name
@@ -499,7 +499,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
 
 (defun lazy-org-entry-level (&optional marker)
   (interactive)
-  (with-or-without-marker marker
+  (lazy-with-or-without-marker marker
    (if (and (boundp 'lazy-org-map-entry-level)
             (numberp lazy-org-map-entry-level)
             (eq (point) lazy-org-map-entry-point))
@@ -511,7 +511,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
 
 (defun lazy-org-entry-parent-level (&optional marker)
   (interactive)
-  (with-or-without-marker marker
+  (lazy-with-or-without-marker marker
    (if (and (boundp 'lazy-org-map-parent-level)
             (numberp lazy-org-map-parent-level)
             (eq (point) lazy-org-map-entry-point))
@@ -525,7 +525,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
 
 (defun lazy-org-entry-parent-name (&optional marker)
   (interactive)
-  (with-or-without-marker marker
+  (lazy-with-or-without-marker marker
    (if (and (boundp 'lazy-org-map-parent-name)
             (eq (point) lazy-org-map-entry-point))
        lazy-org-map-parent-name
@@ -538,7 +538,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
 
 (defun lazy-org-entry-parent-point (&optional marker)
   (interactive)
-  (with-or-without-marker marker
+  (lazy-with-or-without-marker marker
    (if (and (boundp 'lazy-org-map-parent-point)
             (boundp 'lazy-org-map-entry-point)
             (eq (point) lazy-org-map-entry-point))
@@ -565,7 +565,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
 
 (defun lazy-org-entry-nearest-active (&optional marker)
   (interactive)
-  (with-or-without-marker marker
+  (lazy-with-or-without-marker marker
    (if lazy-org-active-todo-keyword
        (save-excursion
          (org-back-to-heading t)
@@ -578,7 +578,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
 
 (defun lazy-org-entry-headline (&optional marker)
   (interactive)
-  (with-or-without-marker marker
+  (lazy-with-or-without-marker marker
    (save-excursion
      (org-back-to-heading t)
      (beginning-of-line)
@@ -596,7 +596,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
 
 (defun lazy-org-entry-is-link-p (&optional marker)
   (interactive)
-  (with-or-without-marker marker
+  (lazy-with-or-without-marker marker
    (save-excursion
      (beginning-of-line)
      (and (looking-at org-complex-heading-regexp)
@@ -606,7 +606,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
 
 (defun lazy-org-entry-progress (&optional marker)
   (interactive)
-  (with-or-without-marker marker
+  (lazy-with-or-without-marker marker
    (save-excursion
      (beginning-of-line)
      (and (looking-at org-complex-heading-regexp)
@@ -618,7 +618,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
 
 (defun lazy-org-entry-is-project-p (&optional marker)
   (interactive)
-  (with-or-without-marker marker
+  (lazy-with-or-without-marker marker
    (when (save-excursion
            (beginning-of-line)
            (or (org-entry-get (point) (lazy-org-symbol-table 'name))
@@ -627,7 +627,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
 
 (defun lazy-org-entry-is-in-project-p (&optional marker)
   (interactive)
-  (with-or-without-marker marker
+  (lazy-with-or-without-marker marker
                           (when (save-excursion
                                   (beginning-of-line)
                                   (or (org-entry-get (point) (lazy-org-symbol-table 'name) t)
@@ -637,7 +637,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
 (defun lazy-org-entry-alist (&optional marker)
   "Get config-alist from org entry properties at point."
   (interactive)
-  (with-or-without-marker marker
+  (lazy-with-or-without-marker marker
    (save-excursion
      (org-back-to-heading t)
      (beginning-of-line)
@@ -673,7 +673,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
 
 (defun lazy-org-entry-undefine-project (&optional marker)
   (interactive)
-  (with-or-without-marker marker
+  (lazy-with-or-without-marker marker
                           (save-excursion
                             (org-back-to-heading t)
                             (beginning-of-line)
@@ -1027,7 +1027,7 @@ See also `lazy-org-entry-nearest-active'."
     (setq headline (or (cadr (assoc 'org-headline config-alist)) proj-name)))
   (when lazy-org-config-save-location
     (let ((marker (lazy-org-find-save-location-marker proj-name config-alist)))
-      (with-marker
+      (lazy-with-marker
        marker
        (let* ((org-show-hierarchy-above t)
               (org-show-following-heading nil)
