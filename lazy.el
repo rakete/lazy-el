@@ -2511,7 +2511,7 @@ See also `lazy-update-tags'."
                             (case-fold-search nil)
                             (ido-case-fold nil))
                        (substring-no-properties (ido-completing-read "Symbol: "
-                                                                     (lazy-completions) nil nil
+                                                                     (lazy-completions) nil nil nil nil
                                                                      (substring-no-properties (or (thing-at-point lazy-thing-selector) "")))))))
   (when (and (not lazy-name) (not proj-alist))
     (let ((guessed-name (cadr (assoc 'name (lazy-guess-alist)))))
