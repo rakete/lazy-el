@@ -2567,10 +2567,23 @@ See also `lazy-update-tags'."
 ;; ---------------------------------------------------------------------
 
 
-(defvar lazy-compile-history-command nil)
-(defvar lazy-compile-entered-command nil)
+(defvar lazy-compile-previous-history nil)
+(defvar lazy-compile-entered-string nil)
+(defvar lazy-compile-delete-string nil)
+(defvar lazy-compile-history nil)
 
 ;;(list "(print \"foo\")" "(print \"lala\")" "flycheck-compile" "(print \"bar\")" "ls -la" "ls *.el")
+
+(defun lazy-compile-delete-from-history (delete-string)
+  (let* ((old-history (lazy-get-config-val 'compile-cmd))
+         (old-length (length old-history))
+         (new-history nil))
+    (when (listp old-history)
+      (setq new-history (cl-remove-if (lambda (s) (string-equal s delete-string)) old-history))
+      (if (eq (length new-history) old-length)
+          (setq compile-history (cl-remove-if (lambda (s) (string-equal s delete-string)) compile-history))
+        (setq lazy-compile-history new-history)
+        (lazy-set-config-val 'compile-cmd new-history)))))
 
 (defun lazy-compile-next-history-element (n)
   "Puts next element of the minibuffer history in the minibuffer.
@@ -2579,39 +2592,52 @@ With argument N, it uses the Nth following element."
 
   (let* ((p nil)
          (history (symbol-value minibuffer-history-variable))
-         (search-string nil)
-         (history-pos nil)
-         (search-string (buffer-substring (minibuffer-prompt-end) (point))))
+         (current-string (buffer-substring (minibuffer-prompt-end) (point)))
+         (search-string (or lazy-compile-entered-string current-string))
+         (history-pos nil))
+
     (when (and (> (length search-string) 0)
                (or (and (< (minibuffer-prompt-end) (point))
                         (< (point) (point-max)))
-                   (not (string-equal lazy-compile-history-command search-string))))
+                   (not (string-equal lazy-compile-previous-history current-string))))
       (setq history-pos (cl-position search-string history
                                      :end (1- (or minibuffer-history-position (1+ (length history))))
                                      :test (lambda (a b) (string-match-p (concat ".*" (regexp-quote a)) b))
                                      :from-end t))
+
+      (when (and history-pos (string-equal (elt history history-pos) search-string))
+        (setq history-pos (cl-position search-string history
+                                       :end (1- history-pos)
+                                       :test (lambda (a b) (string-match-p (concat ".*" (regexp-quote a)) b))
+                                       :from-end t)))
+
       (if history-pos
           (setq n (- (- minibuffer-history-position 1) history-pos)
                 p (point))
         (setq n 0)))
 
     (cond ((and (zerop n)
-                (> (length search-string) 0))
+                (> (length current-string) 0))
            (progn (kill-whole-line)
-                  (insert (or lazy-compile-entered-command ""))
+                  (insert (or lazy-compile-entered-string ""))
                   (goto-char (point-max))
-                  (setq minibuffer-history-position 1)))
+                  (setq minibuffer-history-position 0)))
           ((and (not (zerop n))
-                (> (length search-string) 0)
+                (> (length current-string) 0)
                 (> minibuffer-history-position 0))
            (goto-history-element (- minibuffer-history-position n))))
+
     (when p
-      (goto-char p))
-    (setq lazy-compile-history-command (buffer-substring (minibuffer-prompt-end) (point-max)))
+      ;;(goto-char p)
+      (goto-char (minibuffer-prompt-end))
+      (re-search-forward (regexp-quote search-string) nil t)
+      )
+
+    (setq lazy-compile-previous-history (buffer-substring (minibuffer-prompt-end) (point-max)))
     (unless (and (not (zerop n))
-                 (> (length search-string) 0)
+                 (> (length current-string) 0)
                  (> minibuffer-history-position 0))
-      (setq lazy-compile-history-command ""))
+      (setq lazy-compile-previous-history ""))
     ))
 
 (defun lazy-compile-previous-history-element (n)
@@ -2621,21 +2647,28 @@ With argument N, it uses the Nth previous element."
 
   (let* ((p nil)
          (history (symbol-value minibuffer-history-variable))
-         (search-string (buffer-substring (minibuffer-prompt-end) (point)))
+         (current-string (buffer-substring (minibuffer-prompt-end) (point)))
+         (search-string (or lazy-compile-entered-string current-string))
          (history-pos nil))
 
-    (when (and (> (length search-string) 0)
-               (not lazy-compile-entered-command)
-               (not (string-equal lazy-compile-history-command search-string)))
-      (setq lazy-compile-entered-command search-string))
+    (when (and (> (length current-string) 0)
+               (not lazy-compile-entered-string)
+               (not (string-equal lazy-compile-previous-history current-string)))
+      (setq lazy-compile-entered-string current-string))
 
     (when (and (> (length search-string) 0)
                (or (and (< (minibuffer-prompt-end) (point))
                         (< (point) (point-max)))
-                   (not (string-equal lazy-compile-history-command search-string))))
+                   (not (string-equal lazy-compile-previous-history current-string))))
       (setq history-pos (cl-position search-string history
                                      :start (or minibuffer-history-position 1)
                                      :test (lambda (a b) (string-match-p (concat ".*" (regexp-quote a)) b))))
+
+      (when (and history-pos (string-equal (elt history history-pos) search-string))
+        (setq history-pos (cl-position search-string history
+                                       :start (1+ history-pos)
+                                       :test (lambda (a b) (string-match-p (concat ".*" (regexp-quote a)) b)))))
+
       (if history-pos
           (setq n (- history-pos (- minibuffer-history-position 1))
                 p (point))
@@ -2644,80 +2677,139 @@ With argument N, it uses the Nth previous element."
     (or (zerop n)
         (goto-history-element (+ minibuffer-history-position n)))
 
-    (unless (> (length lazy-compile-history-command) 0)
+    (unless (> (length lazy-compile-previous-history) 0)
       (goto-char (point-max)))
-    (when p
-      (goto-char p))
+    (when (and p (> (length search-string) 0))
+      (goto-char (minibuffer-prompt-end))
+      (re-search-forward (regexp-quote search-string) nil t))
 
     (unless (zerop n)
-      (setq lazy-compile-history-command (buffer-substring (minibuffer-prompt-end) (point-max))))
+      (setq lazy-compile-previous-history (buffer-substring (minibuffer-prompt-end) (point-max))))
 
     ))
 
+;; (defvar lazy-compile-match-beginning nil)
+
+;; (defun lazy-compile-minibuffer-complete ()
+;;   "Complete the minibuffer contents as far as possible.
+;; Return nil if there is no valid completion, else t.
+;; If no characters can be completed, display a list of possible completions.
+;; If you repeat this command after it displayed such a list,
+;; scroll the window of possible completions."
+;;   (interactive)
+;;   (let ((beginning (or lazy-compile-match-beginning (minibuffer-prompt-end))))
+;;     (when (<= beginning (point))
+;;       (completion-in-region beginning (point-max)
+;;                             minibuffer-completion-table
+;;                             minibuffer-completion-predicate))))
+
 (defun lazy-compile-internal-read-command (&optional command)
   (let ((ido-enable-replace-completing-read nil)
-        (old-space-binding (cdr (assoc 32 minibuffer-local-completion-map)))
         (minibuffer-local-completion-map (copy-keymap minibuffer-local-completion-map))
         (minibuffer-local-map (copy-keymap minibuffer-local-map))
         (minibuffer-local-shell-command-map (copy-keymap minibuffer-local-shell-command-map))
-        (lazy-compile-history-command command)
-        (lazy-compile-entered-command nil))
+        (lazy-compile-previous-history command)
+        (lazy-compile-entered-string nil)
+        (lazy-compile-saved-completion nil)
+        (saved-default-directory default-directory))
+    (define-key minibuffer-local-completion-map (kbd "<tab>") (lambda () (interactive)
+                                                                (call-interactively 'minibuffer-complete)
+                                                                (setq minibuffer-history-position 0
+                                                                      lazy-compile-previous-history (buffer-substring (minibuffer-prompt-end) (point-max))
+                                                                      lazy-compile-entered-string nil)))
     (define-key minibuffer-local-completion-map " " (lambda () (interactive) (insert " ")))
     (define-key minibuffer-local-completion-map "?" (lambda () (interactive) (insert "?")))
     (define-key minibuffer-local-completion-map (kbd "<up>") 'lazy-compile-previous-history-element)
     (define-key minibuffer-local-completion-map (kbd "<down>") 'lazy-compile-next-history-element)
     (define-key minibuffer-local-completion-map (kbd "<backspace>") (lambda () (interactive)
-                                                                      (setq minibuffer-history-position 1
-                                                                            lazy-compile-entered-command nil)
-                                                                      (call-interactively 'delete-backward-char)))
+                                                                      (call-interactively 'delete-backward-char)
+                                                                      (setq minibuffer-history-position 0
+                                                                            lazy-compile-previous-history (buffer-substring (minibuffer-prompt-end) (point-max))
+                                                                            lazy-compile-entered-string nil)))
     (define-key minibuffer-local-completion-map (kbd "<delete>") (lambda () (interactive)
-                                                                   (setq minibuffer-history-position 1
-                                                                         lazy-compile-entered-command nil)
-                                                                   (call-interactively 'delete-char)))
-    (define-key minibuffer-local-completion-map (kbd "C-d") (lambda () (interactive) (call-interactively 'kill-whole-line)))
+                                                                   (call-interactively 'delete-char)
+                                                                   (setq minibuffer-history-position 0
+                                                                         lazy-compile-previous-history (buffer-substring (minibuffer-prompt-end) (point-max))
+                                                                         lazy-compile-entered-string nil)))
+    (define-key minibuffer-local-completion-map (kbd "<space>") (lambda () (interactive)
+                                                                  (insert " ")
+                                                                  (setq minibuffer-history-position 0
+                                                                        lazy-compile-previous-history (buffer-substring (minibuffer-prompt-end) (point-max))
+                                                                        lazy-compile-entered-string nil)))
+    (define-key minibuffer-local-completion-map (kbd "-") (lambda () (interactive)
+                                                            (insert "-")
+                                                            (setq minibuffer-history-position 0
+                                                                  lazy-compile-previous-history (buffer-substring (minibuffer-prompt-end) (point-max))
+                                                                  lazy-compile-entered-string nil)))
+    (define-key minibuffer-local-completion-map (kbd "C-d") (lambda () (interactive)
+                                                              (call-interactively 'kill-whole-line)
+                                                              (setq minibuffer-history-position 0
+                                                                    lazy-compile-previous-history ""
+                                                                    lazy-compile-entered-string nil)))
+    (define-key minibuffer-local-completion-map (kbd "C-x k") (lambda () (interactive)
+                                                                (lazy-compile-delete-from-history (buffer-substring (minibuffer-prompt-end) (point-max)))
+                                                                (call-interactively 'kill-whole-line)
+                                                                (setq minibuffer-history-position 0
+                                                                      lazy-compile-previous-history ""
+                                                                      lazy-compile-entered-string nil)))
 
-    (completing-read "Lazy Compile: "
-                     (lambda (string pred action)
-                       (if (string-match ".*[()]\\([^()]+\\)" string)
-                           (let ((completion (complete-with-action action obarray (match-string 1 string) pred)))
-                             (cond ((stringp completion)
-                                    (replace-match completion nil nil string 1))
-                                   ((listp completion)
-                                    completion)
-                                   (t
-                                    string)))
-                         (complete-with-action action obarray string pred)))
-                     nil nil command
-                     (if (equal (car compile-history) command)
-                         '(compile-history . 1)
-                       'compile-history))
-
-    ;; (cond ((and (or (commandp (read command))
-    ;;                 (functionp (read command))
-    ;;                 (listp (read command)))
-    ;;             (not (executable-find command)))
-    ;;        (completing-read "Lazy Compile (elisp): "
-    ;;                         (lambda (string pred action)
-    ;;                           (if (string-match ".*[()]\\([^()]+\\)" string)
-    ;;                               (let ((completion (complete-with-action action obarray (match-string 1 string) pred)))
-    ;;                                 (cond ((stringp completion)
-    ;;                                        (replace-match completion nil nil string 1))
-    ;;                                       ((listp completion)
-    ;;                                        completion)
-    ;;                                       (t
-    ;;                                        string)))
-    ;;                             (complete-with-action action obarray string pred)))
-    ;;                         nil nil command
-    ;;                         (if (equal (car compile-history) command)
-    ;;                             '(compile-history . 1)
-    ;;                           'compile-history))
-    ;;        )
-    ;;       (t
-    ;;        (read-shell-command "Lazy Compile (shell): " command
-    ;;                            (if (equal (car compile-history) command)
-    ;;                                '(compile-history . 1)
-    ;;                              'compile-history))))
+    (progn ;;minibuffer-with-setup-hook
+        ;; (lambda ()
+        ;;   (shell-completion-vars)
+        ;;   (set (make-local-variable 'minibuffer-default-add-function)
+        ;;        'minibuffer-default-add-shell-commands))
+      (let ((result (completing-read "Lazy Compile: "
+                                     (lambda (string pred action)
+                                       (mapc (lambda (s)
+                                               (setq s (replace-regexp-in-string "[;\"]" "" s))
+                                               (setq s (replace-regexp-in-string "[ \t]*$" "" s))
+                                               (setq s (replace-regexp-in-string "^[ \t]*" "" s))
+                                               (let ((dir (expand-file-name s default-directory)))
+                                                 (when (and (file-exists-p dir)
+                                                            (file-directory-p dir))
+                                                   (setq-local default-directory dir)
+                                                   )))
+                                             (split-string string "cd\\|;" t))
+                                       ;;(message "1: %s %s %s" (prin1-to-string action) string (prin1-to-string pred))
+                                       (let* ((completion (cond ((string-match "\\(\\(?:\\.\\.?\\|~\\|[^ \t\";]+\\)?\\(?:/[^/;\"]*\\)+\\)$" string)
+                                                                 (let ((match (match-string 1 string)))
+                                                                   (save-match-data
+                                                                     (complete-with-action action #'completion-file-name-table match pred))))
+                                                                ((string-match "[^$\"][(]\\([^()]+\\)" string)
+                                                                 (let ((match (match-string 1 string)))
+                                                                   (save-match-data
+                                                                     (complete-with-action action lazy-completions-table-for-elisp match pred))))
+                                                                ((or (string-match "\"\\([^/;\"]+\\)$" string)
+                                                                     (string-match "[^;]+[; \t]+\\([^/;\" ]+\\)$" string))
+                                                                 (let ((match (match-string 1 string)))
+                                                                   (save-match-data
+                                                                     (let ((shell-command-table (nth 2 (shell--command-completion-data))))
+                                                                       (complete-with-action action (completion-table-merge shell-command-table #'completion-file-name-table) match pred)))))
+                                                                (t
+                                                                 (let ((shell-command-table (nth 2 (shell--command-completion-data))))
+                                                                   (complete-with-action action (completion-table-merge shell-command-table #'completion-file-name-table lazy-completions-table-for-elisp) string pred))))))
+                                         ;;(message "2: %s %s %s %s" (prin1-to-string action) string (prin1-to-string pred) (prin1-to-string completion))
+                                         (when (and (stringp completion)
+                                                    (match-string 1 string))
+                                           (setq completion (replace-match completion nil nil string 1)))
+                                         ;;(message "3: %s %s %s %s" (prin1-to-string action) string (prin1-to-string pred) (prin1-to-string completion))
+                                         completion
+                                         )
+                                       )
+                                     nil nil command
+                                     (if (equal (car lazy-compile-history) command)
+                                         '(lazy-compile-history . 1)
+                                       'lazy-compile-history))))
+        (setq-local default-directory saved-default-directory)
+        result))
     ))
+
+;;(defvar lazy-compile-exit-code 0)
+
+;;(setq compilation-exit-message-function nil)
+;; (defun lazy-compile-exit-message-function (status_ code message)
+;;   (setq lazy-compile-exit-code code)
+;;   (cons message code))
 
 (defun lazy-compile-command (command &optional comint)
   (interactive
@@ -2729,15 +2821,17 @@ With argument N, it uses the Nth previous element."
     (save-some-buffers (not compilation-ask-about-save)
                        compilation-save-buffers-predicate)
     (setq-default compilation-directory default-directory)
-    (cond ((and (commandp (read command))
-                (not (executable-find command)))
+    (cond ((and (not (executable-find command))
+                (not (> (length (split-string command " " t)) 1))
+                (commandp (read command)))
            (command-execute (read command)))
-          ((and (functionp (read command))
-                (not (executable-find command)))
+          ((and (not (executable-find command))
+                (string-match "^(" command)
+                (functionp (read command)))
            (funcall (eval-expression (read command))))
           ((and (string-match "^(" command)
-                (condition-case nil (read command) (error nil))
-                (not (executable-find command)))
+                (not (executable-find command))
+                (condition-case nil (read command) (error nil)))
            (eval-expression (read command)))
           (t
            (compilation-start command comint))))
@@ -2760,20 +2854,23 @@ With argument N, it uses the Nth previous element."
       (lazy-with-directory (lazy-get-config-val 'basedir)
                            (cond ((listp cmd)
                                   (let* ((old-history cmd)
-                                         (compile-history (cl-remove-duplicates (append old-history compile-history) :test 'equal :from-end t) ;;(list "(print \"foo\")" "(print \"lala\")" "flycheck-compile" "(print \"bar\")" "ls -la" "ls *.el")
-                                                          )
-                                         (old-cmd (car compile-history))
+                                         ;;(list "(print \"foo\")" "(print \"lala\")" "flycheck-compile" "(print \"bar\")" "ls -la" "ls *.el")
+                                         (lazy-compile-history (cl-remove-duplicates (append old-history compile-history) :test 'equal :from-end t))
+                                         (old-cmd (car lazy-compile-history))
                                          (new-cmd (lazy-compile-command (lazy-compile-internal-read-command old-cmd))))
                                     (unless (string-equal old-cmd new-cmd)
                                       (lazy-set-config-val 'compile-cmd (cl-remove-duplicates (append (list new-cmd) old-history) :test 'equal :from-end t)))))
                                  ((stringp cmd)
                                   (let* ((old-cmd cmd)
+                                         (lazy-compile-history (list old-cmd))
                                          (new-cmd (lazy-compile-command (lazy-compile-internal-read-command old-cmd)))
                                          (new-list (list new-cmd old-cmd)))
                                     (unless (string-equal old-cmd new-cmd)
                                       (lazy-set-config-val 'compile-cmd new-list))))
                                  (t
-                                  (lazy-set-config-val 'compile-cmd (list (lazy-compile-command (lazy-compile-internal-read-command)))))))
+                                  (let ((lazy-compile-history nil)
+                                        (new-cmd (lazy-compile-command (lazy-compile-internal-read-command))))
+                                    (lazy-set-config-val 'compile-cmd (list new-cmd))))))
       )))
 
 ;; ---------------------------------------------------------------------
