@@ -1899,7 +1899,8 @@ See also `lazy-update-tags'."
                               ((featurep (quote ,sym)) (cons (find-file-noselect (find-library-name
                                                                                   (symbol-name (quote ,sym))))
                                                              0))
-                              ((facep (quote ,sym)) (find-definition-noselect (quote ,sym) 'defface)))))
+                              ((facep (quote ,sym)) (find-definition-noselect (quote ,sym) 'defface))
+                              (((symbol-plist (quote ,sym)) (find-definition-noselect (quote ,sym) nil))))))
          location))))
 
 ;; - given a system and a regexp, this tries to match regexp with jumps aquired from system and returns
@@ -1951,7 +1952,8 @@ See also `lazy-update-tags'."
                               (or (fboundp sym)
                                   (boundp sym)
                                   (facep sym)
-                                  (featurep sym)))
+                                  (featurep sym)
+                                  (symbol-plist sym)))
                      (let* ((word sym-name)
                             (doc (condition-case nil
                                      (if (fboundp sym)
