@@ -53,23 +53,26 @@
 
 (defun lazy-company-obarray-candidates (prefix)
   (when (derived-mode-p 'emacs-lisp-mode 'inferior-emacs-lisp-mode)
-    (let (results)
-      (do-all-symbols (sym results)
-        (when (or (fboundp sym)
-                  (boundp sym))
-          (let* ((completion (symbol-name sym))
-                 (case-fold-search nil))
-            (when (string-match (concat "^" prefix) completion)
-              (push completion results))))))))
+    ;; (let (results)
+    ;;   (do-all-symbols (sym results)
+    ;;     (when (or (fboundp sym)
+    ;;               (boundp sym)
+    ;;               (featurep sym)
+    ;;               (symbol-plist sym))
+    ;;       (let* ((completion (symbol-name sym))
+    ;;              (case-fold-search nil))
+    ;;         (when (string-match (concat "^" prefix) completion)
+    ;;           (push completion results))))))
+    (lazy-completions-for-elisp prefix)))
 
 (defun lazy-company-dabbrev-candidates (arg)
   (if lazy-company-project-name
       (let ((case-fold-search company-dabbrev-code-ignore-case)
             (project-completions (gethash lazy-company-project-name lazy-completions-cache))
             (dabbrevs (cl-remove-duplicates (company-dabbrev-code 'candidates arg) :test 'equal)))
-        (loop for dab in dabbrevs
-              if (gethash dab project-completions t)
-              collect dab))
+        (cl-loop for dab in dabbrevs
+                 if (gethash dab project-completions t)
+                 collect dab))
     (company-dabbrev-code 'candidates arg)))
 
 

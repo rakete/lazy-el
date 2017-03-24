@@ -2420,6 +2420,29 @@ See also `lazy-update-tags'."
       (lazy-update-obarray-completions-cache proj-name))
     (garbage-collect)))
 
+(defvar lazy-completions-table-for-elisp (completion-table-merge
+                                          elisp--local-variables-completion-table
+                                          (apply-partially #'completion-table-with-predicate
+                                                           obarray
+                                                           (lambda (sym)
+                                                             (or (boundp sym)
+                                                                 (fboundp sym)
+                                                                 (facep sym)
+                                                                 (featurep sym)
+                                                                 (symbol-plist sym)))
+                                                           'strict)))
+(defun lazy-completions-for-elisp (elisp-string)
+  (all-completions elisp-string lazy-completions-table-for-elisp))
+
+(defvar lazy-completions-table-for-path (completion-table-in-turn #'completion--embedded-envvar-table
+                                                                  #'completion--file-name-table))
+(defun lazy-completions-for-path (elisp-string)
+  (all-completions elisp-string lazy-completions-table-for-path))
+
+;; (defvar lazy-completions-table-for-filename #'completion-file-name-table)
+;; (defun lazy-completions-for-filename (filename-string)
+;;   (all-completions filename-string lazy-completions-table-for-filename))
+
 (defun lazy-completions (&optional prefix proj-name buffer)
   (let* ((guessed-alist (lazy-guess-alist))
          (guessed-name (cadr (assoc 'name guessed-alist)))
