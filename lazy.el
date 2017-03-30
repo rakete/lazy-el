@@ -1598,7 +1598,8 @@ See also `lazy-required-vars'"
                   (eq inherit 'copy))
              (progn
                (copy-file (or (lazy-get-config-val symbol (lazy-get-config-val 'parent proj-name nil) nil)
-                              (lazy-get-cache-file symbol (lazy-get-config-val 'parent proj-name nil) t)) r)
+                              (lazy-get-cache-file symbol (lazy-get-config-val 'parent proj-name nil) t))
+                          r)
                r))
             ((and (lazy-get-config-val 'parent proj-name nil)
                   (eq (lazy-get-config-val 'basedir proj-name nil) nil)
@@ -1611,10 +1612,10 @@ See also `lazy-required-vars'"
   (unless proj-name
     (lazy-assert-proj)
     (setq proj-name lazy-name))
-  (let ((cachedir (concat lazy-global-cache-root "/" (or (car-safe (lazy-ancestry proj-name)) proj-name) "/" dirname)))
+  (let ((cachedir (expand-file-name (concat (or (car-safe (lazy-ancestry proj-name)) proj-name) "/" dirname) lazy-global-cache-root)))
     (unless (file-directory-p cachedir)
       (make-directory cachedir t))
-    (expand-file-name cachedir)))
+    cachedir))
 
 (defun lazy-ancestry (&optional proj-name)
   (let* ((current (or proj-name
@@ -3677,7 +3678,7 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
 
 
 (defun lazy-friendly-buffers (&optional proj-name)
-  "Return all buffers that are friendly to the project"
+  "Return all buffers that are friendly to the project."
   (unless proj-name
     (lazy-assert-proj)
     (setq proj-name lazy-name))
@@ -3797,7 +3798,8 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
                                        append (cadr (assoc 'files (cadr bs)))))
            (buildsystem-file-found (cl-some (lambda (buildsystem-file)
                                               (when (string-match (concat (regexp-quote buildsystem-file) "$") file-name)
-                                                buildsystem-file)) buildsystem-files)))
+                                                buildsystem-file))
+                                            buildsystem-files)))
       (when (and (assoc extension lazy-src-pattern-table)
                  (or (string-match (concat "^" (regexp-quote (file-name-as-directory (lazy-get-config-val 'basedir lazy-name t)))) file-name)
                      (string-match (concat "^" (regexp-quote (file-name-as-directory (lazy-get-config-val 'basedir lazy-name t)))) (file-truename file-name)))
@@ -4208,7 +4210,8 @@ and their parent directory used as basedir.")
                                         (let ((r nil))
                                           (loop for f in (directory-files basedir)
                                                 if (cl-some (lambda (y)
-                                                              (string-equal (cdr y) f)) lazy-vcs-path)
+                                                              (string-equal (cdr y) f))
+                                                            lazy-vcs-path)
                                                 return `(10 . ,(car (rassoc f lazy-vcs-path))))))))
                                (languages . (((src-patterns)
                                               (let ((languages (lazy-src-pattern-languages src-patterns)))
