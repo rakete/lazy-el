@@ -3033,14 +3033,19 @@ See also `lazy-update-tags'."
 ;; ---------------------------------------------------------------------
 
 
-(defvar lazy-compile-previous-history nil)
-(defvar lazy-compile-entered-string nil)
-(defvar lazy-compile-delete-string nil)
-(defvar lazy-compile-history nil)
-
-;;(list "(print \"foo\")" "(print \"lala\")" "flycheck-compile" "(print \"bar\")" "ls -la" "ls *.el")
+(defvar lazy-compile-previous-history nil
+  "Used to keep track of the previous looked at command from compile history.")
+(defvar lazy-compile-entered-string nil
+  "The string that was in the minibuffer when the user pressed up and initiated
+compile history search for that string.")
+(defvar lazy-compile-history nil
+  "Used internally in `lazy-compile' to keep a seperate, project specific version
+of what `compile-history' normally is.")
 
 (defun lazy-compile-delete-from-history (delete-string)
+  "Remove DELETE-STRING item from `lazy-compile-history' or `compile-history'.
+
+See also `lazy-compile-read-command'."
   (let* ((old-history (lazy-get-config-val 'compile-cmd))
          (old-length (length old-history))
          (new-history nil))
@@ -3048,40 +3053,106 @@ See also `lazy-update-tags'."
       (setq new-history (cl-remove-if (lambda (s) (string-equal s delete-string)) old-history))
       (if (eq (length new-history) old-length)
           (setq compile-history (cl-remove-if (lambda (s) (string-equal s delete-string)) compile-history))
+        ;; - not only is removing enough, we also need to set the lazy-compile-history, the minibuffer history
+        ;; (which is hiding behind minibuffer-history-variable) and also save the new history in the project
+        ;; config
         (setq lazy-compile-history new-history)
+        (setf (symbol-value minibuffer-history-variable) new-history)
         (lazy-set-config-val 'compile-cmd new-history)))))
 
+;; - both lazy-compile-previous-history-element and lazy-compile-next-history-element work
+;; by keeping the 'history search state' in two variables named lazy-compile-entered-string
+;; and lazy-compile-previous-history
+;; - the prev/next functions are supposed to be mapped to the up/down keys while in minibuffer,
+;; the up/down initiates searching through the history just like in fish shell
+;; - whenever the user changes the minibuffer contents in any way, lazy-compile-entered-string
+;; is reset to nil (this is done by mapping keys to lazy-compile-history-search-reset), then
+;; either prev/next function set it to contain the current minibuffer contents, those contents
+;; then become the string we are searching for until either the user exits the minibuffer or
+;; changes the contents again
+;; - to decide when a user has changed the contents of the minibuffer, we also remember what
+;; was previously shown in the minibuffer in lazy-compile-previous-history, which is also
+;; reset in lazy-compile-history-search-reset
 (defun lazy-compile-next-history-element (n)
   "Puts next element of the minibuffer history in the minibuffer.
-With argument N, it uses the Nth following element."
+With argument N, it uses the Nth following element.
+
+This is an altered version of `next-history-element' that searches
+through the minibuffer history for whatever the user previously
+typed into the minibuffer. If nothing was typed, this behaves just
+like `next-history-element'.
+
+This function is used by `lazy-compile' to make its prompt act just
+like the fish shell.
+
+See also `lazy-compile-read-command'."
   (interactive "p")
 
-  (let* ((p nil)
+  (let* ((search-point nil)
          (history (symbol-value minibuffer-history-variable))
          (current-string (buffer-substring (minibuffer-prompt-end) (point)))
          (search-string (or lazy-compile-entered-string current-string))
          (history-pos nil))
 
+    ;; - set lazy-compile-entered-string to contain the current minibuffer contents (current-string)
+    ;; but only when it has been reset (is nil) before calling this function
+    (when (and (> (length current-string) 0)
+               (not lazy-compile-entered-string))
+      (setq lazy-compile-entered-string current-string))
+
+    ;; - this block handles searching through the history, since we are in the next function
+    ;; we search from the current minibuffer-history-position backwards to the start of the history
+    ;; - the (and ...) condition makes sure there is a search-string, then searches if the current
+    ;; minibuffer contents differ from lazy-compile-previous-history (as described above) OR it
+    ;; searches if the cursor is not at the end of the minibuffer but at some point between
+    ;; (minibuffer-prompt-end) and (point-max), meaning we also search for the partial string
+    ;; between those two points, even when the user has not changed anything (I glanced over that
+    ;; above)
     (when (and (> (length search-string) 0)
                (or (and (< (minibuffer-prompt-end) (point))
                         (< (point) (point-max)))
                    (not (string-equal lazy-compile-previous-history current-string))))
+      ;; - using cl-position, search for search-string in history, notice that we search from
+      ;; (1- minibuffer-history-position), meaning one before the current history item, to the
+      ;; beginning of the history, if minibuffer-history-position is nil then we search from the
+      ;: end of the history
       (setq history-pos (cl-position search-string history
                                      :end (1- (or minibuffer-history-position (1+ (length history))))
                                      :test (lambda (a b) (string-match-p (concat ".*" (regexp-quote a)) b))
                                      :from-end t))
 
+      ;; - it is confusing for the user if the history search finds the exact string the user entered
+      ;; and nothing else, because then nothing changes visually in the minibuffer and the user wonders
+      ;; if anything happened at all, thats why we just search a second time for search-string if the found
+      ;; history item (elt history history-pos) is exactly equal to search-string
       (when (and history-pos (string-equal (elt history history-pos) search-string))
         (setq history-pos (cl-position search-string history
                                        :end (1- history-pos)
                                        :test (lambda (a b) (string-match-p (concat ".*" (regexp-quote a)) b))
                                        :from-end t)))
 
+      ;; - when we found a history item containing the search string, set n so that goto-history-element
+      ;; below we yield the correct history element, also set search-point to t indicating that we want to
+      ;; adjust point after updating the minibuffer contents so that it ends up at the end of the search-string
+      ;; but in the new minibuffer contents
+      ;; - if no history item was found, set n to 0 so that absolutely nothing happens, informing the user that
+      ;; no history item matches the current minibuffer contents
       (if history-pos
           (setq n (- (- minibuffer-history-position 1) history-pos)
-                p (point))
+                search-point t)
         (setq n 0)))
 
+    ;; - this handles the case where we searched and found nothing (n is zero), then it
+    ;; inserts either the entered string so that the user sees its compile command not changeing
+    ;; and knows there is nothing more to scroll through, or it inserts an empty string if there
+    ;; is no entered string which indicates to the user that nothing was found and now he can
+    ;; enter something himself
+    ;; - notice that the insertion of the entered string seems nonsensical at first, but is
+    ;; absolutely neccessary, the entered string is NOT part of the history, so it can't be found
+    ;; and must be inserted manually to appear, if we did not do that, the user would always
+    ;; 'loose his own command when scrolling through the history for any matches
+    ;; - otherwise if n is not zero, then this just uses goto-history-element like the regular
+    ;; next-history-element would do
     (cond ((and (zerop n)
                 (> (length current-string) 0))
            (progn (kill-whole-line)
@@ -3093,33 +3164,51 @@ With argument N, it uses the Nth following element."
                 (> minibuffer-history-position 0))
            (goto-history-element (- minibuffer-history-position n))))
 
-    (when p
-      ;;(goto-char p)
+    ;; - this sets point to be consitent to where it was before initiating search, by just
+    ;; searching for the search-string interactivly, because at this time the contents of
+    ;; the minibuffer have been updated with the found history element, but point did not
+    ;; change
+    (when search-point
       (goto-char (minibuffer-prompt-end))
-      (re-search-forward (regexp-quote search-string) nil t)
-      )
+      (re-search-forward (regexp-quote search-string) nil t))
 
+    ;; - last thing to do is update lazy-compile-previous-history before ending the function
+    ;; with the current contents of the minibuffer
+    ;; - except when we did NOT find a history element and therefore did NOT call goto-history-element
+    ;; above, then the previous history should just be the empty string
     (setq lazy-compile-previous-history (buffer-substring (minibuffer-prompt-end) (point-max)))
     (unless (and (not (zerop n))
                  (> (length current-string) 0)
                  (> minibuffer-history-position 0))
-      (setq lazy-compile-previous-history ""))
-    ))
+      (setq lazy-compile-previous-history ""))))
 
 (defun lazy-compile-previous-history-element (n)
   "Puts previous element of the minibuffer history in the minibuffer.
-With argument N, it uses the Nth previous element."
+With argument N, it uses the Nth previous element.
+
+This is an altered version of `previous-history-element' that searches
+through the minibuffer history for whatever the user previously
+typed into the minibuffer. If nothing was typed, this behaves just
+like `previous-history-element'.
+
+This function is used by `lazy-compile' to make its prompt act just
+like the fish shell.
+
+See also `lazy-compile-read-command'."
   (interactive "p")
 
-  (let* ((p nil)
+  (let* ((search-point nil)
          (history (symbol-value minibuffer-history-variable))
          (current-string (buffer-substring (minibuffer-prompt-end) (point)))
          (search-string (or lazy-compile-entered-string current-string))
          (history-pos nil))
 
+    ;; - this and the next block are pretty much the same as in the function above, the only real
+    ;; difference here is that cl-position uses :start instead of :end and searches from minibuffer-position
+    ;; (notice no 1+ there) toward the end of the history, so obviously just the other way around then
+    ;; the function above
     (when (and (> (length current-string) 0)
-               (not lazy-compile-entered-string)
-               (not (string-equal lazy-compile-previous-history current-string)))
+               (not lazy-compile-entered-string))
       (setq lazy-compile-entered-string current-string))
 
     (when (and (> (length search-string) 0)
@@ -3137,151 +3226,184 @@ With argument N, it uses the Nth previous element."
 
       (if history-pos
           (setq n (- history-pos (- minibuffer-history-position 1))
-                p (point))
+                search-point t)
         (setq n 0)))
 
+    ;; - there is no insertion or anything like that in this function because this function is for
+    ;; when the user presses up, and the user does not expect to find 'his' entered command at the
+    ;; end when he presses up so often that nothing to scroll through is left, he just expects the
+    ;; scrolling throuhg history to just stop on the last (matching) element, this is why the this
+    ;; simple (or ...) is enough
     (or (zerop n)
         (goto-history-element (+ minibuffer-history-position n)))
 
+    ;; - set point so the user gets consistent behaviour, first we almost always put it at point-max,
+    ;; because pressing up when point is at minibuffer-prompt-end keeps it there, and that is unfortunate
+    ;; if did not put it there on purpose
+    ;; - and because we WANT point to be where we put it on purpose, the second thing we do is
+    ;; search for search-string in the updated minibuffer contents so that point ends up at the end
+    ;; of search-string
     (unless (> (length lazy-compile-previous-history) 0)
       (goto-char (point-max)))
-    (when (and p (> (length search-string) 0))
+    (when (and search-point
+               (> (length search-string) 0))
       (goto-char (minibuffer-prompt-end))
       (re-search-forward (regexp-quote search-string) nil t))
 
+    ;; - again, last thing to do is update our state, the lazy-compile-previous-history to contain
+    ;; what is currently in the minibuffer, unless n is zero, then as above, scrolling stopped and
+    ;; nothing should change
     (unless (zerop n)
-      (setq lazy-compile-previous-history (buffer-substring (minibuffer-prompt-end) (point-max))))
+      (setq lazy-compile-previous-history (buffer-substring (minibuffer-prompt-end) (point-max))))))
 
-    ))
+(defun lazy-compile-history-search-reset ()
+  "This is used in keybindings for the `lazy-compile' prompt history search to reset
+the search state when the user changes the contents of the minibuffer.
 
-;; (defvar lazy-compile-match-beginning nil)
+See also `lazy-compile-next-history-element', `lazy-compile-previous-history-element'
+and `lazy-compile-read-command'."
+  (setq minibuffer-history-position 0
+        lazy-compile-previous-history "" ;; (buffer-substring (minibuffer-prompt-end) (point-max))
+        lazy-compile-entered-string nil))
 
-;; (defun lazy-compile-minibuffer-complete ()
-;;   "Complete the minibuffer contents as far as possible.
-;; Return nil if there is no valid completion, else t.
-;; If no characters can be completed, display a list of possible completions.
-;; If you repeat this command after it displayed such a list,
-;; scroll the window of possible completions."
-;;   (interactive)
-;;   (let ((beginning (or lazy-compile-match-beginning (minibuffer-prompt-end))))
-;;     (when (<= beginning (point))
-;;       (completion-in-region beginning (point-max)
-;;                             minibuffer-completion-table
-;;                             minibuffer-completion-predicate))))
+(defun lazy-compile-read-command (&optional command)
+  "This interactivly reads a compile command from the user, with COMMAND default contents
+of the prompt can be specified.
 
-(defun lazy-compile-internal-read-command (&optional command)
+The functions `lazy-compile-next-history-element', `lazy-compile-previous-history-element'
+and `lazy-compile-history-search-reset' implement the history search when the user presses
+up or down in the prompt spawned by this function.
+
+`lazy-compile-delete-from-history' is used when the user request deletion of a history
+element with C-x d
+
+See also `lazy-compile'."
   (let ((ido-enable-replace-completing-read nil)
         (minibuffer-local-completion-map (copy-keymap minibuffer-local-completion-map))
-        (minibuffer-local-map (copy-keymap minibuffer-local-map))
-        (minibuffer-local-shell-command-map (copy-keymap minibuffer-local-shell-command-map))
         (lazy-compile-previous-history command)
         (lazy-compile-entered-string nil)
-        (lazy-compile-saved-completion nil)
         (saved-default-directory default-directory))
-    (define-key minibuffer-local-completion-map (kbd "<tab>") (lambda () (interactive)
-                                                                (call-interactively 'minibuffer-complete)
-                                                                (setq minibuffer-history-position 0
-                                                                      lazy-compile-previous-history (buffer-substring (minibuffer-prompt-end) (point-max))
-                                                                      lazy-compile-entered-string nil)))
-    (define-key minibuffer-local-completion-map " " (lambda () (interactive) (insert " ")))
-    (define-key minibuffer-local-completion-map "?" (lambda () (interactive) (insert "?")))
+    ;; - I did not find a way to specify my own minibuffer-local-completion-map, so I just make a local copy
+    ;; of the existing one and then redefine the keybinds that need to be changed here
+    ;; - I bind up/down to lazy-compile-previous/next-history-element so that it searches through history
+    ;; - I make a 'catch all' binding with [t] so that all keys that have no explicit binding already cause
+    ;; lazy-compile-history-search-reset to be called, so that whenever something changes in the minibuffer,
+    ;; the search state is reset
+    ;; - I bind return, home, etc because with the [t] catch all binding those are overwritten and stop working
+    ;; correctly, so they need to be explicitly bound
+    ;; - the bindings for " " and "?" are because by default minibuffer-local-completion-map binds those to
+    ;; minibuffer-complete but I want to be able to enter " " or "?" into commands
+    ;; - tab, backspace and delete I wanted to reset the search state
+    ;; - C-d is bound to kill-whole-line for convenience
+    ;; - C-x d is bound so that I can delete the current item from history completely
     (define-key minibuffer-local-completion-map (kbd "<up>") 'lazy-compile-previous-history-element)
     (define-key minibuffer-local-completion-map (kbd "<down>") 'lazy-compile-next-history-element)
+
+    (define-key minibuffer-local-completion-map [t] (lambda () (interactive)
+                                                      (unless (and (stringp (this-command-keys))
+                                                                   (string-match "[[:cntrl:]]+" (this-command-keys)))
+                                                        (self-insert-command 1))
+                                                      (lazy-compile-history-search-reset)))
+
+    (define-key minibuffer-local-completion-map (kbd "<return>") 'exit-minibuffer)
+    (define-key minibuffer-local-completion-map (kbd "<home>") 'beginning-of-line)
+    (define-key minibuffer-local-completion-map (kbd "<end>") 'end-of-line)
+    (define-key minibuffer-local-completion-map (kbd "<right>") 'right-char)
+    (define-key minibuffer-local-completion-map (kbd "<left>") 'left-char)
+
+    (define-key minibuffer-local-completion-map " " (lambda () (interactive)
+                                                      (insert " ")
+                                                      (lazy-compile-history-search-reset)))
+    (define-key minibuffer-local-completion-map "?" (lambda () (interactive)
+                                                      (insert "?")
+                                                      (lazy-compile-history-search-reset)))
+    (define-key minibuffer-local-completion-map (kbd "<tab>") (lambda () (interactive)
+                                                                (call-interactively 'minibuffer-complete)
+                                                                (lazy-compile-history-search-reset)))
     (define-key minibuffer-local-completion-map (kbd "<backspace>") (lambda () (interactive)
                                                                       (call-interactively 'delete-backward-char)
-                                                                      (setq minibuffer-history-position 0
-                                                                            lazy-compile-previous-history (buffer-substring (minibuffer-prompt-end) (point-max))
-                                                                            lazy-compile-entered-string nil)))
+                                                                      (lazy-compile-history-search-reset)))
     (define-key minibuffer-local-completion-map (kbd "<delete>") (lambda () (interactive)
                                                                    (call-interactively 'delete-char)
-                                                                   (setq minibuffer-history-position 0
-                                                                         lazy-compile-previous-history (buffer-substring (minibuffer-prompt-end) (point-max))
-                                                                         lazy-compile-entered-string nil)))
-    (define-key minibuffer-local-completion-map (kbd "<space>") (lambda () (interactive)
-                                                                  (insert " ")
-                                                                  (setq minibuffer-history-position 0
-                                                                        lazy-compile-previous-history (buffer-substring (minibuffer-prompt-end) (point-max))
-                                                                        lazy-compile-entered-string nil)))
-    (define-key minibuffer-local-completion-map (kbd "-") (lambda () (interactive)
-                                                            (insert "-")
-                                                            (setq minibuffer-history-position 0
-                                                                  lazy-compile-previous-history (buffer-substring (minibuffer-prompt-end) (point-max))
-                                                                  lazy-compile-entered-string nil)))
+                                                                   (lazy-compile-history-search-reset)))
     (define-key minibuffer-local-completion-map (kbd "C-d") (lambda () (interactive)
                                                               (call-interactively 'kill-whole-line)
-                                                              (setq minibuffer-history-position 0
-                                                                    lazy-compile-previous-history ""
-                                                                    lazy-compile-entered-string nil)))
-    (define-key minibuffer-local-completion-map (kbd "C-x k") (lambda () (interactive)
+                                                              (lazy-compile-history-search-reset)))
+    (define-key minibuffer-local-completion-map (kbd "C-x d") (lambda () (interactive)
                                                                 (lazy-compile-delete-from-history (buffer-substring (minibuffer-prompt-end) (point-max)))
                                                                 (call-interactively 'kill-whole-line)
-                                                                (setq minibuffer-history-position 0
-                                                                      lazy-compile-previous-history ""
-                                                                      lazy-compile-entered-string nil)))
+                                                                (lazy-compile-history-search-reset)))
 
-    (progn ;;minibuffer-with-setup-hook
-        ;; (lambda ()
-        ;;   (shell-completion-vars)
-        ;;   (set (make-local-variable 'minibuffer-default-add-function)
-        ;;        'minibuffer-default-add-shell-commands))
-      (let ((result (completing-read "Lazy Compile: "
-                                     (lambda (string pred action)
-                                       (mapc (lambda (s)
-                                               (setq s (replace-regexp-in-string "[;\"]" "" s))
-                                               (setq s (replace-regexp-in-string "[ \t]*$" "" s))
-                                               (setq s (replace-regexp-in-string "^[ \t]*" "" s))
-                                               (let ((dir (expand-file-name s default-directory)))
-                                                 (when (and (file-exists-p dir)
-                                                            (file-directory-p dir))
-                                                   (setq-local default-directory dir)
-                                                   )))
-                                             (split-string string "cd\\|;" t))
-                                       ;;(message "1: %s %s %s" (prin1-to-string action) string (prin1-to-string pred))
-                                       (let* ((completion (cond ((string-match "\\(\\(?:\\.\\.?\\|~\\|[^ \t\";]+\\)?\\(?:/[^/;\"]*\\)+\\)$" string)
-                                                                 (let ((match (match-string 1 string)))
-                                                                   (save-match-data
-                                                                     (complete-with-action action #'completion-file-name-table match pred))))
-                                                                ((string-match "[^$\"][(]\\([^()]+\\)" string)
-                                                                 (let ((match (match-string 1 string)))
-                                                                   (save-match-data
-                                                                     (complete-with-action action lazy-completions-table-for-elisp match pred))))
-                                                                ((or (string-match "\"\\([^/;\"]+\\)$" string)
-                                                                     (string-match "[^;]+[; \t]+\\([^/;\" ]+\\)$" string))
-                                                                 (let ((match (match-string 1 string)))
-                                                                   (save-match-data
-                                                                     (let ((shell-command-table (nth 2 (shell--command-completion-data))))
-                                                                       (complete-with-action action (completion-table-merge shell-command-table #'completion-file-name-table) match pred)))))
-                                                                (t
-                                                                 (let ((shell-command-table (nth 2 (shell--command-completion-data))))
-                                                                   (complete-with-action action (completion-table-merge shell-command-table #'completion-file-name-table lazy-completions-table-for-elisp) string pred))))))
-                                         ;;(message "2: %s %s %s %s" (prin1-to-string action) string (prin1-to-string pred) (prin1-to-string completion))
-                                         (when (and (stringp completion)
-                                                    (match-string 1 string))
-                                           (setq completion (replace-match completion nil nil string 1)))
-                                         ;;(message "3: %s %s %s %s" (prin1-to-string action) string (prin1-to-string pred) (prin1-to-string completion))
-                                         completion
-                                         )
-                                       )
-                                     nil nil command
-                                     (if (equal (car lazy-compile-history) command)
-                                         '(lazy-compile-history . 1)
-                                       'lazy-compile-history))))
-        (setq-local default-directory saved-default-directory)
-        result))
-    ))
-
-;;(defvar lazy-compile-exit-code 0)
-
-;;(setq compilation-exit-message-function nil)
-;; (defun lazy-compile-exit-message-function (status_ code message)
-;;   (setq lazy-compile-exit-code code)
-;;   (cons message code))
+    (let ((result (completing-read "Lazy Compile: "
+                                   (lambda (string pred action)
+                                     ;; - this updates the default-directory with any 'cd' commands that can be found in string,
+                                     ;; so that when we try to complete filenames we can actually complete them correctly as if
+                                     ;; the 'cd' commands in the compile command had already happened
+                                     (mapc (lambda (s)
+                                             (setq s (replace-regexp-in-string "[;\"]" "" s))
+                                             (setq s (replace-regexp-in-string "[ \t]*$" "" s))
+                                             (setq s (replace-regexp-in-string "^[ \t]*" "" s))
+                                             (let ((dir (expand-file-name s default-directory)))
+                                               (when (and (file-exists-p dir)
+                                                          (file-directory-p dir))
+                                                 (setq-local default-directory dir)
+                                                 )))
+                                           (split-string string "cd\\|;" t))
+                                     ;; - this matches if point is at the end of something that looks like a path or like a elisp
+                                     ;; expression and calls complete-with-action with the appropriate completion table accordingly
+                                     ;; - notice that when we match part of the string as path, elisp etc, we then apply complete-with-action
+                                     ;; to only the match, and not the whole minibuffer contents (string)
+                                     (let* ((completion (cond ((string-match "\\(\\(?:\\.\\.?\\|~\\|[^ \t\";]+\\)?\\(?:/[^/;\"]*\\)+\\)$" string)
+                                                               ;; - matched path, notice that we use completion-file-name-table although lazy-completions-table-for-path
+                                                               ;; exists, but that uses completion--file-name-table, which has problems with how we later change the
+                                                               ;; contents of the minibuffer with replace-match (args out of range for some reason, couldn't figure out
+                                                               ;; the exact problem)
+                                                               (let ((match (match-string 1 string)))
+                                                                 (save-match-data
+                                                                   (complete-with-action action #'completion-file-name-table match pred))))
+                                                              ((string-match "[^$\"][(]\\([^()]+\\)" string)
+                                                               ;; - matched elisp expression, use lazy-completions-table-for-elisp
+                                                               (let ((match (match-string 1 string)))
+                                                                 (save-match-data
+                                                                   (complete-with-action action lazy-completions-table-for-elisp match pred))))
+                                                              ((or (string-match "\"\\([^/;\"]+\\)$" string)
+                                                                   (string-match "[^;]+[; \t]+\\([^/;\" ]+\\)$" string))
+                                                               ;; - matched shell command, use (shell--command-completion-data), notice thats a function, and we use
+                                                               ;; (nth 2 ...) to get the actual shell-commmand-table, thats just how emacs does it
+                                                               (let ((match (match-string 1 string)))
+                                                                 (save-match-data
+                                                                   (let ((shell-command-table (nth 2 (shell--command-completion-data))))
+                                                                     (complete-with-action action (completion-table-merge shell-command-table #'completion-file-name-table) match pred)))))
+                                                              (t
+                                                               ;; - default case, try everything
+                                                               (let ((shell-command-table (nth 2 (shell--command-completion-data))))
+                                                                 (complete-with-action action (completion-table-merge shell-command-table #'completion-file-name-table lazy-completions-table-for-elisp) string pred))))))
+                                       ;; - when we had a successfull match above, AND the complete-with-action returned a single string (and not a list or one of
+                                       ;; those other metadata things it can return), then we replace-match our match in string with the returned completion, meaning
+                                       ;; we replace only the relevant part of string that matched above with the completion returned by complete-with-action
+                                       ;; - we have something like "ls /tmp/foo" and then we matched the path "/tmp/foo" above, and complete-with-action was called
+                                       ;; with "/tmp/foo" as third argument and returned "/tmp/foobar.txt" as completion, then what we do here is replace "/tmp/foo"
+                                       ;; with "/tmp/foobar.txt" in "ls /tmp/foo" so that we get "ls /tmp/foobar.txt" as end result
+                                       (when (and (stringp completion)
+                                                  (match-string 1 string))
+                                         (setq completion (replace-match completion nil nil string 1)))
+                                       completion))
+                                   nil nil command
+                                   (if (equal (car lazy-compile-history) command)
+                                       '(lazy-compile-history . 1)
+                                     'lazy-compile-history))))
+      (setq-local default-directory saved-default-directory)
+      result)))
 
 (defun lazy-compile-command (command &optional comint)
-  (interactive
-   (list
-    (lazy-compile-internal-read-command command)
-    (consp current-prefix-arg)))
+  "This function is a modified, non-interactive version of `compile'. It takes a
+COMMAND, checks whether the command is a shell command or a elisp expression,
+and calls either `compilation-start', `eval-expression' or `command-execute'
+accordingly.
+
+If COMINT is non-nil the opened *compilation* buffer will be in comint-mode.
+
+See also `lazy-compile'."
   (let ((compilation-ask-about-save (not (called-interactively-p 'interactive)))
         (compilation-read-command (not (called-interactively-p 'interactive))))
     (save-some-buffers (not compilation-ask-about-save)
@@ -3304,6 +3426,24 @@ With argument N, it uses the Nth previous element."
   command)
 
 (defun lazy-compile ()
+  "The lazy version of `compile'. Prompts the user interactively with the last
+used compile command or nothing if the current project was never compiled.
+The user can enter a new compile command or search through the compile command
+history with the up and down arrow keys. The entered compile command can be
+a shell command, an elisp expression or elisp command.
+
+After the user presses return this function invokes the minibuffer contents
+as shell command or evaluates it as elisp expression. If the compile command
+is a shell command it opens a new buffer in compilation-mode and display the
+shell commands output, if the compile command is a elisp expression it is just
+evaluated with `eval-expression', if it is a elisp command it is executed with
+`command-execute'.
+
+The decision if the compile command is a elisp expression or shell command is
+made in `lazy-compile-command'.
+
+The compile command history search is implemented in `lazy-compile-read-command',
+`lazy-compile-next-history-element' and `lazy-compile-previous-history-element'."
   (interactive)
   (if (and (called-interactively-p 'interactive)
            (not lazy-name))
@@ -3320,24 +3460,22 @@ With argument N, it uses the Nth previous element."
       (lazy-with-directory (lazy-get-config-val 'basedir)
                            (cond ((listp cmd)
                                   (let* ((old-history cmd)
-                                         ;;(list "(print \"foo\")" "(print \"lala\")" "flycheck-compile" "(print \"bar\")" "ls -la" "ls *.el")
                                          (lazy-compile-history (cl-remove-duplicates (append old-history compile-history) :test 'equal :from-end t))
                                          (old-cmd (car lazy-compile-history))
-                                         (new-cmd (lazy-compile-command (lazy-compile-internal-read-command old-cmd))))
+                                         (new-cmd (lazy-compile-command (lazy-compile-read-command old-cmd) (consp current-prefix-arg))))
                                     (unless (string-equal old-cmd new-cmd)
                                       (lazy-set-config-val 'compile-cmd (cl-remove-duplicates (append (list new-cmd) old-history) :test 'equal :from-end t)))))
                                  ((stringp cmd)
                                   (let* ((old-cmd cmd)
                                          (lazy-compile-history (list old-cmd))
-                                         (new-cmd (lazy-compile-command (lazy-compile-internal-read-command old-cmd)))
+                                         (new-cmd (lazy-compile-command (lazy-compile-read-command old-cmd) (consp current-prefix-arg)))
                                          (new-list (list new-cmd old-cmd)))
                                     (unless (string-equal old-cmd new-cmd)
                                       (lazy-set-config-val 'compile-cmd new-list))))
                                  (t
                                   (let ((lazy-compile-history nil)
-                                        (new-cmd (lazy-compile-command (lazy-compile-internal-read-command))))
-                                    (lazy-set-config-val 'compile-cmd (list new-cmd))))))
-      )))
+                                        (new-cmd (lazy-compile-command (lazy-compile-read-command) (consp current-prefix-arg))))
+                                    (lazy-set-config-val 'compile-cmd (list new-cmd)))))))))
 
 ;; ---------------------------------------------------------------------
 ;; Files
