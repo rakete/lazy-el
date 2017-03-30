@@ -92,7 +92,7 @@ Also tries to find org files with projects in files from `recentf-list'."
                      ((let ((lazy-org-filename (concat (expand-file-name (cadr (assoc 'basedir p))) (cadr (assoc 'name p)) ".org")))
                         (when (file-exists-p lazy-org-filename)
                           (add-to-list 'org-files lazy-org-filename))))))
-             lazy-list)
+             lazy-project-list)
     (when (boundp 'recentf-list)
       (dolist (recent-file recentf-list)
         (when (and (file-exists-p recent-file)
@@ -135,7 +135,7 @@ Also tries to find org files with projects in files from `recentf-list'."
                                                                                (let ((path (cadr (assoc 'basedir v))))
                                                                                  (when path
                                                                                    (add-to-list 'xs path))))
-                                                                             lazy-list)
+                                                                             lazy-project-list)
                                                                     xs)))))
                 :test #'string-equal))))
 
@@ -667,7 +667,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
     (let* ((proj-name (lazy-org-entry-name marker))
            (alist (lazy-eval-alist proj-name (lazy-org-entry-alist marker))))
       (when alist
-        (puthash proj-name alist lazy-list)
+        (puthash proj-name alist lazy-project-list)
         ;;(message "Defined: %s" proj-name)
         alist))))
 
@@ -928,7 +928,7 @@ See also `lazy-org-entry-nearest-active'."
       (maphash (lambda (title alist)
                  (when (string-match (concat "^" proj-name ":\\(.*\\)$") title)
                    (add-to-list 'todos title)))
-               lazy-list)
+               lazy-project-list)
       todos)))
 
 ;; (lazy-org-project-todos "diplom")

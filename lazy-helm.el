@@ -122,7 +122,7 @@
                 (dolist (friend (lazy-get-config-val 'friends nil t))
                   (if (file-exists-p (expand-file-name friend))
                       (insert (concat (expand-file-name friend) "\n"))
-                    (when (gethash friend lazy-list)
+                    (when (gethash friend lazy-project-list)
                       (unless (get-buffer (lazy-fib-name friend))
                         (lazy-fib-init friend))
                       (if (with-current-buffer (lazy-fib-name friend)

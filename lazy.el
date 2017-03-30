@@ -168,7 +168,7 @@ See also `lazy-required-vars' `lazy-var-before-get-functions'")
                                                                   val)))
                                         (friends . (lambda (var val &optional proj-name config-alist)
                                                      (loop for friend in val
-                                                           if (gethash friend lazy-list)
+                                                           if (gethash friend lazy-project-list)
                                                            collect friend))))
   "Config vars from `lazy-required-vars' and `lazy-optional-vars' (except 'name')
 can be associated with a function in this association list, which will be
@@ -988,7 +988,7 @@ are implemented.")
 
 (defvar lazy-completions-cache (make-hash-table :test 'equal))
 
-(defvar lazy-list (make-hash-table :test 'equal))
+(defvar lazy-project-list (make-hash-table :test 'equal))
 
 ;; ---------------------------------------------------------------------
 ;; Customization
@@ -1046,21 +1046,21 @@ are implemented.")
                                  (lazy-guess-alist t t)))))
       (cond ((and guessed-alist
                   (eq try-guessing 'quiet)
-                  (gethash (cadr (assoc 'name guessed-alist)) lazy-list nil))
+                  (gethash (cadr (assoc 'name guessed-alist)) lazy-project-list nil))
              (lazy-load-project (cadr (assoc 'name guessed-alist))))
             ((and guessed-alist
                   (eq try-guessing 'quiet)
-                  (not (gethash (cadr (assoc 'name guessed-alist)) lazy-list nil)))
+                  (not (gethash (cadr (assoc 'name guessed-alist)) lazy-project-list nil)))
              (lazy-def (cadr (assoc 'name guessed-alist)) guessed-alist)
              (lazy-load-project (cadr (assoc 'name guessed-alist))))
             ((and guessed-alist
                   try-guessing
-                  (gethash (cadr (assoc 'name guessed-alist)) lazy-list nil)
+                  (gethash (cadr (assoc 'name guessed-alist)) lazy-project-list nil)
                   (y-or-n-p (concat "Load project " (cadr (assoc 'name guessed-alist)) "? ")))
              (lazy-load-project (cadr (assoc 'name guessed-alist))))
             ((and guessed-alist
                   try-guessing
-                  (not (gethash (cadr (assoc 'name guessed-alist)) lazy-list nil))
+                  (not (gethash (cadr (assoc 'name guessed-alist)) lazy-project-list nil))
                   (y-or-n-p (concat "Create project " (cadr (assoc 'name guessed-alist)) "? ")))
              (lazy-def (cadr (assoc 'name guessed-alist)) guessed-alist)
              (lazy-load-project (cadr (assoc 'name guessed-alist))))
@@ -1084,7 +1084,7 @@ are implemented.")
 
 (defun lazy-names ()
   (let ((names nil))
-    (maphash (lambda (k v) (when k (add-to-list 'names k))) lazy-list)
+    (maphash (lambda (k v) (when k (add-to-list 'names k))) lazy-project-list)
     names))
 
 (defun lazy-use-ido ()
@@ -1273,11 +1273,11 @@ trying to evaluate `lazy-global-cache-root'/projects.el"
 (cl-defun lazy-find-alist (&optional proj-name (inherit t))
   "Get a projects config-alist from the global projects hashmap."
   (when (or proj-name (setq proj-name lazy-name))
-    (let* ((child (gethash proj-name lazy-list))
+    (let* ((child (gethash proj-name lazy-project-list))
            (alist child))
       (while (and (assoc 'parent child)
                   inherit)
-        (setq child (gethash (cadr (assoc 'parent child)) lazy-list)
+        (setq child (gethash (cadr (assoc 'parent child)) lazy-project-list)
               alist (append alist (cl-remove-if (lambda (x) (cl-some (lambda (y) (eq (cl-first x) (cl-first y))) alist)) child))))
       alist)))
 
@@ -1318,7 +1318,7 @@ See also `lazy-var-before-get-functions'."
         (setq new-alist (delq (assoc key new-alist) new-alist)))
       (add-to-list 'new-alist `(,key ,value))
       (unless (equal new-alist current-alist)
-        (puthash proj-name new-alist lazy-list)
+        (puthash proj-name new-alist lazy-project-list)
         (lazy-backend-funcall (lazy-detect-backend proj-name)
                                  'save proj-name new-alist)))))
 
@@ -1341,8 +1341,8 @@ to verify the evaluated configuration."
                                 (value (condition-case nil (eval lisp) (error lisp))))
                            (unless (eq key 'name)
                              (add-to-list 'evaluated-config-alist `(,key ,value)))))))
-    (when (gethash proj-name lazy-list)
-      (setq result-alist (lazy-alist-union (gethash proj-name lazy-list) result-alist)))
+    (when (gethash proj-name lazy-project-list)
+      (setq result-alist (lazy-alist-union (gethash proj-name lazy-project-list) result-alist)))
     ;; both check vars functions error, but I don't want to interrupt when loading emacs,
     ;; so this catches the errors but still outputs the error message
     (if (or (condition-case err (lazy-check-required-vars proj-name result-alist) (error (message (error-message-string err))))
@@ -1361,7 +1361,7 @@ See also `lazy-undef', `lazy-required-vars' and `lazy-optional-vars'."
   (cond ((stringp proj-name)
          (let ((alist (lazy-eval-alist proj-name config-alist)))
            (when (and alist (file-exists-p (cadr (assoc 'basedir alist))))
-             (puthash proj-name alist lazy-list)
+             (puthash proj-name alist lazy-project-list)
              (message "Defined: %s" proj-name)
              alist)))
         ((and (functionp 'lazy-org-entry-define-project)
@@ -1658,7 +1658,7 @@ See also `lazy-undef', `lazy-required-vars' and `lazy-optional-vars'."
 (defun lazy-undef (&optional proj-name)
   "Opposite of `lazy-def'."
   (interactive "sProject: ")
-  (remhash proj-name lazy-list)
+  (remhash proj-name lazy-project-list)
   (remhash proj-name lazy-completions-cache))
 
 (defmacro lazy-with-current-project (proj-name &rest body)
@@ -3629,7 +3629,7 @@ Returned file paths are relative to the project's basedir."
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (get-buffer (lazy-fib-name proj-name))
     (lazy-fib-init proj-name))
-  (when (or proj-alist (gethash proj-name lazy-list nil))
+  (when (or proj-alist (gethash proj-name lazy-project-list nil))
     (with-current-buffer (lazy-fib-name proj-name)
       (let ((basedir (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist)))
             (current-filename nil)
@@ -3726,7 +3726,8 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
                  (when (cl-some (lambda (f)
                                   (string-equal f proj-name))
                                 (lazy-config-val 'friends c))
-                   (setq r (append r `(,k)))))) lazy-list)
+                   (setq r (append r `(,k))))))
+             lazy-project-list)
     (cl-remove-duplicates (append r (lazy-config-val 'friends proj-name t)) :test #'string-equal)))
 
 (defun lazy-fib-friend-matches (&optional regex proj-name proj-alist)
@@ -4010,9 +4011,9 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
                    (add-to-list 'results k))))
              (or (and name-list
                       (let ((temp-hash (make-hash-table :test 'equal)))
-                        (mapc (lambda (name) (puthash name (gethash name lazy-list) temp-hash)) name-list)
+                        (mapc (lambda (name) (puthash name (gethash name lazy-project-list) temp-hash)) name-list)
                         temp-hash))
-                 lazy-list))
+                 lazy-project-list))
     results))
 
 
@@ -4026,9 +4027,9 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
                  (add-to-list 'results k)))
              (or (and name-list
                       (let ((temp-hash (make-hash-table :test 'equal)))
-                        (mapc (lambda (name) (puthash name (gethash name lazy-list) temp-hash)) name-list)
+                        (mapc (lambda (name) (puthash name (gethash name lazy-project-list) temp-hash)) name-list)
                         temp-hash))
-                 lazy-list))
+                 lazy-project-list))
     results))
 
 (defun lazy-find-projects-owning-buffer (buf &optional name-list)
@@ -4042,9 +4043,9 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
                  (add-to-list 'projects k)))
              (or (and name-list
                       (let ((temp-hash (make-hash-table :test 'equal)))
-                        (mapc (lambda (name) (puthash name (gethash name lazy-list) temp-hash)) name-list)
+                        (mapc (lambda (name) (puthash name (gethash name lazy-project-list) temp-hash)) name-list)
                         temp-hash))
-                 lazy-list))
+                 lazy-project-list))
     projects))
 
 (defun lazy-find-unique-paths (paths)
