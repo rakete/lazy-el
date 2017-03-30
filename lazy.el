@@ -4055,7 +4055,7 @@ and their parent directory used as basedir.")
                                          `(1 . ,(with-current-buffer buffer major-mode)))))
                                (basedir . (;; default-directory
                                            (()
-                                            `(1 . ,(expand-file-name default-directory)))
+                                            `(1 . ,(expand-file-name (or default-directory "."))))
                                            ;; buffer-file-name
                                            ((buffer)
                                             (when (buffer-file-name buffer)
@@ -4218,7 +4218,7 @@ and their parent directory used as basedir.")
                                                 (when languages
                                                   `(10 . ,languages))))))))
 
-(defun lazy-guess-alist (&optional ask-basedir ask-name)
+(defun* lazy-guess-alist (&optional ask-basedir ask-name)
   ;; go through lazy-guess-functions and collect all symbols that are used
   ;; as arguments, we'll bind those in a closure around the execution
   ;; of the function bodies
@@ -4252,7 +4252,9 @@ and their parent directory used as basedir.")
                                         (setf (symbol-value arg) (guess-symbol arg))
                                         ))
                                     (let ((r (condition-case e (eval expr)
-                                               (error (message "error while guessing %S: %S in %s" sym e (prin1-to-string expr))))))
+                                               (error (message "error while guessing %S: %S in %s" sym e (prin1-to-string expr))
+                                                      (backtrace)
+                                                      (cl-return-from "lazy-guess-alist" nil)))))
                                       (when r (add-to-list 'scores r))))))))
       (dolist (varchecks (append lazy-required-vars lazy-optional-vars))
         ;; for each var check if it is already set, if not use guess-symbol to guess it
