@@ -4306,7 +4306,7 @@ and their parent directory used as basedir.")
                      if (setq pattern-projects
                               (lazy-find-projects-matching-patterns (lazy-get-config-val 'src-patterns proj-name t)
                                                                     already-defined))
-                     return (let ((already-defined-result (gethash (car pattern-projects) lazy-list)))
+                     return (let ((already-defined-result (gethash (car pattern-projects) lazy-project-list)))
                               ;; add name if it does not already exist to alist, doubles functionality in lazy-def
                               (unless (assoc 'name already-defined-result)
                                 (add-to-list 'already-defined-result `(name ,(car pattern-projects))))
