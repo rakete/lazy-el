@@ -225,7 +225,8 @@ See also `lazy-get-config-val'.")
 (defvar lazy-after-unload-hook '()
   "Hook that runs after unloading a project.")
 
-(defvar lazy-history '())
+(defvar lazy-project-history '()
+  "History of Lazy projects that were opened in the current emacs session.")
 
 (defvar lazy-buildsystems '((gnu-make ((files ("autogen.sh" "configure" "Makefile"))
                                        (build ("make"))))
@@ -1288,7 +1289,7 @@ be specified.
 If the third argument INHERIT is non-nil, all parents will queried
 for the KEY and the first value that is found is returned.
 
-See also `lazy-var-before-get-functions'."
+See also `lazy-var-before-get-functions', `lazy-set-config-val'."
   (unless proj-name
     (lazy-assert-proj)
     (setq proj-name lazy-name))
@@ -1307,7 +1308,9 @@ See also `lazy-var-before-get-functions'."
   "Alias for `lazy-get-config-val' to ensure backward compatibility.")
 
 (defun lazy-set-config-val (key value &optional proj-name)
-  "Set the value associated with KEY to VALUE in config of project NAME."
+  "Set the value associated with KEY to VALUE in config of project NAME.
+
+See also `lazy-get-config-val'."
   (unless proj-name
     (lazy-assert-proj)
     (setq proj-name lazy-name))
@@ -1795,6 +1798,7 @@ See also `lazy-load', `lazy-unload', `lazy-fib-init', `lazy-visit-saved-open-fil
                     (symbolp (car startup-hook)))
                (progn (message "eval startup-hook...") (eval startup-hook))))))
     (lazy-update-tags proj-name)
+    (add-to-list 'lazy-project-history proj-name)
     (message "Loading project %s done" proj-name)))
 
 (defun lazy-load (&optional proj-name)
@@ -1834,7 +1838,7 @@ See also `lazy-load-project'"
 (defun lazy-unload (&optional quiet)
   "Unload the current project configuration after running the shutdown hook.
 
-See also `lazy-close-files', `lazy-close-friends', `lazy-history'
+See also `lazy-close-files', `lazy-close-friends', `lazy-project-history'
 `lazy-before-files-unload-hook', `lazy-before-unload-hook', `lazy-after-unload-hook'"
   (interactive "P")
   (let ((lazy-prevent-after-save-update t)
@@ -1859,7 +1863,6 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-history'
                 (mapc 'funcall (lazy-get-config-val 'shutdown-hook))))
             (run-hooks 'lazy-after-unload-hook))
         (error nil)))
-    (add-to-list 'lazy-history lazy-name)
     (setq lazy-name nil)
     (modify-frame-parameters (selected-frame) (list (cons 'name "Emacs")))
     (setq compile-command nil)
