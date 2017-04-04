@@ -668,7 +668,7 @@ See also `lazy-get-config-val'.")
   "Maps file suffixes to regexps used as source-patterns when guessing a
 project config from the currently opened file in the active buffer.")
 
-(defvar lazy-config-save-location (concat (file-name-as-directory lazy-global-cache-root) "projects.el")
+(defvar lazy-config-save-location (expand-file-name "projects.el" (file-name-as-directory lazy-global-cache-root))
   "Where to save project configs in elisp. If this is a filename project
 configs will be written to that file. If it is a directory an elisp
 file with the projects name will be created in that directory.")
@@ -1148,8 +1148,8 @@ Examples:
 trying to evaluate `lazy-global-cache-root'/projects.el"
   (cond ((file-exists-p lazy-config-save-location)
          (load lazy-config-save-location))
-        ((file-exists-p (concat (file-name-as-directory (expand-file-name lazy-global-cache-root)) "projects.el"))
-         (load (concat (file-name-as-directory (expand-file-name lazy-global-cache-root)) "projects.el")))))
+        ((file-exists-p (expand-file-name "projects.el" (file-name-as-directory (expand-file-name lazy-global-cache-root))))
+         (load (expand-file-name "projects.el" (file-name-as-directory (expand-file-name lazy-global-cache-root)))))))
 
 (cl-defun lazy-find-alist (&optional proj-name (inherit t))
   "Get a projects config-alist from the global projects hashmap."
@@ -1298,7 +1298,7 @@ See also `lazy-undef', `lazy-required-vars' and `lazy-optional-vars'."
     (cond
      ;; find file in directory named after project
      ((condition-case nil (directory-files (expand-file-name lazy-config-save-location)) (error nil))
-      (with-current-buffer (find-file-noselect (concat (expand-file-name lazy-config-save-location) proj-name ".el"))
+      (with-current-buffer (find-file-noselect (expand-file-name (concat proj-name ".el") (expand-file-name lazy-config-save-location)))
         (save-excursion
           (goto-char (or (lazy-find-project-elisp-configuration-in-buffer proj-name) (point-max)))
           (point-marker))))
@@ -1308,10 +1308,10 @@ See also `lazy-undef', `lazy-required-vars' and `lazy-optional-vars'."
                    (write-region "" nil (expand-file-name lazy-config-save-location))
                    t)
                (setq save-location lazy-config-save-location))
-          (and (or (file-exists-p (concat (file-name-as-directory (expand-file-name lazy-global-cache-root)) "projects.el"))
-                   (write-region "" nil (concat (file-name-as-directory (expand-file-name lazy-global-cache-root)) "projects.el"))
+          (and (or (file-exists-p (expand-file-name "projects.el" (file-name-as-directory (expand-file-name lazy-global-cache-root))))
+                   (write-region "" nil (expand-file-name "projects.el" (file-name-as-directory (expand-file-name lazy-global-cache-root))))
                    t)
-               (setq save-location (concat (file-name-as-directory (expand-file-name lazy-global-cache-root)) "projects.el"))))
+               (setq save-location (expand-file-name "projects.el" (file-name-as-directory (expand-file-name lazy-global-cache-root))))))
       (with-current-buffer (find-file-noselect (expand-file-name save-location))
         (save-excursion
           (cond ((condition-case nil (goto-char (lazy-find-project-elisp-configuration-in-buffer proj-name)) (error nil))
@@ -4462,7 +4462,9 @@ and their parent directory used as basedir.")
     (add-hook 'after-load-hook 'lazy-after-save-update)
     (add-hook 'after-save-hook 'lazy-jump-cleanup-highlight)
     (add-hook 'pre-command-hook 'lazy-pre-command-remove-jump-delete-buffer)
-    (load-file (concat (file-name-as-directory lazy-global-cache-root) "projects.el"))))
+    (let ((projects-el (expand-file-name "projects.el" (file-name-as-directory lazy-global-cache-root))))
+      (when (file-exists-p projects-el)
+        (load-file projects-el)))))
 
 (provide 'lazy)
 
