@@ -919,31 +919,24 @@ are implemented.")
                                                            (cdr (reverse (split-string (expand-file-name path) "/"))))))))
 
 (defun lazy-assert-proj (&optional try-guessing)
+  "Assert that a lazy project is currently active.
+
+If TRY-GUESSING is t this will guess a project configuration
+and ask the user about loading it.
+
+If TRY-GUESSING is nil and no lazy project is active, this
+will throw an error.
+
+See also `lazy-guess-alist'."
   (unless lazy-name
     (let* ((continue-prevent-restore t)
-           (guessed-alist (cond ((eq try-guessing 'quiet)
-                                 (lazy-guess-alist nil nil))
-                                (try-guessing
-                                 (lazy-guess-alist t t)))))
+           (guessed-alist (when try-guessing
+                            (lazy-guess-alist t t))))
       (cond ((and guessed-alist
-                  (eq try-guessing 'quiet)
-                  (gethash (cadr (assoc 'name guessed-alist)) lazy-project-list nil))
-             (lazy-load-project (cadr (assoc 'name guessed-alist))))
-            ((and guessed-alist
-                  (eq try-guessing 'quiet)
-                  (not (gethash (cadr (assoc 'name guessed-alist)) lazy-project-list nil)))
-             (lazy-def (cadr (assoc 'name guessed-alist)) guessed-alist)
-             (lazy-load-project (cadr (assoc 'name guessed-alist))))
-            ((and guessed-alist
                   try-guessing
-                  (gethash (cadr (assoc 'name guessed-alist)) lazy-project-list nil)
                   (y-or-n-p (concat "Load project " (cadr (assoc 'name guessed-alist)) "? ")))
-             (lazy-load-project (cadr (assoc 'name guessed-alist))))
-            ((and guessed-alist
-                  try-guessing
-                  (not (gethash (cadr (assoc 'name guessed-alist)) lazy-project-list nil))
-                  (y-or-n-p (concat "Create project " (cadr (assoc 'name guessed-alist)) "? ")))
-             (lazy-def (cadr (assoc 'name guessed-alist)) guessed-alist)
+             (unless (gethash (cadr (assoc 'name guessed-alist)) lazy-project-list nil)
+               (lazy-def (cadr (assoc 'name guessed-alist)) guessed-alist))
              (lazy-load-project (cadr (assoc 'name guessed-alist))))
             (t
              (error "No project is set!"))))))
