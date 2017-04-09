@@ -1007,7 +1007,9 @@ all lists within the list XS.
 is the one that overwrites values in the first alist if they both
 contain a similar key."
   (append (mapcar (lambda (c)
-                    (or (lazy-assoc-pop (car c) alist2) c)) alist1) alist2))
+                    (or (lazy-assoc-pop (car c) alist2) c))
+                  alist1)
+          alist2))
 
 (defun lazy-chomp (str)
   "Chomp leading and tailing whitespace from STR."
@@ -1192,11 +1194,15 @@ See also `lazy-get-config-val'."
     (when current-alist
       (while (assoc key new-alist)
         (setq new-alist (delq (assoc key new-alist) new-alist)))
-      (add-to-list 'new-alist `(,key ,value))
+      (when (and (eq key 'basedir)
+                 (not value))
+        (error "Can not set basedir to nil."))
+      (add-to-list 'new-alist `(,key ,value) t)
       (unless (equal new-alist current-alist)
-        (puthash proj-name new-alist lazy-project-list)
+        ;;(puthash proj-name new-alist lazy-project-list)
         (lazy-backend-funcall (lazy-detect-backend proj-name)
-                                 'save proj-name new-alist)))))
+                              'save proj-name new-alist)
+        ))))
 
 (cl-defun lazy-eval-alist (proj-name config-alist)
   "Evaluates a CONFIG-ALIST for PROJ-NAME by calling eval on every
@@ -1320,46 +1326,95 @@ See also `lazy-undef', `lazy-required-vars' and `lazy-optional-vars'."
      (t (error "lazy: could not find a location to save %s, see lazy-config-save-location" proj-name)))))
 
 (defun lazy-config-insert (proj-name config-alist &optional insert-undefined insert-internal)
+  "Insert a project configuration into the current buffer.
+
+This inserts the configuration CONFIG-ALIST as project named PROJ-NAME
+as emacs lisp expression into the current buffer.
+
+When INSERT-UNDEFINED is t then every project variable that is not
+set in CONFIG-ALIST but is present in `lazy-required-vars' or
+`lazy-optional-vars' is still inserted as a (var . nil) tuple.
+
+When INSERT-INTERNAL is t then every project variable from
+`lazy-internal-vars' is also inserted.
+
+See also `lazy-config-save'."
+  (when (or (not (cadr (assoc 'basedir config-alist)))
+            (not (stringp (cadr (assoc 'basedir config-alist)))))
+    (error "Not inserting project without basedir!"))
   (save-excursion
-    (insert (concat "(lazy-def \"" proj-name "\" '("))
-    (cl-loop for k in (append lazy-required-vars lazy-optional-vars)
-             if (and (not (eq (car k) 'name))
-                     (or (not (cl-some (lambda (j) (eq (car k) j)) lazy-internal-vars))
-                         insert-internal)
-                     (or (not (cdr (assoc (car k) lazy-var-before-get-functions)))
-                         (not (string-equal (prin1-to-string (funcall (cdr (assoc (car k) lazy-var-before-get-functions)) (car k) nil))
-                                            (prin1-to-string (lazy-get-config-val (car k) proj-name))))
-                         insert-internal))
-             do (when (or insert-undefined
-                          (assoc (car k) config-alist))
-                  (insert (concat "(" (symbol-name (car k)) " " (prin1-to-string (cadr (assoc (car k) config-alist))) ")"))
-                  (unless (eq (car k) (car (last lazy-optional-vars)))
-                    (newline))
-                  (indent-according-to-mode)))
-    (insert "))\n")))
+    (let ((string (concat "(lazy-def \"" proj-name "\" '(")))
+      (cl-loop for k in (append lazy-required-vars lazy-optional-vars)
+               if (and (not (eq (car k) 'name))
+                       (or (eq (car k) 'basedir)
+                           (not (cl-some (lambda (j) (eq (car k) j)) lazy-internal-vars))
+                           insert-internal)
+                       (or (eq (car k) 'basedir)
+                           insert-undefined
+                           (not (cdr (assoc (car k) lazy-var-before-get-functions)))
+                           (not (string-equal (prin1-to-string (funcall (cdr (assoc (car k) lazy-var-before-get-functions)) (car k) nil))
+                                              (prin1-to-string (lazy-get-config-val (car k) proj-name))))
+                           insert-internal))
+               do (when (or insert-undefined
+                            (assoc (car k) config-alist))
+                    (setq string (concat string "(" (symbol-name (car k)) " " (prin1-to-string (cadr (assoc (car k) config-alist))) ")"))
+                    (unless (eq (car k) (car (last lazy-optional-vars)))
+                      (setq string (concat string "\n")))
+                    (indent-according-to-mode)))
+      (setq string (concat string "))\n"))
+      (if (string-match ".*\(basedir .*" string)
+          (progn (insert string)
+                 (indent-region (point-min) (point-max) nil))
+        (print string)
+        (error "Not inserting project without basedir!")))))
 
 (defun lazy-config-save (proj-name config-alist)
-  (let ((marker (lazy-find-save-location-marker proj-name config-alist)))
+  "Save a project configuration.
+
+Save project configuration CONFIG-ALIST under project name
+PROJ-NAME as emacs lisp expression.
+
+You can set `lazy-config-save-location' to customize where
+the project configuration is saved.
+
+See also `lazy-config-insert', `lazy-find-save-location-marker'"
+  (when (or (not (cadr (assoc 'basedir config-alist)))
+            (not (stringp (cadr (assoc 'basedir config-alist)))))
+    (error "Not saving project without basedir!"))
+  (let ((marker (lazy-find-save-location-marker proj-name)))
     (lazy-with-marker marker
-                 (let ((mod (buffer-modified-p)))
-                   (cond ((looking-at "(lazy-def.*")
-                          (let* ((begin (point))
-                                 (end (save-excursion (thing-at-point--end-of-sexp) (point)))
-                                 (old-alist (eval (nth 2 (read (buffer-substring begin end)))))
-                                 (new-alist (lazy-alist-union old-alist config-alist)))
-                            (kill-region begin end)
-                            (lazy-config-insert proj-name new-alist)
-                            (call-interactively 'eval-defun)))
-                         (t
-                          (goto-char (point-max))
-                          (newline)
-                          (newline)
-                          (lazy-config-insert proj-name config-alist)
-                          (call-interactively 'eval-defun)))
-                   (save-buffer)
-                   (set-buffer-modified-p mod)))))
+                      (let ((mod (buffer-modified-p)))
+                        (cond ((looking-at "(lazy-def.*")
+                               (let* ((begin (point))
+                                      (end (save-excursion (thing-at-point--end-of-sexp) (point)))
+                                      (old-alist (eval (nth 2 (read (buffer-substring begin end)))))
+                                      (new-alist (lazy-alist-union old-alist config-alist)))
+                                 (kill-region begin end)
+                                 (lazy-config-insert proj-name new-alist)
+                                 (call-interactively 'eval-defun)
+                                 ))
+                              (t
+                               (goto-char (point-max))
+                               (unless (split-string (buffer-string) "\n" t)
+                                 (newline)
+                                 (newline))
+                               (lazy-config-insert proj-name config-alist)
+                               (call-interactively 'eval-defun)
+                               ))
+                        (save-buffer)
+                        (set-buffer-modified-p mod)))))
 
 (cl-defun lazy-config-buffer (&optional (state :create) proj-name config-alist)
+  "The config buffer function is used to open a buffer for creating or
+editing a lazy project.
+
+This function is supposed to be called through `lazy-backend-funcall' when
+the user want to edit or create a project.
+
+The requested operation is specified in STATE as :create or :edit. The
+project name is given in PROJ-NAME and its configuration in CONFIG-ALIST.
+
+See also `lazy-define-backend'."
   (cl-case state
     (:create
      (let* ((proj-b (current-buffer))
@@ -1370,20 +1425,23 @@ See also `lazy-undef', `lazy-required-vars' and `lazy-optional-vars'."
        (set-window-dedicated-p window t)
        (emacs-lisp-mode)
        (buffer-disable-undo)
+       (kill-region (point-min) (point-max))
        (lazy-config-insert (or proj-name (cadr (assoc 'name config-alist)) "NewProject") config-alist t)
        (goto-char 0)
        (end-of-line)
        (lazy-backend-create-project-mode 'elisp)
        (buffer-enable-undo)))
     (:edit
-     (let* ((marker (lazy-find-save-location-marker))
-            (buf (make-indirect-buffer (marker-buffer marker) "*lazy: edit project*"))
+     (let* ((config-alist (lazy-find-alist))
+            (marker (lazy-find-save-location-marker))
+            (buf (or (get-buffer "*lazy: edit project*")
+                     (make-indirect-buffer (marker-buffer marker) "*lazy: edit project*")))
             (window (display-buffer buf)))
        (select-window window)
        (set-window-start window (marker-position marker))
        (lisp-interaction-mode)
        (goto-char (marker-position marker))
-       (lazy-config-save lazy-name (lazy-find-alist lazy-name nil))
+       (lazy-config-save lazy-name config-alist)
        (set-window-dedicated-p window t)
        (lazy-backend-edit-project-mode 'elisp)
        (buffer-enable-undo)))
