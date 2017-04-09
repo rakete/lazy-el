@@ -1435,8 +1435,10 @@ See also `lazy-undef', `lazy-required-vars' and `lazy-optional-vars'."
       (setq config-alist (lazy-find-alist proj-name t)))
     (maphash (lambda (k v)
                (unless (eq k 'elisp)
-                 (when (funcall (cdr (assoc 'test v)) config-alist)
-                   (cl-return-from "lazy-detect-backend" k)))) lazy-backend-list)
+                 (when (and (functionp (cdr (assoc 'test v)))
+                            (funcall (cdr (assoc 'test v)) config-alist))
+                   (cl-return-from "lazy-detect-backend" k))))
+             lazy-backend-list)
     'elisp))
 
 (defun lazy-save ()
