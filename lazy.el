@@ -1500,46 +1500,40 @@ See also `lazy-backend-list' and `lazy-config-buffer'."
 (defvar lazy-create-project-mode-hook nil)
 
 (define-minor-mode lazy-create-project-mode nil nil " NewProject" lazy-create-project-mode-map
-  (run-hooks 'lazy-create-project-mode-hook))
+  (run-hooks 'lazy-create-project-mode-hook)
+  (define-key lazy-create-project-mode-map "\C-c\C-c"
+    (lambda ()
+      (interactive)
+      (lazy-backend-funcall lazy-create-project-mode
+                            'buffer :finalize-create)))
+  (define-key lazy-create-project-mode-map "\C-c\C-k"
+    (lambda ()
+      (interactive)
+      (kill-buffer (buffer-name)))))
 
 (defun lazy-backend-create-project-mode (backend)
   (lazy-create-project-mode)
   (setq lazy-create-project-mode backend))
-
-(define-key lazy-create-project-mode-map "\C-c\C-c"
-  (lambda ()
-    (interactive)
-    (lazy-backend-funcall lazy-create-project-mode
-                             'buffer :finalize-create)))
-
-(define-key lazy-create-project-mode-map "\C-c\C-k"
-  (lambda ()
-    (interactive)
-    (kill-buffer (buffer-name))))
-
 
 (defvar lazy-edit-project-mode-map (make-sparse-keymap))
 
 (defvar lazy-edit-project-mode-hook nil)
 
 (define-minor-mode lazy-edit-project-mode nil nil " EditProject" lazy-edit-project-mode-map
-  (run-hooks 'lazy-edit-project-mode-hook))
+  (run-hooks 'lazy-edit-project-mode-hook)
+  (define-key lazy-edit-project-mode-map "\C-c\C-c"
+    (lambda ()
+      (interactive)
+      (lazy-backend-funcall lazy-edit-project-mode
+                            'buffer :finalize-edit)))
+  (define-key lazy-edit-project-mode-map "\C-c\C-k"
+    (lambda ()
+      (interactive)
+      (kill-buffer (buffer-name)))))
 
 (defun lazy-backend-edit-project-mode (backend)
   (lazy-edit-project-mode)
   (setq lazy-edit-project-mode backend))
-
-(define-key lazy-edit-project-mode-map "\C-c\C-c"
-  (lambda ()
-    (interactive)
-    (lazy-backend-funcall lazy-edit-project-mode
-                             'buffer :finalize-edit)))
-
-(define-key lazy-edit-project-mode-map "\C-c\C-k"
-  (lambda ()
-    (interactive)
-    (kill-buffer (buffer-name))))
-
 
 
 
