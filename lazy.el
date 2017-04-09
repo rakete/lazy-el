@@ -1590,46 +1590,64 @@ See also `lazy-required-vars'"
         (error "Optional config value '%s' has invalid value '%s' in %s!" (symbol-name config-symbol) (prin1-to-string config-value) proj-name)))))
 
 (cl-defun lazy-get-cache-file (symbol &optional proj-name (inherit t))
-  (unless proj-name
-    (lazy-assert-proj)
-    (setq proj-name lazy-name))
-  (let ((directory (concat lazy-global-cache-root
-                           (cond ((lazy-get-config-val 'parent proj-name nil)
-                                  (let ((a (concat "/" (lazy-join "/" (lazy-ancestry proj-name)))))
-                                    (concat a "/")))
-                                 (t
-                                  (concat "/" proj-name "/")))))
-        (file (concat (symbol-name symbol))))
-    (make-directory directory t)
-    (let ((r (concat directory file)))
-      (cond ((file-exists-p r)
-             r)
-            ((and (lazy-get-config-val 'parent proj-name nil)
-                  (file-exists-p (or (lazy-get-config-val symbol (lazy-get-config-val 'parent proj-name nil) nil)
-                                     (lazy-get-cache-file symbol (lazy-get-config-val 'parent proj-name nil) t)))
-                  (eq inherit 'copy))
-             (progn
-               (copy-file (or (lazy-get-config-val symbol (lazy-get-config-val 'parent proj-name nil) nil)
-                              (lazy-get-cache-file symbol (lazy-get-config-val 'parent proj-name nil) t))
-                          r)
-               r))
-            ((and (lazy-get-config-val 'parent proj-name nil)
-                  (eq (lazy-get-config-val 'basedir proj-name nil) nil)
-                  (eq inherit t))
-             (or (lazy-get-config-val symbol (lazy-get-config-val 'parent proj-name nil) nil)
-                 (lazy-get-cache-file symbol (lazy-get-config-val 'parent proj-name nil) t)))
-            (t r)))))
+  "Get the cache path of SYMBOL for project PROJ-NAME or the currently active project.
 
-(defun lazy-get-root-cache-dir (&optional dirname proj-name)
+The argument INHERIT controls whether to look for SYMBOL in parent projects or not.
+When INHERIT is 'copy, this copies the parents file into the childs cache before
+returning its path.
+
+SYMBOL can be any project var, this function does not create a file, it just returns
+the path.
+
+See also `lazy-global-cache-root' and `lazy-get-cache-dir'."
+  (let ((proj-alist (or (lazy-find-alist proj-name)
+                        (lazy-find-alist lazy-name)
+                        (lazy-guess-alist))))
+    (setq proj-name (cadr (assoc 'name proj-alist)))
+    (unless proj-name
+      (lazy-assert-proj))
+    (let ((directory (concat lazy-global-cache-root
+                             (cond ((lazy-get-config-val 'parent proj-name nil)
+                                    (let ((a (concat "/" (lazy-join "/" (lazy-ancestry proj-name)))))
+                                      (concat a "/")))
+                                   (t
+                                    (concat "/" proj-name "/")))))
+          (file (concat (symbol-name symbol))))
+      (make-directory directory t)
+      (let ((r (concat directory file)))
+        (cond ((file-exists-p r)
+               r)
+              ((and (lazy-get-config-val 'parent proj-name nil)
+                    (file-exists-p (or (lazy-get-config-val symbol (lazy-get-config-val 'parent proj-name nil) nil)
+                                       (lazy-get-cache-file symbol (lazy-get-config-val 'parent proj-name nil) t)))
+                    (eq inherit 'copy))
+               (progn
+                 (copy-file (or (lazy-get-config-val symbol (lazy-get-config-val 'parent proj-name nil) nil)
+                                (lazy-get-cache-file symbol (lazy-get-config-val 'parent proj-name nil) t))
+                            r)
+                 r))
+              ((and (lazy-get-config-val 'parent proj-name nil)
+                    (eq (lazy-get-config-val 'basedir proj-name nil) nil)
+                    (eq inherit t))
+               (or (lazy-get-config-val symbol (lazy-get-config-val 'parent proj-name nil) nil)
+                   (lazy-get-cache-file symbol (lazy-get-config-val 'parent proj-name nil) t)))
+              (t r))))))
+
+(defun lazy-get-cache-dir (&optional dirname proj-name)
+  "A function to create DIRNAME as directory under the currently active projects
+or PROJ-NAME's `lazy-global-cache-root' and return its path.
+
+See also `lazy-get-cache-file'."
   (unless proj-name
     (lazy-assert-proj)
     (setq proj-name lazy-name))
-  (let ((cachedir (expand-file-name (concat (or (car-safe (lazy-ancestry proj-name)) proj-name) "/" dirname) lazy-global-cache-root)))
-    (unless (file-directory-p cachedir)
-      (make-directory cachedir t))
-    cachedir))
+  (let ((cache (expand-file-name (concat (file-name-as-directory (or (car-safe (lazy-ancestry proj-name)) proj-name)) dirname) lazy-global-cache-root)))
+    (unless (file-directory-p cache)
+      (make-directory cache t))
+    cache))
 
 (defun lazy-ancestry (&optional proj-name)
+  "Returns the current projects or PROJ-NAME's ancestry as list."
   (let* ((current (or proj-name
                       (progn
                         (lazy-assert-proj)
@@ -2205,7 +2223,7 @@ See also `lazy-setup-tags', `lazy-jump-definition' and `lazy-process-group'"
            ;; that way I can get tags and completions for everything related to this project, I just have to
            ;; set the root again when building the query command
            ;; - the database is stored in the dbpath, that should be ~/.lazy/project
-           (gtags-dbpath (file-name-as-directory (file-truename (lazy-get-root-cache-dir nil proj-name))))
+           (gtags-dbpath (file-name-as-directory (file-truename (lazy-get-cache-dir nil proj-name))))
            (gtags-config (or (let ((c (lazy-get-config-val 'gtags-config proj-name nil proj-alist)))
                                (when (and c (> (length c) 0) (file-exists-p c))
                                  c))
