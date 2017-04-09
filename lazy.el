@@ -1244,7 +1244,11 @@ See also `lazy-undef', `lazy-required-vars' and `lazy-optional-vars'."
               (eq major-mode 'org-mode)
               (lazy-org-entry-define-project)))))
 
-
+(defun lazy-undef (&optional proj-name)
+  "Opposite of `lazy-def'."
+  (interactive "sProject: ")
+  (remhash proj-name lazy-project-list)
+  (remhash proj-name lazy-completions-cache))
 
 
 
@@ -1551,12 +1555,6 @@ See also `lazy-backend-list' and `lazy-config-buffer'."
 
 
 
-
-(defun lazy-undef (&optional proj-name)
-  "Opposite of `lazy-def'."
-  (interactive "sProject: ")
-  (remhash proj-name lazy-project-list)
-  (remhash proj-name lazy-completions-cache))
 
 (defmacro lazy-with-current-project (proj-name &rest body)
   "Execute BODY with PROJ-NAME as current project. It just sets `lazy-name' to PROJ-NAME temporarily."
