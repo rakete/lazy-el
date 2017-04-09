@@ -1086,7 +1086,8 @@ See also `lazy-org-entry-nearest-active'."
          (lazy-org-config-insert (or proj-name
                                    headline
                                    (cadr (assoc 'name config-alist))
-                                   "NewProject") config-alist t)
+                                   "NewProject")
+                                 config-alist t)
          (goto-char 0)
          (end-of-line)
          (lazy-backend-create-project-mode 'org-mode)
@@ -1333,8 +1334,8 @@ This is taken almost directly from `org-babel-read'."
                           :buffer-fun 'lazy-org-config-buffer
                           :save-fun 'lazy-org-config-save
                           :insert-fun 'lazy-org-config-insert
-                          :test-fun (lambda (ca)
-                                      (assoc 'org-file ca)))
+                          :test-fun (lambda (config-alist)
+                                      (assoc 'org-file config-alist)))
 
      (add-hook 'lazy-before-load-hook (lambda ()
                                         (unless (lazy-get-config-val 'org-file lazy-name)
