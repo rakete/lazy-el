@@ -30,6 +30,7 @@
 (require 'imenu)
 
 (declare-function lazy-org-project-buffer-name "lazy-orgmode")
+(declare-function lazy-org-config-save "lazy-orgmode")
 (declare-function lazy-sourcemarker-restore "lazy-sourcemarker")
 
 (defvar lazy-version "2.0.0")
@@ -41,12 +42,13 @@
                                        (make-directory dir))))
                                  filename)
   "Root path under which to create files that contain project metadata like open
-files, open friends etc. These are automatically created for a project under a
-directory created under this path. Makes the open-files-cache, file-list-cache,
-open-friends-cache directives optional.
+files, open friends etc. These are automatically created for a project in a
+directory named after the projects created under this path.
 
-See also `lazy-open-files-cache', `lazy-open-friends-cache',
-`lazy-file-list-cache'")
+Makes the open-files-cache, file-list-cache, open-friends-cache directives optional.
+
+See also `lazy-open-files-cache', `lazy-open-friends-cache', `lazy-file-list-cache',
+`lazy-get-cache-file' and `lazy-get-cache-dir'")
 
 ;; ---------------------------------------------------------------------
 ;; Project Variables
@@ -79,14 +81,14 @@ used by `lazy-find-file' to quickly locate project files."
 the associated paths when greping or indexing the project.")
 
 (defvar lazy-required-vars '((name . (identity stringp))
-                                (basedir . (identity stringp (lambda (v) (> (length v) 0)) file-exists-p)))
+                             (basedir . (identity stringp (lambda (v) (> (length v) 0)) file-exists-p)))
   "Project config vars that are required in every project. Each entry is a (symbol . (functions)) tuple where the
 functions are used by `lazy-check-required-vars' to test if a value given to symbol is valid.
 
 name   : project name
 basedir: root directory of the project
 
-See also `lazy-optional-vars' `lazy-var-before-get-functions'.")
+See also `lazy-optional-vars' and `lazy-var-before-get-functions'.")
 
 (defvar lazy-optional-vars '((parent . (stringp)) ;; parent needs to come first!
                              (languages . (listp))
@@ -128,7 +130,7 @@ open-friends-cache: filesystem location for open files from friend projects
 gtags-config      : gtags config file that should be used
 gtags-arguments   : additional gtags arguments
 
-See also `lazy-required-vars' `lazy-var-before-get-functions'")
+See also `lazy-required-vars' and `lazy-var-before-get-functions'")
 
 (defvar lazy-internal-vars '()
   "Project config vars that are ignored when saving the project config.")
@@ -141,20 +143,24 @@ See also `lazy-required-vars' `lazy-var-before-get-functions'")
     (file-name-as-directory (expand-file-name val))))
 
 (defun lazy-var-get-open-file-cache (var val &optional proj-name config-alist)
-  "Helper used in `lazy-var-before-get-functions' to find cache location."
+  "Helper used in `lazy-var-before-get-functions' to find cache location.
+
+See also `lazy-get-cache-file'."
   (if val
       (expand-file-name val)
     (lazy-get-cache-file var proj-name nil)))
 
 (defun lazy-var-get-file-list-cache (var val &optional proj-name config-alist)
-  "Helper used in `lazy-var-before-get-functions' to find cache location."
+  "Helper used in `lazy-var-before-get-functions' to find cache location.
+
+See also `lazy-get-cache-file'."
   (if val
       (expand-file-name val)
     (lazy-get-cache-file var proj-name t)))
 
 (defun lazy-var-guess-languages (var val &optional proj-name config-alist)
   "Helper used in `lazy-var-before-get-functions' to guess project languages."
-  (or val (lazy-src-pattern-languages (lazy-get-config-val 'src-patterns proj-name))))
+  (or val (lazy-src-pattern-languages (cdr (assoc 'src-patterns config-alist)))))
 
 (defvar lazy-var-before-get-functions '((basedir . lazy-basedir-expand)
                                         (file-list-cache . lazy-var-get-file-list-cache)
@@ -671,7 +677,9 @@ project config from the currently opened file in the active buffer.")
 (defvar lazy-config-save-location (expand-file-name "projects.el" (file-name-as-directory lazy-global-cache-root))
   "Where to save project configs in elisp. If this is a filename project
 configs will be written to that file. If it is a directory an elisp
-file with the projects name will be created in that directory.")
+file with the projects name will be created in that directory.
+
+See also `lazy-config-save'.")
 
 (defvar lazy-language-tag-systems '((c . (gtags gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
                                     (yacc . (gtags gtags+universal-ctags gtags+exuberant-ctags))
@@ -1183,7 +1191,7 @@ See also `lazy-var-before-get-functions', `lazy-set-config-val'."
   "Alias for `lazy-get-config-val' to ensure backward compatibility.")
 
 (defun lazy-set-config-val (key value &optional proj-name)
-  "Set the value associated with KEY to VALUE in config of project NAME.
+  "Set the value associated with KEY to VALUE in config of project PROJ-NAME.
 
 See also `lazy-get-config-val'."
   (unless proj-name
@@ -1292,8 +1300,13 @@ See also `lazy-undef', `lazy-required-vars' and `lazy-optional-vars'."
           (when (re-search-backward (regexp-quote "(lazy-def") (save-excursion (re-search-backward ")" nil t)) t)
             (cl-return-from "while-search-loop" (point))))))))
 
-(defun lazy-find-save-location-marker (&optional proj-name config-alist)
-  "This tries to find a suitable location to save the projects configuration to disk."
+(defun lazy-find-save-location-marker (&optional proj-name)
+  "This tries to find a suitable location to save a projects configuration to disk.
+
+You can supply PROJ-NAME to save a project other then the currently active
+project.
+
+See also `lazy-config-save'."
   (unless proj-name
     (lazy-assert-proj)
     (setq proj-name lazy-name))
@@ -1469,21 +1482,63 @@ See also `lazy-define-backend'."
 
 
 
-(defvar lazy-backend-list (make-hash-table))
+(defvar lazy-backend-list (make-hash-table)
+  "List of backends for saving or editing project configurations on disk.
+
+A backend handles how a projects configration is serialized and saved. This
+list just holds all currently supported backends. A backend can be defined
+with `lazy-define-backend'. Each backend should associate a name with four
+functions:
+
+buffer: Handles opening a buffer for creating a new or editing a existing
+project. See also `lazy-config-buffer'.
+
+save: Handles saving a project. See also `lazy-config-save'.
+
+insert: Handles inserting a project configuration into a buffer. See also
+`lazy-config-insert'.
+
+test: A function to test if a project configuration belongs to this backend.
+See source code of `lazy-detect-backend' or in lazy-orgmode.el the section
+that defines the 'org-mode backend.
+
+See also `lazy-config-backend', `lazy-define-backend', `lazy-backend-funcall'
+and `lazy-detect-backend'.
+
+All functions the enable the user to edit a project or create a new project
+interactively are implemented through the backends this list contains.
+
+See also `lazy-create', `lazy-edit', `lazy-insert' and `lazy-save'.")
+
+(defvar lazy-config-backend 'elisp
+  "The default lazy project backend to use if no project is loaded.
+
+When creating a new project this is picked as its backend.
+
+See also `lazy-backend-list' and `lazy-detect-backend'.")
 
 (cl-defun lazy-define-backend (backend &key buffer-fun save-fun insert-fun test-fun)
+  "This function defines a backend by associating BUFFER-FUN, SAVE-FUN,
+INSERT-FUN and TEST-FUN with BACKEND in `lazy-backend-list'."
   (puthash backend `((buffer . ,buffer-fun)
                      (save . ,save-fun)
                      (insert . ,insert-fun)
                      (test . ,test-fun))
            lazy-backend-list))
 
-(defvar lazy-config-backend 'elisp)
-
 (defun lazy-backend-funcall (backend sym &rest args)
+  "Call the function associated with SYM in BACKEND with ARGS.
+
+See also `lazy-backend-list'."
   (apply (cdr (assoc sym (gethash backend lazy-backend-list))) args))
 
 (cl-defun lazy-detect-backend (&optional proj-name config-alist)
+  "Detect which backend to use for the current project, PROJ-NAME or CONFIG-ALIST.
+
+If no project is set and PROJ-NAME and CONFIG-ALIST are both nil, this returns
+`lazy-config-backend'. Otherwise it will use the 'test functions from
+`lazy-backend-list' to determine which backend is to be used for the specified
+project."
   (if (and (condition-case nil (lazy-assert-proj) (error t))
            (not proj-name))
       (cl-return-from "lazy-detect-backend" lazy-config-backend)
@@ -1606,15 +1661,17 @@ See also `lazy-backend-list' and `lazy-config-buffer'."
 
 
 (defmacro lazy-with-current-project (proj-name &rest body)
-  "Execute BODY with PROJ-NAME as current project. It just sets `lazy-name' to PROJ-NAME temporarily."
+  "Execute BODY with PROJ-NAME as current project.
+
+This just sets `lazy-name' to PROJ-NAME temporarily."
   `(let ((lazy-name ,proj-name))
      (condition-case nil ,@body (error nil))))
 
 (defun lazy-check-required-vars (proj-name &optional proj-alist)
-  "Go through all `lazy-required-vars' and check them in PROJ-NAME or PROJ-ALIST using the functions
-defined in `lazy-required-vars'.
+  "Go through all `lazy-required-vars' and check them in PROJ-NAME or PROJ-ALIST
+using the functions defined in `lazy-required-vars'.
 
-See also `lazy-optional-vars'"
+See also `lazy-check-optional-vars'"
   (unless proj-alist
     (setq proj-alist (lazy-find-alist proj-name)))
   (dolist (v lazy-required-vars)
@@ -1627,10 +1684,10 @@ See also `lazy-optional-vars'"
           (error "Required config value '%s' has invalid value '%s' in %s!" (symbol-name config-symbol) (prin1-to-string config-value) proj-name))))))
 
 (defun lazy-check-optional-vars (proj-name &optional proj-alist)
-  "Go through all `lazy-optional-vars' and check them in PROJ-NAME or PROJ-ALIST using the functions
-defined in `lazy-optional-vars'.
+  "Go through all `lazy-optional-vars' and check them in PROJ-NAME or PROJ-ALIST
+using the functions defined in `lazy-optional-vars'.
 
-See also `lazy-required-vars'"
+See also `lazy-check-required-vars'"
   (dolist (v lazy-optional-vars)
     (let* ((config-symbol (car v))
            (config-value (cadr (assoc config-symbol proj-alist)))
@@ -1707,7 +1764,11 @@ See also `lazy-get-cache-file'."
             current (lazy-config-val 'parent current)))
     ancestry))
 
-(defvar lazy-prevent-after-save-update nil)
+(defvar lazy-prevent-after-save-update nil
+  "When this is not nil `lazy-after-save-update' will not run `lazy-update' and therefore
+the projects index and tags are not going to get updated.
+
+This is supposed to be set only temporarily.")
 
 (defun lazy-load-project (proj-name)
   "Load PROJ-NAME configuration. This is the main loading function that does all the work, it
@@ -1829,7 +1890,7 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-project-history'
     (unless quiet (message "Project settings have been cleared"))))
 
 (defun lazy-close-files ()
-  "Close all unmodified files that reside in the project's basedir"
+  "Close all unmodified files that reside in the projects basedir"
   (interactive)
   (lazy-assert-proj)
   (let ((closed nil)
@@ -1849,7 +1910,7 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-project-history'
              (length closed) (length dirty))))
 
 (defun lazy-buffer-name (buf)
-  "Return buffer's name based on filename or dired's location"
+  "Return buffers name based on filename or direds location"
   (let ((file-name (or (buffer-file-name (or (buffer-base-buffer buf) buf))
                        (with-current-buffer (or (buffer-base-buffer buf) buf) list-buffers-directory))))
     (if file-name
@@ -1857,7 +1918,7 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-project-history'
       nil)))
 
 (defun lazy-buffer-p (buf &optional proj-name proj-alist)
-  "Is the given buffer in our project, is a file opened? Also detects dired buffers open to basedir/*"
+  "Test if the given buffer BUF belongs to the currently active project or either PROJ-NAME or PROJ-ALIST."
   (setq proj-alist (or proj-alist
                        (lazy-find-alist proj-name)
                        (lazy-find-alist lazy-name)
@@ -1897,7 +1958,7 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-project-history'
        (lazy-buffer-p buf proj-name)))
 
 (defun lazy-buffers (&optional proj-name)
-  "Get a list of buffers that reside in this project's basedir"
+  "Get a list of buffers that reside in this projects basedir"
   (unless proj-name
     (lazy-assert-proj)
     (setq proj-name lazy-name))
