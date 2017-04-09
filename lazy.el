@@ -1780,7 +1780,7 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-project-history'
   (unless (and proj-name proj-alist)
     (lazy-assert-proj))
   (let ((file-name (lazy-buffer-name buf))
-        (basedir (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist)))
+        (basedir (file-name-as-directory (or (lazy-get-config-val 'basedir proj-name t proj-alist) default-directory)))
         (case-fold-search nil))
     (if (and (stringp file-name)
              (file-exists-p file-name)
@@ -4205,7 +4205,7 @@ and their parent directory used as basedir.")
                                            ;; find directory that is not a common project subdir
                                            ((buffer)
                                             (let* ((path (lazy-find-common-path-of-buffers (lazy-guess-buffers buffer lazy-incubator-paths)))
-                                                   (splitted-path (when path (split-string path "/"))))
+                                                   (splitted-path (when (and path (stringp path)) (split-string path "/"))))
                                               (while (and path
                                                           splitted-path
                                                           (not (cl-some (lambda (incubator-path) (lazy-path-equal incubator-path path))
