@@ -1844,20 +1844,22 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-project-history'
   (cl-remove-if (lambda (buf) (not (lazy-dired-buffer-p buf))) (lazy-buffers proj-name)))
 
 (defun lazy-status (&optional proj-name)
-  "View project's variables."
+  "View projects variables."
   (interactive)
   (unless proj-name
     (lazy-assert-proj)
     (setq proj-name lazy-name))
-  (if (lazy-get-config-val 'basedir proj-name t)
-      (let ((b (get-buffer-create "*lazy: status*")))
-        (with-current-buffer b
-          (kill-region (point-min) (point-max))
-          (dolist (v (append lazy-required-vars lazy-optional-vars))
-            (insert (format "%-32s = %s\n" (symbol-name (car v)) (lazy-get-config-val (car v) proj-name t)))))
-        (when (not (eq b (current-buffer)))
-          (display-buffer b)))
-    (message "No project loaded.")))
+  (unless proj-name
+    (error "No project loaded."))
+  (let ((b (get-buffer-create "*lazy: status*")))
+    (with-current-buffer b
+      (kill-region (point-min) (point-max))
+      (dolist (v (append lazy-required-vars lazy-optional-vars))
+        (insert (format "%-32s = %s\n" (symbol-name (car v)) (lazy-get-config-val (car v) proj-name t)))))
+    (when (not (eq b (current-buffer)))
+      (display-buffer b)))
+  (when (lazy-get-config-val 'basedir proj-name t)
+    (error "Missing basedir in %s" proj-name)))
 
 ;; ---------------------------------------------------------------------
 ;; Save/Restore open files
