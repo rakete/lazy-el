@@ -31,7 +31,7 @@
     (candidates . (lambda ()
                     (sort (lazy-filter (lambda (title)
                                             (not (string-match (concat "^[^:]*:\\(.*\\)$") title)))
-                                          (lazy-names))
+                                          (lazy-project-names))
                           'string-lessp)))
     (action ("Load project" . (lambda (entry)
                                 (lazy-load (car (helm-marked-candidates)))))

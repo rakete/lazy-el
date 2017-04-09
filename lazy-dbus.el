@@ -117,7 +117,7 @@
   (encode-umlauts (or lazy-name "")))
 
 (defun lazy-dbus-project-names ()
-  (mapcar #'encode-umlauts (lazy-names)))
+  (mapcar #'encode-umlauts (lazy-project-names)))
 
 (defun* lazy-dbus-project-load (name)
   (condition-case nil

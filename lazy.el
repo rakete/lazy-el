@@ -956,7 +956,7 @@ See also `lazy-guess-alist'."
 (defun lazy-has-univ-arg ()
   (eql (prefix-numeric-value current-prefix-arg) 4))
 
-(defun lazy-names ()
+(defun lazy-project-names ()
   (let ((names nil))
     (maphash (lambda (k v) (when k (add-to-list 'names k))) lazy-project-list)
     names))
@@ -1681,7 +1681,7 @@ See also `lazy-load', `lazy-unload', `lazy-fib-init', `lazy-visit-saved-open-fil
 See also `lazy-load-project'"
   (interactive)
   (let* ((guessed-alist (lazy-guess-alist))
-         (names (let ((ns (lazy-names)))
+         (names (let ((ns (lazy-project-names)))
                   (when (cadr (assoc 'name guessed-alist))
                     (add-to-list 'ns (cadr (assoc 'name guessed-alist))))
                   ns))
