@@ -1441,36 +1441,57 @@ See also `lazy-undef', `lazy-required-vars' and `lazy-optional-vars'."
     'elisp))
 
 (defun lazy-save ()
+  "Save the current lazy project to disk.
+
+See also `lazy-backend-list'."
   (interactive)
   (lazy-assert-proj)
   (lazy-backend-funcall (lazy-detect-backend)
-                           'save lazy-name (lazy-find-alist nil nil)))
+                        'save lazy-name (lazy-find-alist nil nil)))
 
 (defun lazy-insert ()
+  "Insert the current lazy project into the current buffer.
+
+See also `lazy-backend-list'."
   (interactive)
   (lazy-assert-proj)
   (cond ((derived-mode-p 'emacs-lisp-mode 'inferior-emacs-lisp-mode)
          (lazy-backend-funcall 'elisp
-                                  'insert lazy-name (lazy-find-alist nil nil)))
+                               'insert lazy-name (lazy-find-alist nil nil)))
         ((derived-mode-p 'org-mode)
-         (lazy-backend-funcall 'orgmode
-                                  'insert lazy-name (lazy-find-alist nil nil)))))
+         (lazy-backend-funcall 'org-mode
+                               'insert lazy-name (lazy-find-alist nil nil)))))
 
 (cl-defun lazy-create ()
+  "Create a new lazy project interactively.
+
+See also `lazy-backend-list' and `lazy-config-buffer'."
   (interactive)
-  (if (and (gethash 'org-mode lazy-backend-list))
-      (lazy-backend-funcall 'org-mode
-                               'buffer :create)
+  (if (and (string-equal (buffer-name (current-buffer)) "*lazy: new project*")
+           (gethash 'org-mode lazy-backend-list))
+      (progn (kill-buffer)
+             (lazy-backend-funcall 'org-mode
+                                   'buffer :create))
     (lazy-backend-funcall (lazy-detect-backend)
-                             'buffer :create)))
+                          'buffer :create)))
 
 (defun lazy-edit (&optional proj-name)
+  "Edit the current lazy project interactively.
+
+See also `lazy-backend-list' and `lazy-config-buffer'."
   (interactive)
   (unless proj-name
-    (lazy-assert-proj)
     (setq proj-name lazy-name))
-  (lazy-backend-funcall (lazy-detect-backend proj-name)
-                           'buffer :edit proj-name))
+  (if (not proj-name)
+      (call-interactively 'lazy-create)
+    (when (and (string-equal (buffer-name (current-buffer)) "*lazy: edit project*")
+               (fboundp 'lazy-org-config-save)
+               (not (lazy-get-config-val 'org-file lazy-name))
+               (y-or-n-p (concat "Create .org file for " lazy-name "? ")))
+      (progn (kill-buffer)
+             (lazy-org-config-save lazy-name (lazy-find-alist lazy-name t))))
+    (lazy-backend-funcall (lazy-detect-backend proj-name)
+                          'buffer :edit proj-name)))
 
 
 

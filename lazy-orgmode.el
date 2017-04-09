@@ -790,6 +790,10 @@ will be used internally. You can specify a MATCH to be used in that case with:
 (defun lazy-org-buffer (&optional proj-name)
   "Open current projects org tree as indirect buffer."
   (interactive)
+  (when (get-buffer "lazy: edit project")
+    (with-current-buffer (get-buffer "lazy: edit project")
+      (save-buffer)
+      (kill-buffer)))
   (lazy-org-assert-org proj-name t)
   (display-buffer (lazy-org-get-project-buffer proj-name)))
 
