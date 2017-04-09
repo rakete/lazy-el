@@ -1420,11 +1420,6 @@ See also `lazy-undef', `lazy-required-vars' and `lazy-optional-vars'."
                      (test . ,test-fun))
            lazy-backend-list))
 
-(lazy-define-backend 'elisp
-                        :buffer-fun 'lazy-config-buffer
-                        :save-fun 'lazy-config-save
-                        :insert-fun 'lazy-config-insert)
-
 (defvar lazy-config-backend 'elisp)
 
 (defun lazy-backend-funcall (backend sym &rest args)
@@ -4500,6 +4495,10 @@ and their parent directory used as basedir.")
     (add-hook 'after-load-hook 'lazy-after-save-update)
     (add-hook 'after-save-hook 'lazy-jump-cleanup-highlight)
     (add-hook 'pre-command-hook 'lazy-pre-command-remove-jump-delete-buffer)
+    (lazy-define-backend 'elisp
+                         :buffer-fun 'lazy-config-buffer
+                         :save-fun 'lazy-config-save
+                         :insert-fun 'lazy-config-insert)
     (let ((projects-el (expand-file-name "projects.el" (file-name-as-directory lazy-global-cache-root))))
       (when (file-exists-p projects-el)
         (load-file projects-el)))))
