@@ -160,7 +160,7 @@ See also `lazy-get-cache-file'."
 
 (defun lazy-var-guess-languages (var val &optional proj-name config-alist)
   "Helper used in `lazy-var-before-get-functions' to guess project languages."
-  (or val (lazy-src-pattern-languages (cdr (assoc 'src-patterns config-alist)))))
+  (or val (lazy-src-pattern-languages (cadr (assoc 'src-patterns config-alist)))))
 
 (defvar lazy-var-before-get-functions '((basedir . lazy-basedir-expand)
                                         (file-list-cache . lazy-var-get-file-list-cache)
@@ -2005,7 +2005,7 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-project-history'
         (insert (format "%-32s = %s\n" (symbol-name (car v)) (lazy-get-config-val (car v) proj-name t)))))
     (when (not (eq b (current-buffer)))
       (display-buffer b)))
-  (when (lazy-get-config-val 'basedir proj-name t)
+  (unless (lazy-get-config-val 'basedir proj-name t)
     (error "Missing basedir in %s" proj-name)))
 
 ;; ---------------------------------------------------------------------
