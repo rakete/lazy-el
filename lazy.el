@@ -1468,7 +1468,12 @@ See also `lazy-define-backend'."
        (save-excursion
          (goto-char (marker-position marker))
          (let (edited-alist)
-           (unless (eq (condition-case nil (setq edited-alist (call-interactively 'eval-defun)) (error 'error))
+           (unless (eq (condition-case nil (setq edited-alist (save-excursion
+                                                                (end-of-defun)
+                                                                (beginning-of-defun)
+                                                                (let ((bounds (bounds-of-thing-at-point 'sexp)))
+                                                                  (eval-region (car-safe bounds) (cdr bounds)))))
+                         (error 'error))
                        'error)
              (save-buffer)
              (kill-buffer)
