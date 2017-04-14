@@ -2219,7 +2219,7 @@ statements in there. You need to manually copy, paste and modify those yourself.
             (t
              (or (executable-find "ctags-exuberant")
                  (executable-find "exuberant-ctags"))))
-      (let* ((executable (or (executable-find "ctags") (executable-find "ctags.exe")))
+      (let* ((executable (executable-find "ctags"))
              (stdout (when executable (shell-command-to-string (concat executable " --version")))))
         (when executable
           (cond ((and (eq ctags-type 'universal)
@@ -3740,8 +3740,10 @@ The compile command history search is implemented in `lazy-compile-read-command'
          (start-dir (if lazy-file-index-relative-paths
                         "."
                       (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist))))
-         (find-exe (or (executable-find "gfind.exe")
-                       (executable-find "find")))
+         (find-exe (or (executable-find "gfind")
+                       (and (executable-find "find")
+                            (string-match "GNU" (shell-command-to-string "find --version"))
+                            "find")))
          (find-cmd (concat "\"" find-exe "\" \"" start-dir "\" -type f "
                            (lazy-find-cmd-src-args (lazy-get-config-val 'src-patterns proj-name t proj-alist) proj-name proj-alist)
                            (lazy-find-cmd-ignore-args (lazy-get-config-val 'ignore-patterns proj-name t proj-alist) proj-name proj-alist)
