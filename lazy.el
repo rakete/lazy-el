@@ -1098,16 +1098,19 @@ Examples:
      ((and (not (null a)) (not (null b)))
       nil))))
 
+(defun lazy-concat-path (sequence)
+  (concat (apply 'concat (mapcar (lambda (s) (concat s "/")) (butlast sequence))) (car (last sequence))))
+
 (cl-defun lazy-search-path (re path &optional stop-paths ignore-paths)
   (let ((xs (reverse (split-string path "/" t))))
     (while (and (cdr xs)
                 (cl-loop for ig in stop-paths
-                         if (lazy-path-equal ig (apply 'concat (mapcar (lambda (s) (concat "/" s)) (reverse xs))))
+                         if (lazy-path-equal (file-name-as-directory ig) (lazy-concat-path (reverse xs)))
                          return nil
                          finally return t))
-      (when (and (directory-files (apply 'concat (mapcar (lambda (s) (concat "/" s)) (reverse xs))) nil re)
+      (when (and (directory-files (lazy-concat-path (reverse xs)) nil re)
                  (not (cl-some (lambda (re) (string-match re (car xs))) ignore-paths)))
-        (cl-return-from "lazy-search-path" (apply 'concat (mapcar (lambda (s) (concat "/" s)) (reverse xs)))))
+        (cl-return-from "lazy-search-path" (lazy-concat-path (reverse xs))))
       (setq xs (cdr xs)))))
 
 (defun lazy-join (delimiter strings)
