@@ -1072,9 +1072,9 @@ See also `lazy-org-entry-nearest-active'."
                       (org-back-to-heading)
                       (looking-at org-complex-heading-regexp))
                   t))
-       (let* ((buf (get-buffer-create "*lazy: new project*"))
+       (let* ((config-alist (or config-alist (lazy-guess-alist)))
+              (buf (get-buffer-create "*lazy: new project*"))
               (window (display-buffer buf))
-              (config-alist (or config-alist (lazy-guess-alist)))
               (headline (and (eq major-mode 'org-mode)
                              (boundp 'org-complex-heading-regexp)
                              (looking-at org-complex-heading-regexp)
@@ -1084,9 +1084,9 @@ See also `lazy-org-entry-nearest-active'."
          (org-mode)
          (buffer-disable-undo)
          (lazy-org-config-insert (or proj-name
-                                   headline
-                                   (cadr (assoc 'name config-alist))
-                                   "NewProject")
+                                     headline
+                                     (cadr (assoc 'name config-alist))
+                                     "NewProject")
                                  config-alist t)
          (goto-char 0)
          (end-of-line)

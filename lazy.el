@@ -1431,9 +1431,9 @@ See also `lazy-define-backend'."
   (cl-case state
     (:create
      (let* ((proj-b (current-buffer))
+            (config-alist (or config-alist (lazy-guess-alist)))
             (buf (get-buffer-create "*lazy: new project*"))
-            (window (display-buffer buf))
-            (config-alist (or config-alist (lazy-guess-alist))))
+            (window (display-buffer buf)))
        (select-window window)
        (set-window-dedicated-p window t)
        (emacs-lisp-mode)
@@ -4517,98 +4517,100 @@ and their parent directory used as basedir.")
   ;; go through lazy-guess-functions and collect all symbols that are used
   ;; as arguments, we'll bind those in a closure around the execution
   ;; of the function bodies
-  (let ((languages 'undefined)
-        (compile-cmd 'undefined)
-        (vcs 'undefined)
-        (patterns-are-regex 'undefined)
-        (src-patterns 'undefined)
-        (name 'undefined)
-        (basedir 'undefined)
-        (mode 'undefined)
-        (buffer 'undefined)
-        (result '())
-        (start-time (current-time)))
-    (cl-labels ((best-result (rs)
-                             (let (bestscore bestresult)
-                               (dolist (tuple rs bestresult)
-                                 (when (or (not bestscore)
-                                           (> (car tuple) bestscore))
-                                   (setq bestscore (car tuple)
-                                         bestresult (cdr tuple))))))
-                (guess-symbol (sym)
-                              (let ((scores '()))
-                                (dolist (flist (cdr (assoc sym lazy-guess-functions)) (best-result scores))
-                                  (let ((args (cl-first flist))
-                                        (expr (cl-second flist)))
-                                    (dolist (arg args)
-                                      ;; check if neccessary symbols are set, this sets a symbol after guessing it so
-                                      ;; we do not have to guess something twice
-                                      (when (eq (symbol-value arg) 'undefined)
-                                        (setf (symbol-value arg) (guess-symbol arg))
-                                        ))
-                                    (let ((r (condition-case e (eval expr)
-                                               (error (message "error while guessing %S: %S in %s" sym e (prin1-to-string expr))
-                                                      (backtrace)
-                                                      (cl-return-from "lazy-guess-alist" nil)))))
-                                      (when r (add-to-list 'scores r))))))))
-      (dolist (varchecks (append lazy-required-vars lazy-optional-vars))
-        ;; for each var check if it is already set, if not use guess-symbol to guess it
-        ;; since only args from lazy-guess-functions are defined by the alet, not all
-        ;; possible project symbols, we have to check if a var is bound before setting it
-        ;; with setf or returning its value if it is not 'undefined, default is to just
-        ;; guess and not set anything
-        (let* ((var (car varchecks))
-               (checks (cdr varchecks))
-               (gv (cond ((and ask-basedir
-                               (boundp var)
-                               (eq var 'basedir))
-                          (progn
-                            (setf (symbol-value var)
-                                  (let ((guessed-dir (guess-symbol var)))
-                                    (ido-read-directory-name (format "Continue with this basedir? (%s): " guessed-dir)
-                                                             guessed-dir
-                                                             nil
-                                                             t)))))
-                         ((and ask-name
-                               (boundp var)
-                               (eq var 'name))
-                          (progn
-                            (setf (symbol-value var)
-                                  (let ((guessed-name (guess-symbol var)))
-                                    (read-string (format "Use this name? (%s): " guessed-name)
-                                                 nil
-                                                 nil
-                                                 guessed-name)))))
-                         ((and (boundp var)
-                               (not (eq (symbol-value var) 'undefined)))
-                          (symbol-value var))
-                         ((and (boundp var)
-                               (eq (symbol-value var) 'undefined))
-                          (setf (symbol-value var) (guess-symbol var)))
-                         (t (guess-symbol var)))))
-          (if gv
-              (add-to-list 'result `(,var ,gv))
-            ;; when a required var couldn't be found, abort
-            (when (cl-some (apply-partially 'eq var) lazy-required-vars)
-              (cl-return-from "lazy-guess-alist" nil)))))
-      ;; find already defined project that fits the guessed project so well that we'll use that instead
-      ;; creates list of all projects in same basedir, then selects those matching the same src-patterns
-      ;; as the guessed, uses the first of those if multiple match
-      (let ((already-defined (or (and (buffer-file-name (current-buffer))
-                                      (lazy-find-projects-in-directory (lazy-dirname (buffer-file-name (current-buffer)))))
-                                 (lazy-find-projects-in-directory (cadr (assoc 'basedir result)))))
-            (pattern-projects nil))
-        (if already-defined
-            (cl-loop for proj-name in already-defined
-                     if (setq pattern-projects
-                              (lazy-find-projects-matching-patterns (lazy-get-config-val 'src-patterns proj-name t)
-                                                                    already-defined))
-                     return (let ((already-defined-result (gethash (car pattern-projects) lazy-project-list)))
-                              ;; add name if it does not already exist to alist, doubles functionality in lazy-def
-                              (unless (assoc 'name already-defined-result)
-                                (add-to-list 'already-defined-result `(name ,(car pattern-projects))))
-                              already-defined-result))
-          result)))))
+  (when (and (buffer-file-name (current-buffer))
+             (file-exists-p (buffer-file-name (current-buffer))))
+    (let ((languages 'undefined)
+          (compile-cmd 'undefined)
+          (vcs 'undefined)
+          (patterns-are-regex 'undefined)
+          (src-patterns 'undefined)
+          (name 'undefined)
+          (basedir 'undefined)
+          (mode 'undefined)
+          (buffer 'undefined)
+          (result '())
+          (start-time (current-time)))
+      (cl-labels ((best-result (rs)
+                               (let (bestscore bestresult)
+                                 (dolist (tuple rs bestresult)
+                                   (when (or (not bestscore)
+                                             (> (car tuple) bestscore))
+                                     (setq bestscore (car tuple)
+                                           bestresult (cdr tuple))))))
+                  (guess-symbol (sym)
+                                (let ((scores '()))
+                                  (dolist (flist (cdr (assoc sym lazy-guess-functions)) (best-result scores))
+                                    (let ((args (cl-first flist))
+                                          (expr (cl-second flist)))
+                                      (dolist (arg args)
+                                        ;; check if neccessary symbols are set, this sets a symbol after guessing it so
+                                        ;; we do not have to guess something twice
+                                        (when (eq (symbol-value arg) 'undefined)
+                                          (setf (symbol-value arg) (guess-symbol arg))
+                                          ))
+                                      (let ((r (condition-case e (eval expr)
+                                                 (error (message "error while guessing %S: %S in %s" sym e (prin1-to-string expr))
+                                                        (backtrace)
+                                                        (cl-return-from "lazy-guess-alist" nil)))))
+                                        (when r (add-to-list 'scores r))))))))
+        (dolist (varchecks (append lazy-required-vars lazy-optional-vars))
+          ;; for each var check if it is already set, if not use guess-symbol to guess it
+          ;; since only args from lazy-guess-functions are defined by the alet, not all
+          ;; possible project symbols, we have to check if a var is bound before setting it
+          ;; with setf or returning its value if it is not 'undefined, default is to just
+          ;; guess and not set anything
+          (let* ((var (car varchecks))
+                 (checks (cdr varchecks))
+                 (gv (cond ((and ask-basedir
+                                 (boundp var)
+                                 (eq var 'basedir))
+                            (progn
+                              (setf (symbol-value var)
+                                    (let ((guessed-dir (guess-symbol var)))
+                                      (ido-read-directory-name (format "Continue with this basedir? (%s): " guessed-dir)
+                                                               guessed-dir
+                                                               nil
+                                                               t)))))
+                           ((and ask-name
+                                 (boundp var)
+                                 (eq var 'name))
+                            (progn
+                              (setf (symbol-value var)
+                                    (let ((guessed-name (guess-symbol var)))
+                                      (read-string (format "Use this name? (%s): " guessed-name)
+                                                   nil
+                                                   nil
+                                                   guessed-name)))))
+                           ((and (boundp var)
+                                 (not (eq (symbol-value var) 'undefined)))
+                            (symbol-value var))
+                           ((and (boundp var)
+                                 (eq (symbol-value var) 'undefined))
+                            (setf (symbol-value var) (guess-symbol var)))
+                           (t (guess-symbol var)))))
+            (if gv
+                (add-to-list 'result `(,var ,gv))
+              ;; when a required var couldn't be found, abort
+              (when (cl-some (apply-partially 'eq var) lazy-required-vars)
+                (cl-return-from "lazy-guess-alist" nil)))))
+        ;; find already defined project that fits the guessed project so well that we'll use that instead
+        ;; creates list of all projects in same basedir, then selects those matching the same src-patterns
+        ;; as the guessed, uses the first of those if multiple match
+        (let ((already-defined (or (and (buffer-file-name (current-buffer))
+                                        (lazy-find-projects-in-directory (lazy-dirname (buffer-file-name (current-buffer)))))
+                                   (lazy-find-projects-in-directory (cadr (assoc 'basedir result)))))
+              (pattern-projects nil))
+          (if already-defined
+              (cl-loop for proj-name in already-defined
+                       if (setq pattern-projects
+                                (lazy-find-projects-matching-patterns (lazy-get-config-val 'src-patterns proj-name t)
+                                                                      already-defined))
+                       return (let ((already-defined-result (gethash (car pattern-projects) lazy-project-list)))
+                                ;; add name if it does not already exist to alist, doubles functionality in lazy-def
+                                (unless (assoc 'name already-defined-result)
+                                  (add-to-list 'already-defined-result `(name ,(car pattern-projects))))
+                                already-defined-result))
+            result))))))
 
 (with-eval-after-load 'lazy
   (progn
