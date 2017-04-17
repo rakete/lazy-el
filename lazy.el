@@ -2984,7 +2984,9 @@ See also `lazy-update-tags'."
   (tabulated-list-init-header))
 
 (defun lazy-update-gtags-completions-cache (proj-name)
-  (let* ((cmd "global --match-part=first -Gq -dc \"\"; global --match-part=first -Gq -sc \"\"")
+  (let* ((cmd (if (eq system-type 'windows-nt)
+                  "global --match-part=first -Gq -dc \"\" & global --match-part=first -Gq -sc \"\""
+                "global --match-part=first -Gq -dc \"\"; global --match-part=first -Gq -sc \"\""))
          (completions (split-string (condition-case nil (shell-command-to-string cmd) (error "")) "\n" t))
          (completions-cache (gethash proj-name lazy-completions-cache)))
     (when completions
