@@ -1107,7 +1107,8 @@ Examples:
                          if (lazy-path-equal (file-name-as-directory ig) (lazy-concat-path (reverse xs)))
                          return nil
                          finally return t))
-      (when (and (directory-files (lazy-concat-path (reverse xs)) nil re)
+      (when (and (file-exists-p (lazy-concat-path (reverse xs)))
+                 (directory-files (lazy-concat-path (reverse xs)) nil re)
                  (not (cl-some (lambda (re) (string-match re (car xs))) ignore-paths)))
         (cl-return-from "lazy-search-path" (lazy-concat-path (reverse xs))))
       (setq xs (cdr xs)))))
