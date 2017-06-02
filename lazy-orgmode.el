@@ -110,7 +110,7 @@ Also tries to find org files with projects in files from `recentf-list'."
                    (loop for line in (split-string (buffer-string) "\n" t)
                          do (unless (gethash (lazy-dirname line) directory-table)
                               (puthash (lazy-dirname line) t directory-table)
-                              (dolist (org-file (directory-files (lazy-dirname line) t ".*\.org$"))
+                              (dolist (org-file (condition-case nil (directory-files (lazy-dirname line) t ".*\.org$") (error nil)))
                                 (add-to-list 'org-files org-file))))))))
     (cl-remove-if (lambda (x)
                  (or (not (file-exists-p x))
