@@ -228,20 +228,25 @@
   (require 'helm-mode)
   (setq helm-ag--original-window (selected-window))
   (helm-ag--clear-variables)
-  (let* ((helm-ag--default-directory default-directory)
-         (helm-do-ag--default-target (or (when (and lazy-name basedir (listp basedir) (eq (car-safe basedir) 4))
-                                           (puthash lazy-name
-                                                    (helm-read-file-name
-                                                     "Search in file(s): "
-                                                     :default default-directory
-                                                     :marked-candidates t :must-match t)
-                                                    lazy-helm-ag-basedir)
-                                           (gethash lazy-name lazy-helm-ag-basedir))
-                                         (and lazy-name (gethash lazy-name lazy-helm-ag-basedir))
+  (let* ((helm-ag--default-directory (or (and lazy-name (car-safe (gethash lazy-name lazy-helm-ag-basedir)))
                                          basedir
                                          (condition-case nil (lazy-get-config-val 'basedir) (error nil))
                                          (cadr (assoc 'basedir (lazy-guess-alist)))
                                          default-directory))
+         (helm-do-ag--default-target (cond ((and lazy-name basedir (listp basedir) (eq (car-safe basedir) 4))
+                                            (progn
+                                              (puthash lazy-name
+                                                       (helm-read-file-name
+                                                        "Search in file(s): "
+                                                        :default default-directory
+                                                        :marked-candidates t :must-match t)
+                                                       lazy-helm-ag-basedir)
+                                              (gethash lazy-name lazy-helm-ag-basedir)))
+                                           (basedir
+                                            (helm-read-file-name
+                                             "Search in file(s): "
+                                             :default default-directory
+                                             :marked-candidates t :must-match t))))
          (helm-do-ag--extensions (helm-ag--do-ag-searched-extensions)))
     (helm-ag--set-do-ag-option)
     (helm-ag--save-current-context)
