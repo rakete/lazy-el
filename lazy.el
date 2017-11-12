@@ -3745,22 +3745,23 @@ The compile command history search is implemented in `lazy-compile-read-command'
          (start-dir (if lazy-file-index-relative-paths
                         "."
                       (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist))))
-         (find-exe (or (executable-find "gfind")
-                       (and (executable-find "find")
-                            (string-match "GNU" (shell-command-to-string "find --version"))
-                            "find")))
+         (find-exe (or (and (eq system-type 'windows-nt)
+                            (or (executable-find "c:/Program Files/Git/usr/bin/find")
+                                (executable-find "gfind")))
+                       (and (not (eq system-type 'windows-nt))
+                            (executable-find "find"))))
          (find-cmd (concat "\"" find-exe "\" \"" start-dir "\" -type f "
                            (lazy-find-cmd-src-args (lazy-get-config-val 'src-patterns proj-name t proj-alist) proj-name proj-alist)
-                           (lazy-find-cmd-ignore-args (lazy-get-config-val 'ignore-patterns proj-name t proj-alist) proj-name proj-alist)
-                           ;; - had a problem under windows where gfind could not read some file and then always exit with error, this hack
-                           ;; works around that and makes the command always exit with 0, may be neccessary on linux at some point too
-                           (when (eq system-type 'windows-nt)
-                             " 2> nul & exit /b 0")))
+                           (lazy-find-cmd-ignore-args (lazy-get-config-val 'ignore-patterns proj-name t proj-alist) proj-name proj-alist)))
          (proc-name (concat "index-process-" proj-name)))
     (when (lazy-get-config-val 'file-list-cache proj-name t proj-alist)
       (lazy-fib-clear proj-name)
       (when (lazy-get-vcs-path proj-name)
         (setq find-cmd (concat find-cmd " -not -path " (concat "'*/" (lazy-get-vcs-path proj-name) "/*'"))))
+      ;; - had a problem under windows where gfind could not read some file and then always exit with error, this hack
+      ;; works around that and makes the command always exit with 0, may be neccessary on linux at some point too
+      (when (eq system-type 'windows-nt)
+        (setq find-cmd (concat find-cmd  " 2> nul & exit /b 0")))
       (with-current-buffer (get-buffer-create (lazy-fib-name proj-name))
         (buffer-disable-undo) ;; this is a large change we don't need to undo
         (setq buffer-read-only nil))
