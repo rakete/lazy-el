@@ -2432,13 +2432,18 @@ recieves when it acts as process sentinel.
 I implemented it mainly to execute multiple gtags calls in the background, each after the other."
   (unless n (setq n 0))
   (if (and (nth n commands)
-           (or (not event)
+           (or (eq system-type 'windows-nt)
+               (not event)
                (string-equal event "finished\n")))
       (let* ((proc-name (concat name "-" (prin1-to-string n)))
              (shell-file-name (if (eq system-type 'windows-nt) (default-value 'shell-file-name) "/bin/sh"))
-             (process (start-process-shell-command proc-name (when debug proc-name) (nth n commands)))
+             (command (nth n commands))
+             (process (start-process-shell-command proc-name (when debug proc-name) command))
              (input (nth n inputs)))
-        (when debug (message "%s" (nth n commands)))
+        (when debug
+          (message "%s" proc-name)
+          (message "%s" command)
+          (message "%s" input))
         (set-process-sentinel process (apply-partially 'lazy-process-group name commands inputs terminator terminator-args debug (1+ n)))
         (when input
           (process-send-string process input))
