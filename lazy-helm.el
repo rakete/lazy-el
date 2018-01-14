@@ -221,32 +221,21 @@
         :buffer "*helm lazy*"
         :history 'helm-file-name-history))
 
-(defvar lazy-helm-ag-basedir (make-hash-table :test 'equal))
-
-(defun lazy-helm-do-ag (&optional basedir)
+(defun lazy-helm-do-ag (&optional arg)
   (interactive "P")
   (require 'helm-mode)
   (setq helm-ag--original-window (selected-window))
   (helm-ag--clear-variables)
-  (let* ((helm-ag--default-directory (or (and lazy-name (car-safe (gethash lazy-name lazy-helm-ag-basedir)))
-                                         basedir
-                                         (condition-case nil (lazy-get-config-val 'basedir) (error nil))
-                                         (cadr (assoc 'basedir (lazy-guess-alist)))
-                                         default-directory))
-         (helm-do-ag--default-target (cond ((and lazy-name basedir (listp basedir) (eq (car-safe basedir) 4))
-                                            (progn
-                                              (puthash lazy-name
-                                                       (helm-read-file-name
-                                                        "Search in file(s): "
-                                                        :default default-directory
-                                                        :marked-candidates t :must-match t)
-                                                       lazy-helm-ag-basedir)
-                                              (gethash lazy-name lazy-helm-ag-basedir)))
-                                           (basedir
+  (let* ((helm-do-ag--default-target (cond ((and lazy-name (not arg))
+                                            (list (condition-case nil (lazy-get-config-val 'basedir) (error default-directory))))
+                                           ((not arg)
+                                            (list default-directory))
+                                           (arg
                                             (helm-read-file-name
                                              "Search in file(s): "
                                              :default default-directory
                                              :marked-candidates t :must-match t))))
+         (helm-ag--default-directory (car-safe helm-do-ag--default-target))
          (helm-do-ag--extensions (helm-ag--do-ag-searched-extensions)))
     (helm-ag--set-do-ag-option)
     (helm-ag--save-current-context)
