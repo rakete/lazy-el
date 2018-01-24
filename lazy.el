@@ -61,8 +61,7 @@ See also `lazy-open-files-cache', `lazy-open-friends-cache', `lazy-file-list-cac
   "Buffer name of the file-list cache. This buffer contains a
 list of all the files under the project's basedir (minus those
 matching ignore-patterns) or, if index-find-cmd is set, the list
-of files found by calling the custom find command.  The list is
-used by `lazy-find-file' to quickly locate project files."
+of files found by calling the custom find command."
   (unless proj-name
     (lazy-assert-proj)
     (setq proj-name lazy-name))
@@ -641,7 +640,9 @@ See also `lazy-get-config-val'.")
                                  ("xtend" . (xtend ".*\\.xtend"))
                                  )
   "Maps file suffixes to regexps used as source-patterns when guessing a
-project config from the currently opened file in the active buffer.")
+project config from the currently opened file in the active buffer.
+
+See also `lazy-src-pattern-languages'.")
 
 (defvar lazy-config-save-location (expand-file-name "projects.el" (file-name-as-directory lazy-global-cache-root))
   "Where to save project configs in elisp. If this is a filename project
@@ -840,7 +841,9 @@ See also `lazy-config-save'.")
   "Defines which tagging system to use for which language.
 
 Only gtags, gtags+exuberant-ctags, gtags+universal-ctags and gtags+pygments
-are implemented.")
+are implemented.
+
+See also `lazy-update-tags'.")
 
 (defvar lazy-thing-selector 'symbol)
 
@@ -1005,6 +1008,7 @@ contain a similar key."
       (cl-return-from "lazy-buffer-has-markers-p" nil))))
 
 (defun lazy-buildsystem-patterns ()
+  "Return all buildsystem file patterns as list."
   (lazy-flatten (cl-loop for bs in lazy-buildsystems
                          collect (cadr (assoc 'files (cadr bs))))))
 
@@ -1073,7 +1077,7 @@ path with a leading slash."
                 (mapconcat 'identity sequence "/"))))
 
 (cl-defun lazy-search-path (re path &optional stop-paths ignore-paths)
-"Search files matching RE in PATH. It will walk up the path hierachy looking
+  "Search files matching RE in PATH. It will walk up the path hierachy looking
 for matches until it either finds files matching RE, or arrives at the
 root of the filesystem hierachy.
 
@@ -2208,7 +2212,7 @@ statements in there. You need to manually copy, paste and modify those yourself.
 universal-ctags, exuberant-ctags and pygments to generate a tags database. It tries to use those in projects
 consisting of multiple languages to generate a tags database that contains all symbols from all languages.
 
-The generated tags is used for project specific completions as well as navigating to defintions of symbols.
+The generated tags are used for project specific completions as well as navigating to defintions of symbols.
 
 This function will ignore GTAGSLABEL, GTAGSROOT and GTAGSCONF and specify those itself without overwriting
 them. So that it can generate the tags database in a directory under ~/.lazy and have the tags reference paths
@@ -2221,7 +2225,7 @@ FILES to specify for which files to update the tags database for.
 With DEBUG true this leaves behind buffer(s) named gtags-0,1,... that contain the output of the gtags
 commands executed, and it also writes the gtags commands it executes into the *Messages* buffer.
 
-See also `lazy-setup-tags', `lazy-jump-definition' and `lazy-process-group'"
+See also `lazy-language-tag-systems', `lazy-setup-tags', `lazy-jump-definition' and `lazy-process-group'"
   (interactive)
   (setq proj-alist (or proj-alist
                        (lazy-find-alist proj-name)
@@ -3700,7 +3704,7 @@ The compile command history search is implemented in `lazy-compile-read-command'
 (defvar lazy-index-processes (make-hash-table))
 
 (cl-defun lazy-index (&optional proj-name proj-alist (async t) (do-friends nil) (quiet nil) (terminator nil) (parent nil))
-  "Regenerate the *file-index* buffer that is used for lazy-find-file"
+  "Regenerate the *file-index* buffer."
   (interactive)
   (setq proj-alist (or proj-alist
                        (lazy-find-alist proj-name)
@@ -4204,6 +4208,9 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
     projects))
 
 (defun lazy-find-common-path-of-buffers (&optional buffers ignore-paths)
+  "Find the longest path that is shared by all BUFFERS, but is not equal to any path in IGNORE-PATHS.
+
+BUFFERS is optional, (buffer-list) is used instead when it is not specified."
   (let* ((common-path 'undefined)
          (result (dolist (buf
                           (or buffers (buffer-list))
@@ -4239,6 +4246,16 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
     result))
 
 (cl-defun lazy-guess-buffers (&optional test-buffer ignore-paths mode)
+  "Guess which other buffers would belong to the current buffer in a project.
+
+Optional argument TEST-BUFFER can be used to specify which buffer to use
+as current buffer, is set to `current-buffer' when not specified.
+
+IGNORE-PATHS can be used to exclude buffers that have files open in certain
+paths, MODE can be used to specify a major-mode all guessed buffers should
+be set to.
+
+See alseo `lazy-guess-alist'"
   (unless test-buffer
     (setq test-buffer (current-buffer)))
   (let ((buffers (buffer-list)))
@@ -4286,6 +4303,11 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
     result))
 
 (defun lazy-src-pattern-languages (src-patterns)
+  "Returns a list of languages whose files match SRC-PATTERNS by going
+through the languages defined in `lazy-src-pattern-table'.
+
+Returns the first hit in `lazy-src-pattern-table', so when looking
+for pattern \".h\", it returns (c) and not (cpp)."
   (let ((lang nil)
         (languages nil))
     (cl-loop for pattern in src-patterns
@@ -4312,18 +4334,33 @@ incubator root could be guessed as basedir.")
 help guessing a projects basedir. Matching directory names will be ignored
 and their parent directory used as basedir.")
 
-(defun lazy-guess-basedir-from-buildsystem (buffer-or-path)
-  (let ((path (if (bufferp buffer-or-path)
-                  (lazy-find-common-path-of-buffers (lazy-guess-buffers buffer-or-path lazy-incubator-paths))
-                buffer-or-path)))
-    (when (stringp path)
+(defun lazy-guess-basedir-from-buildsystem (buffer)
+  "Guess basedir of project to which BUFFER belongs by looking for files matching patterns
+defined in `lazy-buildsystems'.
+
+Uses `lazy-guess-buffers' and `lazy-find-common-path-of-buffers' to determine at which
+path to start searching for patterns, then tries finding matching files in that path
+while walking the filesystem hierachy upwards.
+
+It should return the earliest buildsystem it finds, although it tries to find all
+of them anyways.
+
+See also `lazy-guess-alist', `lazy-buildsystem-patterns' and `lazy-guess-basedir-from-vcs'."
+  (let ((path (lazy-find-common-path-of-buffers (lazy-guess-buffers buffer lazy-incubator-paths))))
+    (when path
       (let ((found-paths (sort (loop for re in (lazy-buildsystem-patterns)
                                      collect (lazy-search-path re path lazy-incubator-paths lazy-common-project-subdir-names))
+                               ;; - by using sort and sorting by length I get the longest path first, meaning the buildsystem
+                               ;; highest in the hierachy
                                (lambda (a b) (> (length a) (length b))))))
         (when (car found-paths)
           (cons 200 (car found-paths)))))))
 
 (defun lazy-guess-basedir-from-vcs (buffer)
+  "Guess basedir of project to which BUFFER belongs by looking for files or directories matching
+patterns defined in `lazy-vcs-path'.
+
+See also `lazy-guess-alist' and `lazy-guess-basedir-from-buildsystem'."
   (let* ((filename (buffer-file-name buffer))
          (found-paths (when filename
                         (sort (loop for re in (mapcar 'regexp-quote (mapcar 'cdr lazy-vcs-path))
@@ -4333,6 +4370,8 @@ and their parent directory used as basedir.")
       (cons 500 (car found-paths)))))
 
 (defun lazy-guess-basedir-from-matching-projects (buffer)
+  "Examines already defined projects looking for one which has a basedir matching the path
+of BUFFER and returns that as guessed basedir."
   (let ((basedirs '()))
     (dolist (proj-name (lazy-find-projects-owning-buffer buffer))
       (let ((basedir (file-name-as-directory (lazy-get-config-val 'basedir proj-name t))))
@@ -4355,12 +4394,18 @@ and their parent directory used as basedir.")
                 (cons 10 (car basedirs)))))))))
 
 (defun lazy-guess-basedir-from-common-path-of-buffers-with-same-mode (mode buffer)
+  "Guess basedir by using `lazy-guess-buffers' with MODE and BUFFER as argument
+and applying `lazy-find-common-path-of-buffers' to the resulting list."
   (let ((found-path (lazy-find-common-path-of-buffers (lazy-guess-buffers buffer lazy-incubator-paths mode))))
     (when (and found-path
                (not (string-equal (expand-file-name "~") found-path)))
       (cons 50 found-path))))
 
 (defun lazy-guess-basedir-from-not-common-project-subdir (buffer)
+  "Guess basedir of project to which BUFFER belongs to by using `lazy-guess-buffers'
+and `lazy-find-common-path-of-buffers'. But then walk the resulting path upwards
+until we find a path that does not contain any of the directory names defined in
+`lazy-common-project-subdir-names'."
   (let* ((path (lazy-find-common-path-of-buffers (lazy-guess-buffers buffer lazy-incubator-paths)))
          (splitted-path (when (and path (stringp path)) (split-string path "/"))))
     (while (and path
@@ -4375,6 +4420,10 @@ and their parent directory used as basedir.")
       (cons 100 path))))
 
 (defun lazy-guess-src-patterns-from-basedir-and-mode (basedir mode)
+  "Given BASEDIR and MODE deduce the src patterns that should match all files that belong to
+this project.
+
+See also `lazy-src-pattern-languages' and `lazy-src-pattern-table'"
   (let* ((all-incubator 'undefined)
          (case-fold-search nil)
          ;; guess buffers, collect files and set all-incubator, files from incubator
@@ -4420,6 +4469,8 @@ and their parent directory used as basedir.")
       (cons 100 patterns))))
 
 (defun lazy-guess-compile-cmd-from-buildsystem (basedir)
+  "Guess current compile command by looking for files in BASEDIR that match patterns
+defined in `lazy-buildsystems'."
   (let ((bsystem))
     (loop for filename in (directory-files basedir)
           until (let ((r nil))
