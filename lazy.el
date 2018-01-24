@@ -4203,12 +4203,6 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
                  lazy-project-list))
     projects))
 
-(defun lazy-find-unique-paths (paths)
-  (let ((result '()))
-    (dolist (path paths result)
-      (unless (cl-some (lambda (a) (lazy-path-equal path a)) (lazy-filter (lambda (p) (not (string-equal p path))) paths))
-        (add-to-list 'result path)))))
-
 (defun lazy-find-common-path-of-buffers (&optional buffers ignore-paths)
   (let* ((common-path 'undefined)
          (result (dolist (buf
