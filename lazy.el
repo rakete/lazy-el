@@ -4294,9 +4294,8 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
                                         (string-equal (car (last parts)) "gz"))
                                    (concat (nth 0 (last parts 2)) "." (nth 1 (last parts 2)))
                                  (car (last parts)))))
-                  (setq lang (cadr (assoc ending lazy-src-pattern-table))))
-             if (not (eq lang nil))
-             do (add-to-list 'languages lang))
+                  (if (setq lang (cadr (assoc ending lazy-src-pattern-table)))
+                      (add-to-list 'languages lang t))))
     languages))
 
 (defvar lazy-incubator-paths `(,(expand-file-name "~"))
