@@ -1069,8 +1069,8 @@ Examples:
 (defun lazy-concat-path (sequence)
   "Concat SEQUENCE into a slash seperated path. It will produce a
 path with a leading slash."
-  (when (> (length sequence) 1)
-    (mapconcat 'identity sequence "/")))
+  (concat "/" (when (> (length sequence) 0)
+                (mapconcat 'identity sequence "/"))))
 
 (cl-defun lazy-search-path (re path &optional stop-paths ignore-paths)
 "Search files matching RE in PATH. It will walk up the path hierachy looking
@@ -1691,14 +1691,14 @@ See also `lazy-global-cache-root' and `lazy-get-cache-dir'."
     (setq proj-name (cadr (assoc 'name proj-alist)))
     (unless proj-name
       (lazy-assert-proj))
-    (let ((cache-directory (concat lazy-global-cache-root
-                             (cond ((lazy-get-config-val 'parent proj-name nil)
-                                    (lazy-concat-path (lazy-ancestry proj-name)))
-                                   (t
-                                    (concat "/" proj-name)))))
+    (let ((cache-directory (concat (directory-file-name lazy-global-cache-root)
+                                   (cond ((lazy-get-config-val 'parent proj-name nil)
+                                          (lazy-concat-path (lazy-ancestry proj-name)))
+                                         (t
+                                          (concat "/" proj-name)))))
           (file (concat (symbol-name symbol))))
       (make-directory cache-directory t)
-      (let ((r (concat cache-directory file)))
+      (let ((r (concat cache-directory "/" file)))
         (cond ((file-exists-p r)
                r)
               ((and (lazy-get-config-val 'parent proj-name nil)
