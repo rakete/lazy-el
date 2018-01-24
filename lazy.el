@@ -1115,11 +1115,6 @@ Examples:
       (setq xs (cdr xs))
       (setq path (lazy-concat-path (reverse xs))))))
 
-(defun lazy-join (delimiter strings)
-  (cl-reduce (lambda (a b)
-            (cl-concatenate 'string a delimiter b))
-          strings))
-
 (defmacro lazy-with-directory (path &rest body)
   `(let ((default-directory ,path))
      (with-local-quit
@@ -1141,11 +1136,6 @@ Examples:
            (save-excursion
              (goto-char (marker-position marker))
              ,@body)))))
-
-(defun lazy-buffer-lang (&optional buffer)
-  (when (buffer-file-name (or buffer (current-buffer)))
-    (cadr (assoc (car (last (split-string (buffer-file-name (or buffer (current-buffer))) "\\.")))
-                 lazy-src-pattern-table))))
 
 ;; ---------------------------------------------------------------------
 ;; Project Configuration
@@ -1722,15 +1712,14 @@ See also `lazy-global-cache-root' and `lazy-get-cache-dir'."
     (setq proj-name (cadr (assoc 'name proj-alist)))
     (unless proj-name
       (lazy-assert-proj))
-    (let ((directory (concat lazy-global-cache-root
+    (let ((cache-directory (concat lazy-global-cache-root
                              (cond ((lazy-get-config-val 'parent proj-name nil)
-                                    (let ((a (concat "/" (lazy-join "/" (lazy-ancestry proj-name)))))
-                                      (concat a "/")))
+                                    (lazy-concat-path (lazy-ancestry proj-name)))
                                    (t
-                                    (concat "/" proj-name "/")))))
+                                    (concat "/" proj-name)))))
           (file (concat (symbol-name symbol))))
-      (make-directory directory t)
-      (let ((r (concat directory file)))
+      (make-directory cache-directory t)
+      (let ((r (concat cache-directory file)))
         (cond ((file-exists-p r)
                r)
               ((and (lazy-get-config-val 'parent proj-name nil)
@@ -2112,7 +2101,6 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-project-history'
 
 (defvar lazy-default-gtags-config (expand-file-name "gtags.conf" (file-name-directory (or buffer-file-name load-file-name))))
 (defvar lazy-after-save-update-in-progress nil)
-(defvar lazy-after-save-line-numbers (make-hash-table))
 (defvar lazy-after-save-current-buffer nil)
 (defvar lazy-after-save-current-project nil)
 
@@ -4417,7 +4405,7 @@ and their parent directory used as basedir.")
                 (some (lambda (dir) (string-equal dir (car (last splitted-path))))
                       lazy-common-project-subdir-names))
       (setq splitted-path (butlast splitted-path)
-            path (cl-reduce (lambda (a b) (concat a "/" b)) splitted-path)))
+            path (lazy-concat-path splitted-path)))
     (when path
       (cons 100 path))))
 
