@@ -186,37 +186,6 @@ applied to the var symbol and var value pair and its result used as new var valu
 
 See also `lazy-get-config-val'.")
 
-(defvar lazy-var-ask-functions '((name . (lambda ()
-                                           (read-string "Name: " super)))
-                                 (basedir . (lambda ()
-                                              (expand-file-name (concat "~/" (ido-completing-read "Basedir: " (ido-file-name-all-completions "~"))))))
-                                 (src-patterns . (lambda ()
-                                                   (let ((xs '()))
-                                                     (loop for p = (read-string "Source pattern regex: " super) then (read-string (concat "Source pattern regex " (prin1-to-string xs) ": "))
-                                                           until (string-equal p "")
-                                                           if (condition-case nil (listp (read p)) (error nil))
-                                                           append (read p) into xs
-                                                           else
-                                                           collect p into xs
-                                                           finally return xs))))
-                                 (ignore-patterns . (lambda ()
-                                                      (let ((xs '()))
-                                                        (loop for p = (read-string "Ignore pattern regex: " super) then (read-string (concat "Ignore pattern regex " (prin1-to-string xs) ": "))
-                                                              until (string-equal p "")
-                                                              if (condition-case nil (listp (read p)) (error nil))
-                                                              append (read p) into xs
-                                                              else
-                                                              collect p into xs
-                                                              finally return xs))))
-                                 (vcs . (lambda ()
-                                          (loop for v = (read-string "vcs: " super) then (read-string "vcs: " super)
-                                                until (cl-some (lambda (x) (eq (car x) (read v))) lazy-vcs-path)
-                                                finally return (read v))))
-                                 (compile-cmd . (lambda ()
-                                                  (read-string "Compile command: " super)))
-                                 (patterns-are-regex . (lambda () t)))
-  "Functions that are used to ask the user about what a vars value should be.")
-
 (defvar lazy-before-load-hook '()
   "Hook that runs before loading a project.")
 (defvar lazy-before-files-load-hook '()
