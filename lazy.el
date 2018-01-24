@@ -1098,10 +1098,20 @@ Examples:
       nil))))
 
 (defun lazy-concat-path (sequence)
+  "Concat SEQUENCE into a slash seperated path. It will produce a
+path with a leading slash."
   (when (> (length sequence) 1)
     (mapconcat 'identity sequence "/")))
 
 (cl-defun lazy-search-path (re path &optional stop-paths ignore-paths)
+"Search files matching RE in PATH. It will walk up the path hierachy looking
+for matches until it either finds files matching RE, or arrives at the
+root of the filesystem hierachy.
+
+The optional argument STOP-PATHS can be used to specify paths at which this
+function should stop searching when it hits them. And IGNORE-PATHS can be
+used to specify paths that are ignored and not searched for files matching
+RE, but still skipped over to search the next higher path for matches."
   (let ((xs (reverse (split-string path "/" t))))
     (while (and (cdr xs)
                 (cl-loop for ig in stop-paths
@@ -2084,7 +2094,7 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-project-history'
 (ad-activate 'display-buffer)
 
 (defvar lazy-suppress-y-or-n-p-patterns (list "Do you want to revisit the file normally now"
-                                                 "Do you want to revisit the file literally now"))
+                                              "Do you want to revisit the file literally now"))
 
 (defadvice y-or-n-p (around lazy-y-or-n-p)
   (let ((prompt (ad-get-arg 0))
