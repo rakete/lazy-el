@@ -248,7 +248,15 @@ See also `lazy-get-config-val'.")
                                       (build ("ansible-playbook -i hosts site.yml"))))
                             (fabric ((files ("fabfile\\.py"))
                                      (build ("fab")))))
-  "Used when guessing a project root or its compile-cmd.")
+  "Defines build systems. Used when guessing a project root or its compile-cmd.
+
+Each build system is a entry like this:
+(gnu-make ((files (\"autogen\\.sh\" \"configure\" \"Makefile\"))
+           (build (\"make\"))))
+
+Where 'files' are filenames of files that may be found in a projects basedir when
+it is using the build system, and 'build' is a default build command to be used
+when a project uses the build system.")
 
 (defvar lazy-src-pattern-table '(("c" . (c ".*\\.c" ".*\\.h"))
                                  ("h" . (c ".*\\.c" ".*\\.h"))
@@ -1897,7 +1905,7 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-project-history'
              (length closed) (length dirty))))
 
 (defun lazy-buffer-name (buf)
-  "Return buffers name based on filename or direds location"
+  "Return a name for buffer BUF based on filename or dired location"
   (let ((file-name (or (buffer-file-name (or (buffer-base-buffer buf) buf))
                        (with-current-buffer (or (buffer-base-buffer buf) buf) list-buffers-directory))))
     (if file-name
@@ -1905,7 +1913,10 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-project-history'
       nil)))
 
 (defun lazy-buffer-p (buf &optional proj-name proj-alist)
-  "Test if the given buffer BUF belongs to the currently active project or either PROJ-NAME or PROJ-ALIST."
+  "Test if the given buffer BUF belongs to the currently active project or either PROJ-NAME
+or PROJ-ALIST.
+
+See also `lazy-friendly-buffer-p'."
   (setq proj-alist (or proj-alist
                        (lazy-find-alist proj-name)
                        (lazy-find-alist lazy-name)
@@ -1922,7 +1933,8 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-project-history'
              (cl-loop for pattern in (lazy-get-config-val 'src-patterns proj-name t proj-alist)
                       if (string-match (if (lazy-get-config-val 'patterns-are-regex proj-name t proj-alist)
                                            pattern
-                                         (regexp-quote pattern)) file-name)
+                                         (regexp-quote pattern))
+                                       file-name)
                       return t
                       finally return nil)
              (or (string-match (concat "^" (regexp-quote basedir)) file-name)
@@ -1931,12 +1943,13 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-project-history'
       nil)))
 
 (defun lazy-dired-buffer-p (buf &optional proj-name)
+  "Test if BUF is a `dired' buffer that belongs to the current project or PROJ-NAME."
   (and (with-current-buffer buf
          (eq major-mode 'dired-mode))
        (lazy-buffer-p buf proj-name)))
 
 (defun lazy-buffers (&optional proj-name)
-  "Get a list of buffers that reside in this projects basedir"
+  "Get a list of all buffers of the current project or PROJ-NAME."
   (unless proj-name
     (lazy-assert-proj)
     (setq proj-name lazy-name))
@@ -1946,12 +1959,15 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-project-history'
     buffers))
 
 (defun lazy-file-buffers (&optional proj-name)
+  "Get a list of only the buffers that have a file open that belong to the current project
+or PROJ-NAME."
   (unless proj-name
     (lazy-assert-proj)
     (setq proj-name lazy-name))
   (cl-remove-if (lambda (buf) (not (buffer-file-name buf))) (lazy-buffers proj-name)))
 
 (defun lazy-special-buffers (&optional proj-name)
+  "Get a list of only the special buffers that belong to the current project or PROJ-NAME."
   (unless proj-name
     (lazy-assert-proj)
     (setq proj-name lazy-name))
@@ -1963,6 +1979,7 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-project-history'
                        (buffer-list)))))
 
 (defun lazy-dired-buffers (&optional proj-name)
+  "Get a list of only the dired buffers that belong to the current project or PROJ-NAME."
   (unless proj-name
     (lazy-assert-proj)
     (setq proj-name lazy-name))
@@ -3907,7 +3924,9 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
     ))
 
 (defun lazy-friendly-buffer-p (buf &optional proj-name)
-  "Check if BUF is a friend of PROJ-NAME."
+  "Check if BUF is a friend of PROJ-NAME.
+
+See also `lazy-buffer-p'."
   (unless (lazy-buffer-p buf)
     (let ((file-name (lazy-buffer-name buf)))
       (if (and file-name
