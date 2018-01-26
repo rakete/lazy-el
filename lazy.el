@@ -1930,15 +1930,6 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-project-history'
         proj-name
       nil)))
 
-(defun lazy-file-buffer-p (buf &optional proj-name)
-  (and (buffer-file-name buf)
-       (lazy-buffer-p buf proj-name)))
-
-(defun lazy-special-buffer-p (buf &optional proj-name)
-  (let ((case-fold-search nil))
-    (and (string-match "\*[^\*]\*" (buffer-name buf))
-         (lazy-buffer-p buf proj-name))))
-
 (defun lazy-dired-buffer-p (buf &optional proj-name)
   (and (with-current-buffer buf
          (eq major-mode 'dired-mode))
