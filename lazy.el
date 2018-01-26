@@ -638,6 +638,11 @@ See also `lazy-get-config-val'.")
                                  ("xslt" . (xslt ".*\\.xsl" ".*\\.xslt" ".*\\.xpl"))
                                  ("xpl" . (xslt ".*\\.xsl" ".*\\.xslt" ".*\\.xpl"))
                                  ("xtend" . (xtend ".*\\.xtend"))
+                                 ("org" . (orgmode ".*\.org"))
+                                 ("md" . (markdown ".*\.md" ".*\.markdown"))
+                                 ("markdown" . (markdown ".*\.md" ".*\.markdown"))
+                                 ("txt" . (text ".*\.txt"))
+                                 ("yaml" . (yaml ".*\.yaml"))
                                  )
   "Maps file suffixes to regexps used as source-patterns when guessing a
 project config from the currently opened file in the active buffer.
