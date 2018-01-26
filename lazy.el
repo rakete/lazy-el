@@ -2079,9 +2079,6 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-project-history'
 ;; ---------------------------------------------------------------------
 
 (defvar lazy-default-gtags-config (expand-file-name "gtags.conf" (file-name-directory (or buffer-file-name load-file-name))))
-(defvar lazy-after-save-update-in-progress nil)
-(defvar lazy-after-save-current-buffer nil)
-(defvar lazy-after-save-current-project nil)
 
 (defun lazy-parse-gtags-conf (&optional gtags-conf)
   "A helper function to generate `lazy-language-tag-systems' and `lazy-src-pattern-table' by parsing
@@ -4055,32 +4052,26 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
 ;; After saving
 ;; ---------------------------------------------------------------------
 
-(defun lazy-after-save-add-pattern (&optional buffer)
-  (unless buffer
-    (setq buffer (current-buffer)))
-  (when lazy-name
-    (let* ((file-name (expand-file-name (buffer-file-name buffer)))
-           (extension (car (last (split-string file-name "\\."))))
-           (new-pattern (concat ".*\\." extension))
-           (src-patterns (lazy-get-config-val 'src-patterns lazy-name t))
-           (case-fold-search nil)
-           (buildsystem-files (cl-loop for bs in lazy-buildsystems
-                                       append (cadr (assoc 'files (cadr bs)))))
-           (buildsystem-file-found (cl-some (lambda (buildsystem-file)
-                                              (when (string-match (concat (regexp-quote buildsystem-file) "$") file-name)
-                                                buildsystem-file))
-                                            buildsystem-files)))
-      (when (and (assoc extension lazy-src-pattern-table)
-                 (or (string-match (concat "^" (regexp-quote (file-name-as-directory (lazy-get-config-val 'basedir lazy-name t)))) file-name)
-                     (string-match (concat "^" (regexp-quote (file-name-as-directory (lazy-get-config-val 'basedir lazy-name t)))) (file-truename file-name)))
-                 (not (cl-some (lambda (pattern) (string-match pattern file-name)) src-patterns)))
-        (lazy-set-config-val 'src-patterns (add-to-list 'src-patterns new-pattern)))
-      (when (and buildsystem-file-found
-                 (not (cl-some (lambda (pattern) (string-match pattern buildsystem-file-found)) src-patterns)))
-        (lazy-set-config-val 'src-patterns (add-to-list 'src-patterns (concat ".*" (regexp-quote buildsystem-file-found) "$")))))))
+(defvar lazy-after-save-update-in-progress nil
+  "Used to keep track when an `lazy-after-save-update' operation is pending, so
+that only one is scheduled at the same time.
 
+See also `lazy-update'.")
+
+(defvar lazy-after-save-update-idle-time 4
+  "Can be used to customize the amount of idle time needed to run a pending
+`lazy-after-save-update' operation.
+
+See also `lazy-update'.")
 
 (defun lazy-after-save-update (&optional proj-name)
+  "This functions gets added to `after-save-hook' and `after-load-hook' by lazy-el. It
+runs `lazy-update' after the idle time specified in `lazy-after-save-update-idle-time'
+has passed.
+
+If `lazy-prevent-after-save-update' is set this will not do anything.
+
+See also `lazy-update-tags' and `lazy-after-save-update-in-progress'."
   (unless lazy-after-save-update-in-progress
     (if (and (not (or lazy-prevent-after-save-update
                       (string-match ".*recentf.*" (buffer-name (current-buffer)))
@@ -4093,52 +4084,104 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
              (get-buffer-window (current-buffer) 'visible))
         (progn
           (setq proj-name (or proj-name
-                              lazy-name
-                              (cadr (assoc 'name (lazy-guess-alist)))))
+                              ;; - prefer guessed name even when lazy-name is set, so that when I edit a file
+                              ;; that belongs to another project then the currently active one, the other project
+                              ;; gets updated
+                              (cadr (assoc 'name (lazy-guess-alist)))
+                              lazy-name))
           (when proj-name
-            (setq lazy-after-save-update-in-progress t
-                  lazy-after-save-current-buffer (current-buffer)
-                  lazy-after-save-current-project proj-name)
-            (run-with-idle-timer 10 nil 'lazy-update))))))
+            (setq lazy-after-save-update-in-progress t)
+            (run-with-idle-timer lazy-after-save-update-idle-time nil
+                                 (lambda (&optional p proj-name buffer)
+                                   (lazy-update p proj-name buffer)
+                                   ;; - explicitly set lazy-after-save-update-in-progress to nil here because I had
+                                   ;; problems with it remaining t even when lazy-update had already run
+                                   (setq lazy-after-save-update-in-progress nil))
+                                 ;; - previously I used a bunch of global variables to remember the project and
+                                 ;; buffer that were active when the idle timer was set, but then I found out I
+                                 ;; can just supply proj-name and (current-buffer) as arguments here
+                                 nil proj-name (current-buffer)))))))
+
+(defun lazy-update-src-patterns (&optional buffer)
+  "Update the src patterns of the current projects configuration by adding
+the extension of the file opened in BUFFER.
+
+Before adding the extension as new src pattern this function checks if the
+extension is defined in `lazy-src-pattern-table' and if the file is in a
+subdirectory of the current projects basedir.
+
+It also checks if the extension belongs to a build system file by looking
+at all files defined in `lazy-buildsystems'.
+
+See also `lazy-update' and `lazy-set-config-val'."
+  (unless buffer
+    (setq buffer (current-buffer)))
+  ;; - this function needs to use lazy-name, and should not be modified to take a proj-name argument
+  ;; like so many others, it makes only sense to use this function to update the src patterns of an
+  ;; active project
+  (when lazy-name
+    (let* ((file-name (expand-file-name (buffer-file-name buffer)))
+           (extension (car (last (split-string file-name "\\."))))
+           (new-pattern (concat ".*\\." extension))
+           (src-patterns (lazy-get-config-val 'src-patterns lazy-name t))
+           (case-fold-search nil)
+           (buildsystem-files (cl-loop for bs in lazy-buildsystems
+                                       append (cadr (assoc 'files (cadr bs)))))
+           (buildsystem-file-found (cl-some (lambda (buildsystem-file)
+                                              (when (string-match (concat (regexp-quote buildsystem-file) "$") file-name)
+                                                buildsystem-file))
+                                            buildsystem-files)))
+      ;; - first when checks if the file-name is in a subdirectory of the projects basedir
+      (when (or (string-match (concat "^" (regexp-quote (file-name-as-directory (lazy-get-config-val 'basedir lazy-name t)))) file-name)
+                (string-match (concat "^" (regexp-quote (file-name-as-directory (lazy-get-config-val 'basedir lazy-name t)))) (file-truename file-name)))
+        ;; - second when test if extension is in lazy-src-pattern-table, which means its a programming language
+        (when (and (assoc extension lazy-src-pattern-table)
+                   (not (cl-some (lambda (pattern) (string-match pattern file-name)) src-patterns)))
+          (lazy-set-config-val 'src-patterns (add-to-list 'src-patterns new-pattern)))
+        ;; - third when checks for buildsystem files, since those might not be in lazy-src-pattern-table, but I still want to add them
+        (when (and buildsystem-file-found
+                   (not (cl-some (lambda (pattern) (string-match pattern buildsystem-file-found)) src-patterns)))
+          (lazy-set-config-val 'src-patterns (add-to-list 'src-patterns (concat ".*" (regexp-quote buildsystem-file-found) "$"))))))))
 
 (defun lazy-update (&optional p proj-name buffer)
+  "Update the tags database, the file index and source patterns of the project
+the current buffer belongs to.
+
+The project to be updated can be specified with PROJ-NAME. The BUFFER argument
+is used as argument when this function calls `lazy-update-src-patterns'.
+
+When BUFFER and PROJ-NAME do not belong together as a project, this function
+will not update the tags database or the file index.
+
+After running this function sets `lazy-after-save-update-in-progress' to nil.
+
+See also `lazy-index' and `lazy-update-tags'."
   (interactive "p")
   (setq proj-name (or proj-name
-                      lazy-after-save-current-project
-                      lazy-name
-                      (cadr (assoc 'name (lazy-guess-alist)))))
-  (when lazy-name
-    (let ((guessed-name (cadr (assoc 'name (lazy-guess-alist)))))
-      (when guessed-name (setq proj-name guessed-name))))
+                      (cadr (assoc 'name (lazy-guess-alist)))
+                      lazy-name))
   (unless proj-name
     (lazy-assert-proj))
   (unless buffer
-    (setq buffer (or lazy-after-save-current-buffer
-                     (current-buffer))))
+    (setq buffer (current-buffer)))
   (condition-case e
       (progn
-        (if (or p (lazy-buffer-p buffer proj-name) (lazy-friendly-buffer-p buffer proj-name))
-            (progn
-              (when (buffer-file-name buffer)
-                (lazy-after-save-add-pattern buffer))
-              (lazy-index proj-name nil t nil t
-                          (lambda (&optional proj-name proj-alist files debug)
-                            (lazy-update-tags proj-name proj-alist files debug)
-                            (setq lazy-after-save-update-in-progress nil
-                                  lazy-after-save-current-buffer nil
-                                  lazy-after-save-current-project nil))))
-          (setq lazy-after-save-update-in-progress nil
-                lazy-after-save-current-buffer nil
-                lazy-after-save-current-project nil)))
+        (when (buffer-file-name buffer)
+          (lazy-update-src-patterns buffer))
+        (when (or p (lazy-buffer-p buffer proj-name) (lazy-friendly-buffer-p buffer proj-name))
+          (lazy-index proj-name nil t nil t
+                      (lambda (&optional proj-name proj-alist files debug)
+                        (lazy-update-tags proj-name proj-alist files debug))))
+        (setq lazy-after-save-update-in-progress nil))
     (error (progn
-             (setq lazy-after-save-update-in-progress nil
-                   lazy-after-save-current-buffer nil
-                   lazy-after-save-current-project nil)
+             (setq lazy-after-save-update-in-progress nil)
              (message "error in lazy-after-save-update: %s" (prin1-to-string e)))))
   t)
 
 
 (defun lazy-pre-command-remove-jump-delete-buffer ()
+  "Added to `pre-command-hook', this function removes the overlay that marks where
+the last `lazy-jump' call jumped to."
   (unless (or (eq this-command 'lazy-jump-next)
               (eq this-command 'lazy-jump-prev)
               (eq this-command 'lazy-jump-abort)
