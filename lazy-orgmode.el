@@ -740,7 +740,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
                         (progn
                           (org-back-to-heading t)
                           (when (not (lazy-org-entry-is-project-p))
-                            (goto-char (lazy-org-entry-parent-point)))
+                            (goto-char (or (lazy-org-entry-parent-point) (point))))
                           (setq beg (point))
                           (org-end-of-subtree t t)
                           (if (org-on-heading-p) (backward-char 1))
