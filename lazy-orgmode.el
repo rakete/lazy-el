@@ -916,7 +916,8 @@ See also `lazy-org-entry-nearest-active'."
     (org-mode)
     (lazy-org-add-todo-mode 1)
     (with-current-buffer buf
-      (set local-prefix-arg arg)
+      (when arg
+        (set local-prefix-arg arg))
       (org-insert-heading)
       (org-todo "TODO"))))
 
