@@ -473,6 +473,9 @@ will be used internally. You can specify a MATCH to be used in that case with:
 
 
 (defun lazy-org-entry-name (&optional marker)
+  "Finds the name of the current entry at point or at MARKER.
+
+See also `lazy-org-entry-marker' and `lazy-org-entry-level'."
   (interactive)
   (lazy-with-or-without-marker marker
    (if (and (boundp 'lazy-org-map-entry-name)
@@ -487,6 +490,11 @@ will be used internally. You can specify a MATCH to be used in that case with:
              (concat (read some-name) ":" (lazy-org-entry-headline))))))))
 
 (defun lazy-org-entry-marker (&optional marker)
+  "Finds the current entry marker at point or at MARKER.
+
+(Why did I write this even? With MARKER it just returns MARKER)
+
+See also `lazy-org-entry-level' and `lazy-org-entry-name'."
   (interactive)
   (if (markerp marker)
       marker
@@ -498,6 +506,9 @@ will be used internally. You can specify a MATCH to be used in that case with:
             (copy-marker (point-marker))))))))
 
 (defun lazy-org-entry-level (&optional marker)
+  "Finds the tree level of the current entry at point or at MARKER.
+
+See also `lazy-org-entry-marker' and `lazy-org-entry-name'."
   (interactive)
   (lazy-with-or-without-marker marker
    (if (and (boundp 'lazy-org-map-entry-level)
@@ -510,6 +521,9 @@ will be used internally. You can specify a MATCH to be used in that case with:
          (org-outline-level))))))
 
 (defun lazy-org-entry-parent-level (&optional marker)
+  "Finds the tree level of the parent project entry at point or MARKER.
+
+See also `lazy-org-entry-parent-point' and `lazy-org-entry-parent-name'."
   (interactive)
   (lazy-with-or-without-marker marker
    (if (and (boundp 'lazy-org-map-parent-level)
@@ -524,6 +538,9 @@ will be used internally. You can specify a MATCH to be used in that case with:
            (org-outline-level)))))))
 
 (defun lazy-org-entry-parent-name (&optional marker)
+  "Finds the name of the parent project entry at current point or MARKER.
+
+See also `lazy-org-entry-parent-point' and `lazy-org-entry-parent-level'."
   (interactive)
   (lazy-with-or-without-marker marker
    (if (and (boundp 'lazy-org-map-parent-name)
@@ -537,9 +554,13 @@ will be used internally. You can specify a MATCH to be used in that case with:
                      (org-entry-get (point) (upcase (lazy-org-symbol-table 'name)))))))))))
 
 (defun lazy-org-entry-parent-point (&optional marker)
+  "Finds the point of the parent project entry at current point or MARKER.
+
+See also `lazy-org-entry-parent-level' and `lazy-org-entry-parent-name'."
   (interactive)
   (lazy-with-or-without-marker marker
    (if (and (boundp 'lazy-org-map-parent-point)
+            (integerp lazy-org-map-parent-point)
             (boundp 'lazy-org-map-entry-point)
             (eq (point) lazy-org-map-entry-point))
        lazy-org-map-parent-point
@@ -547,13 +568,13 @@ will be used internally. You can specify a MATCH to be used in that case with:
        (org-back-to-heading t)
        (let ((lazy-org-map-parent-point nil)
              (lazy-org-map-parent-name (or (org-entry-get (point) (lazy-org-symbol-table 'name) t)
-                              (org-entry-get (point) (upcase (lazy-org-symbol-table 'name)) t)))
+                                           (org-entry-get (point) (upcase (lazy-org-symbol-table 'name)) t)))
              (cont nil)
              (is-project (lazy-org-entry-is-project-p)))
          (setq cont (org-up-heading-safe))
          (when is-project
            (setq lazy-org-map-parent-name (or (org-entry-get (point) (lazy-org-symbol-table 'name) t)
-                                 (org-entry-get (point) (upcase (lazy-org-symbol-table 'name)) t))))
+                                              (org-entry-get (point) (upcase (lazy-org-symbol-table 'name)) t))))
          (when (and lazy-org-map-parent-name cont)
            (while (and cont
                        (setq lazy-org-map-parent-point (point))
@@ -561,9 +582,15 @@ will be used internally. You can specify a MATCH to be used in that case with:
                                               (org-entry-get (point) (upcase (lazy-org-symbol-table 'name))))
                                           lazy-org-map-parent-name)))
              (setq cont (org-up-heading-safe))))
+         ;; - this has to return nil sometimes, never ever put something like:
+         ;; (or lazy-org-map-parent-point (point)) here or everything gets broken!
          lazy-org-map-parent-point)))))
 
 (defun lazy-org-entry-nearest-active (&optional marker)
+  "Find the nearest entry that has the keyword that is configured in
+`lazy-org-active-todo-keyword'.
+
+Either starts searching at point, or uses MARKER as starting point."
   (interactive)
   (lazy-with-or-without-marker marker
    (if lazy-org-active-todo-keyword
@@ -571,8 +598,8 @@ will be used internally. You can specify a MATCH to be used in that case with:
          (org-back-to-heading t)
          (unless (lazy-org-entry-is-project-p)
            (while (and (not (string-equal (org-get-todo-state) lazy-org-active-todo-keyword))
-                       (not (lazy-org-entry-is-project-p)))
-             (org-up-heading-all 1)))
+                       (not (lazy-org-entry-is-project-p))
+                       (condition-case nil (progn (org-up-heading-all 1) t) (error nil)))))
          (point))
      (lazy-org-entry-parent-point))))
 
@@ -595,6 +622,11 @@ will be used internally. You can specify a MATCH to be used in that case with:
 ;;   (print (match-string 2 "foobar [19%]")))
 
 (defun lazy-org-entry-is-link-p (&optional marker)
+  "Test if the org entry at point or MARKER is a link.
+
+See also `org-bracket-link-regexp'.
+
+"
   (interactive)
   (lazy-with-or-without-marker marker
    (save-excursion
@@ -603,29 +635,26 @@ will be used internally. You can specify a MATCH to be used in that case with:
           (let* ((headline-raw (org-match-string-no-properties 4)))
             (string-match org-bracket-link-regexp headline-raw))))))
 
-
-(defun lazy-org-entry-progress (&optional marker)
-  (interactive)
-  (lazy-with-or-without-marker marker
-   (save-excursion
-     (beginning-of-line)
-     (and (looking-at org-complex-heading-regexp)
-          (let* ((headline-raw (org-match-string-no-properties 4)))
-            (cond ((string-match "^\\(.*\\)\s+\\[\\([0-9][0-9]%\\)\\]$" headline-raw)
-                   (match-string 2 headline-raw))
-                  (t
-                   "")))))))
-
 (defun lazy-org-entry-is-project-p (&optional marker)
+  "Test if the org entry at point or MARKER a project itself.
+
+See also `lazy-org-symbol-table'.
+
+"
   (interactive)
   (lazy-with-or-without-marker marker
-   (when (save-excursion
-           (beginning-of-line)
-           (or (org-entry-get (point) (lazy-org-symbol-table 'name))
-               (org-entry-get (point) (upcase (lazy-org-symbol-table 'name)))))
-     t)))
+                               (when (save-excursion
+                                       (beginning-of-line)
+                                       (or (org-entry-get (point) (lazy-org-symbol-table 'name))
+                                           (org-entry-get (point) (upcase (lazy-org-symbol-table 'name)))))
+                                 t)))
 
 (defun lazy-org-entry-is-in-project-p (&optional marker)
+  "Test if the org entry at point or MARKER is inside of a project.
+
+See also `lazy-org-symbol-table'.
+
+"
   (interactive)
   (lazy-with-or-without-marker marker
                           (when (save-excursion
@@ -635,7 +664,11 @@ will be used internally. You can specify a MATCH to be used in that case with:
                             t)))
 
 (defun lazy-org-entry-alist (&optional marker)
-  "Get config-alist from org entry properties at point."
+  "Get config-alist from org entry properties at point or MARKER.
+
+See also `lazy-org-entry-define-project'.
+
+"
   (interactive)
   (lazy-with-or-without-marker marker
    (save-excursion
@@ -663,6 +696,9 @@ will be used internally. You can specify a MATCH to be used in that case with:
          entry-config)))))
 
 (defun lazy-org-entry-define-project (&optional marker)
+  "Define a project from org entry at point or MARKER.
+
+See also `lazy-def', `lazy-org-entry-alist' and `lazy-org-entry-undefine-project'."
   (when (looking-at org-complex-heading-regexp)
     (let* ((proj-name (lazy-org-entry-name marker))
            (alist (lazy-eval-alist proj-name (lazy-org-entry-alist marker))))
@@ -672,6 +708,9 @@ will be used internally. You can specify a MATCH to be used in that case with:
         alist))))
 
 (defun lazy-org-entry-undefine-project (&optional marker)
+  "Undefine the project from org entry at point or MARKER.
+
+See also `lazy-org-entry-define-project'."
   (interactive)
   (lazy-with-or-without-marker marker
                           (save-excursion
@@ -691,7 +730,11 @@ will be used internally. You can specify a MATCH to be used in that case with:
 
 
 (defun lazy-org-project-marker (&optional proj-name)
-  "Get current or PROJ-NAME projects org entry as marker."
+  "Get a marker for PROJ-NAME or the current projects org entry as marker.
+
+See also `lazy-org-create-project-buffer'.
+
+"
   (interactive)
   (unless proj-name
     (lazy-assert-proj)
@@ -713,6 +756,9 @@ will be used internally. You can specify a MATCH to be used in that case with:
                           )))))))
 
 (defun lazy-org-project-buffer-name (&optional proj-name)
+  "Return a name for the org-mode buffer for PROJ-NAME or the current project.
+
+See also `lazy-org-create-project-buffer'."
   (let ((proj-name (if proj-name
                   proj-name
                 (progn
@@ -722,6 +768,15 @@ will be used internally. You can specify a MATCH to be used in that case with:
 
 
 (defun lazy-org-create-project-buffer (&optional proj-name bufname)
+  "Create an indirect buffer with `make-indirect-buffer' and narrow it with
+`narrow-to-region' to display only the current projects entries.
+
+Returns the created buffer, takes optional PROJ-NAME to force for which
+project to create a buffer for and BUFNAME to force the name to use for
+the buffer instead of calling `lazy-org-project-buffer-name' to generate
+a name.
+
+See also `lazy-org-get-project-buffer'."
   (unless proj-name
     (lazy-assert-proj)
     (setq proj-name lazy-name))
@@ -760,6 +815,12 @@ will be used internally. You can specify a MATCH to be used in that case with:
                             ))))))))
 
 (defun lazy-org-reveal ()
+  "Reveal all entries that belong to current project and have a todo state
+from `lazy-org-todo-keywords' and none from `lazy-org-ignore-todos'.
+
+See also `org-show-context' and `org-show-entry'.
+
+"
   (interactive)
   ;;(lazy-org-assert-org)
   (lazy-org-map-entries
@@ -780,15 +841,20 @@ will be used internally. You can specify a MATCH to be used in that case with:
 
 
 (defun lazy-org-get-project-buffer (&optional proj-name bufname)
+  "Get or create the org-mode buffer for PROJ-NAME or the current
+project. Use BUFNAME or call `lazy-org-project-buffer-name' for the
+created buffers name.
+
+See also `lazy-org-buffer' and `lazy-org-create-project-buffer'."
   (or (get-buffer (or bufname (lazy-org-project-buffer-name proj-name)))
       (lazy-org-create-project-buffer proj-name bufname)))
 
-(defun lazy-org-kill-project-buffer (&optional proj-name bufname)
-  (let ((buf (get-buffer (or bufname (lazy-org-project-buffer-name proj-name)))))
-    (when buf (kill-buffer buf))))
-
 (defun lazy-org-buffer (&optional proj-name)
-  "Open current projects org tree as indirect buffer."
+  "Display the org-mode buffer for PROJ-NAME or the current project.
+
+See also `lazy-org-get-project-buffer' and `lazy-org-config-buffer'.
+
+"
   (interactive)
   (when (get-buffer "lazy: edit project")
     (with-current-buffer (get-buffer "lazy: edit project")
@@ -905,7 +971,9 @@ parent entry. Adding to the parent can be forced with a prefix argument.
 Eventually this could be changed so that the prefix argument asks the user under
 which entry (all of them not just the parent or nearest active) to add the todo.
 
-See also `lazy-org-entry-nearest-active'."
+See also `lazy-org-entry-nearest-active'.
+
+"
   (interactive "P")
   (lazy-org-assert-org)
   (let* ((proj-b (current-buffer))
@@ -1065,6 +1133,16 @@ See also `lazy-org-entry-nearest-active'."
 ;;(cadr (assoc 'name (lazy-find-alist "cl-horde3d" t)))
 
 (defun* lazy-org-config-buffer (&optional (state :create) proj-name config-alist)
+  "The `lazy-config-buffer' function for opening a org-mode buffer for creating
+or editing a lazy project.
+
+This function is supposed to be called through ‘lazy-backend-funcall’ when
+the user want to edit or create a project in org-mode.
+
+The requested operation is specified in STATE as :create or :edit. The
+project name is given in PROJ-NAME and its configuration in CONFIG-ALIST.
+
+See also `lazy-define-backend', `lazy-org-buffer' and `lazy-config-buffer'."
   (case state
     (:create
      (when (and (boundp 'org-complex-heading-regexp)

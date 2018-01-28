@@ -1138,15 +1138,21 @@ RE, but still skipped over to search the next higher path for matches."
 ;; ---------------------------------------------------------------------
 
 (defun lazy-search-projects ()
-  "Search for projects by evaluating `lazy-config-save-location' as if it were an elisp file. Falls back to
-trying to evaluate `lazy-global-cache-root'/projects.el"
+  "Search for projects by evaluating `lazy-config-save-location' as if
+it were an elisp file. Falls back to trying to evaluate
+`lazy-global-cache-root'/projects.el"
   (cond ((file-exists-p lazy-config-save-location)
          (load lazy-config-save-location))
         ((file-exists-p (expand-file-name "projects.el" (file-name-as-directory (expand-file-name lazy-global-cache-root))))
          (load (expand-file-name "projects.el" (file-name-as-directory (expand-file-name lazy-global-cache-root)))))))
 
 (cl-defun lazy-find-alist (&optional proj-name (inherit t))
-  "Get a projects config-alist from the global projects hashmap."
+  "Get a PROJ-NAME config-alist from the global projects hashmap.
+
+INHERIT is t by default but can be set to nil to prevent inheritance
+to be evaluated.
+
+See also `lazy-project-list'."
   (when (or proj-name (setq proj-name lazy-name))
     (let* ((child (gethash proj-name lazy-project-list))
            (alist child))
@@ -1208,7 +1214,11 @@ See also `lazy-get-config-val'."
 value.
 
 It then uses `lazy-check-required-vars' and `lazy-check-optional-vars'
-to verify the evaluated configuration."
+to verify the evaluated configuration.
+
+See also `lazy-def'.
+
+"
   (interactive)
   (let* ((evaluated-config-alist `((name ,proj-name)))
          (result-alist (dolist (cv config-alist evaluated-config-alist)
@@ -1237,7 +1247,10 @@ to verify the evaluated configuration."
 All values within CONFIG-ALIST will be evaluated when they look
 like a lisp expression or symbol. So make sure to quote lists!
 
-See also `lazy-undef', `lazy-required-vars' and `lazy-optional-vars'."
+See also `lazy-project-list', `lazy-eval-alist', `lazy-undef',
+`lazy-required-vars' and `lazy-optional-vars'.
+
+"
   (interactive)
   (cond ((stringp proj-name)
          (let ((alist (lazy-eval-alist proj-name config-alist)))
@@ -1551,18 +1564,22 @@ project."
     'elisp))
 
 (defun lazy-save ()
-  "Save the current lazy project to disk.
+  "Save the current project configuration to disk.
 
-See also `lazy-backend-list'."
+See also `lazy-backend-list'.
+
+"
   (interactive)
   (lazy-assert-proj)
   (lazy-backend-funcall (lazy-detect-backend)
                         'save lazy-name (lazy-find-alist nil nil)))
 
 (defun lazy-insert ()
-  "Insert the current lazy project into the current buffer.
+  "Insert the current project configuration into the current buffer.
 
-See also `lazy-backend-list'."
+See also `lazy-backend-list'.
+
+"
   (interactive)
   (lazy-assert-proj)
   (cond ((derived-mode-p 'emacs-lisp-mode 'inferior-emacs-lisp-mode)
@@ -1573,9 +1590,11 @@ See also `lazy-backend-list'."
                                'insert lazy-name (lazy-find-alist nil nil)))))
 
 (cl-defun lazy-create ()
-  "Create a new lazy project interactively.
+  "Create a new project configuration interactively.
 
-See also `lazy-backend-list' and `lazy-config-buffer'."
+See also `lazy-backend-list' and `lazy-config-buffer'.
+
+"
   (interactive)
   (if (and (string-equal (buffer-name (current-buffer)) "*lazy: new project*")
            (gethash 'org-mode lazy-backend-list))
@@ -1586,9 +1605,11 @@ See also `lazy-backend-list' and `lazy-config-buffer'."
                           'buffer :create)))
 
 (defun lazy-edit (&optional proj-name)
-  "Edit the current lazy project interactively.
+  "Edit the current project configuration interactively.
 
-See also `lazy-backend-list' and `lazy-config-buffer'."
+See also `lazy-backend-list' and `lazy-config-buffer'.
+
+"
   (interactive)
   (unless proj-name
     (setq proj-name lazy-name))
