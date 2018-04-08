@@ -2791,7 +2791,6 @@ See also `lazy-update-tags'."
           (t nil))))
 
 (defun lazy-sort-jumps (jump-list)
-  (message "sort-jumps")
   (sort jump-list 'lazy-compare-jumps))
 
 (defconst lazy-jump-buffer "*lazy: jumps*")
@@ -2820,9 +2819,9 @@ See also `lazy-update-tags'."
                     (setq full-path (file-truename (buffer-file-name location-buffer))
                           line-number (line-number-at-pos location-point)))
                   (lazy-jump-highlight (cl-find location-buffer previous-buffer-list)
-                                          (lazy-jump invoke-window full-path line-number word)))
+                                       (lazy-jump invoke-window full-path line-number word)))
               (lazy-jump-highlight (find-buffer-visiting full-path)
-                                      (lazy-jump invoke-window full-path line-number word))))
+                                   (lazy-jump invoke-window full-path line-number word))))
         (when (get-buffer-window lazy-jump-buffer)
           (delete-window (get-buffer-window lazy-jump-buffer)))
         (when (get-buffer lazy-jump-buffer)
@@ -2847,9 +2846,9 @@ See also `lazy-update-tags'."
                                              'mouse-face 'highlight
                                              'face 'compilation-warning-face
                                              'action 'lazy-jump-action)
-                                       (list (if (and file-path line-number) (concat (file-relative-name full-path (file-truename default-directory))
-                                                                                     ":"
-                                                                                     (format "%d" line-number))  "obarray")
+                                       (list (if (and file-path line-number)
+                                                 (concat (file-relative-name full-path (file-truename default-directory)) ":" (format "%d" line-number))
+                                               "obarray")
                                              'mouse-face 'highlight
                                              'face 'compilation-info
                                              'action 'lazy-jump-action)
@@ -2882,6 +2881,14 @@ See also `lazy-update-tags'."
         ))))
 
 (defun lazy-jump (invoke-window full-path line-number &optional word)
+  "Display the location of a symbols definition.
+
+Argument INVOKE-WINDOW specifies the window in which the definition should be
+displayd. FULL-PATH and LINE-NUMBER are the file and line number where the location
+of the definition can be found. WORD is the symbol for which we are displaying
+its definition.
+
+See also `lazy-jump-action' and `lazy-jump-highlight'."
   (select-window invoke-window)
   (let* ((marker nil)
          (continue-prevent-restore t))
@@ -2896,6 +2903,16 @@ See also `lazy-update-tags'."
     marker))
 
 (defun lazy-jump-action (&optional button)
+  "Trigger a jump in `lazy-jump-list-mode' and display and highlight its location.
+
+This is only used to display a jump location, to actually got to the location
+the interactive function `lazy-jump-go' should be used.
+
+Optionally BUTTON can be specified, which is a marker at which position
+the text properties can be found that describe the jump. Inspect `lazy-select-jumps'
+for more details.
+
+See also `lazy-jump' and `lazy-jump-highlight'."
   (interactive)
   (unless button
     (setq button (point-marker)))
@@ -2921,19 +2938,27 @@ See also `lazy-update-tags'."
                 (setq full-path (file-truename (buffer-file-name location-buffer))
                       line-number (line-number-at-pos location-point)))
               (lazy-jump-highlight (cl-find location-buffer previous-buffer-list)
-                                      (lazy-jump invoke-window full-path line-number word)))
+                                   (lazy-jump invoke-window full-path line-number word)))
           (lazy-jump-highlight (find-buffer-visiting full-path)
-                                  (lazy-jump invoke-window full-path line-number word)))))))
+                               (lazy-jump invoke-window full-path line-number word)))))))
 
-(defvar lazy-jump-overlays nil)
+(defvar lazy-jump-overlays nil
+  "Lazy keeps track of highlighted jumps by putting their overlays here.
+
+See also `lazy-jump-highlight'.")
 
 (defun lazy-jump-cleanup-highlight (&optional existing-buffer)
+  "Remove all overlays highlighting jumps in EXISTING-BUFFER.
+
+See also `lazy-jump-highlight'."
   (let ((zeitgeist-prevent-send t)
         (continue-prevent-save t)
         (delete-buffer nil))
     (mapc (lambda (ov)
             (when (overlay-buffer ov)
               (with-current-buffer (overlay-buffer ov)
+                ;; - when the overlay has a 'delete-buffer property, and the saved buffer
+                ;; is not the same as the existing-buffer argument, then kill it
                 (when (overlay-get ov 'delete-buffer)
                   (setq delete-buffer (overlay-get ov 'delete-buffer))
                   (unless (and (bufferp existing-buffer)
@@ -2943,6 +2968,8 @@ See also `lazy-update-tags'."
                 (delete-overlay ov))))
           lazy-jump-overlays)
     (setq lazy-jump-overlays nil)
+    ;; - if there was a 'delete-buffer property, but the buffer was not killed,
+    ;; then it needs to be returned to the calling lazy-jump-highlight function
     delete-buffer))
 
 ;; existing-buffer=nil && delete-buffer=nil
@@ -2954,20 +2981,52 @@ See also `lazy-update-tags'."
 ;; existing-buffer=nil && delete-buffer=<some buffer>
 ;; -> this should not happen, without an existing-buffer but an marked delete-buffer,
 ;; cleanup-highlight should always kill delete-buffer and then return nil
-(defun lazy-jump-highlight (&optional existing-buffer marker final)
+(defun lazy-jump-highlight (&optional existing-buffer marker)
+  "Highlights a jump in its buffer by putting a overlay on its location.
+
+This only highlight an already displayed jump location. To actually display a
+jump by opening the file and showing the buffer where the jump leads in a
+window the function `lazy-jump' is used.
+
+Argument EXISTING-BUFFER is a previously existing buffer with a highlighted
+jump, this is fed to `lazy-jump-cleanup-highlight' which then looks at the
+overlay of the previously highlighted jump and tests if they have a 'delete-buffer
+property which was set by this function. If there is such a property it means the
+previously highlighted jump is displayed in a buffer that was not open before, and
+we need to kill the buffer to close it again. So `lazy-jump-highlight' and
+`lazy-jump-cleanup-highlight' function in lock step with each other, first
+`lazy-jump-highlight' displays a buffer with a jump location, then on the next
+invocation of `lazy-jump-highlight', `lazy-jump-cleanup-highlight' kills that
+buffer.
+
+The MARKER argument is a marker for the jump that should be highlighted.
+
+See also `lazy-jump-overlays', `lazy-jump-cleanup-highlight',`lazy-jump-list-mode'
+and `lazy-jump-action'."
   (let ((delete-buffer (lazy-jump-cleanup-highlight existing-buffer))
-        (highlight-color (color-darken-name (face-attribute 'default :background) 10)))
+        ;; - setting the color of the highlight overlay here, I am experimenting with setting a fixed
+        ;; color but previously just darkened the face background instead
+        (highlight-color (or "#552277" (color-darken-name (face-attribute 'default :background) 10))))
+    ;; - make overlay highlighting currently selected jump in selection window
     (when (get-buffer lazy-jump-buffer)
       (with-current-buffer (get-buffer lazy-jump-buffer)
         (let ((ov (make-overlay (point-at-bol) (point-at-bol 2))))
           (overlay-put ov 'face `((:background ,highlight-color)))
           (overlay-put ov 'jump-highlight 'select)
           (push ov lazy-jump-overlays))))
+    ;; - display jump pointed to by marker
     (when marker
       (with-current-buffer (marker-buffer marker)
         (save-excursion
           (goto-char (marker-position marker))
+          ;; - recentering the window on the highlighted jump location
+          (with-selected-window (get-buffer-window (marker-buffer marker))
+            (recenter))
           (let ((ov (make-overlay (point-at-bol) (point-at-bol 2))))
+            ;; - put 'delete-buffer property in overlay to either the buffer returned
+            ;; by lazy-jump-cleanup-highlight or the current buffer
+            ;; - lazy-jump-cleanup-highlight will look at this property and decide if
+            ;; the saved buffer should be killed
             (when (or (not existing-buffer) delete-buffer)
               (overlay-put ov 'delete-buffer (or delete-buffer (current-buffer))))
             (overlay-put ov 'pop-tag-marker (ring-ref xref--marker-ring 0))
@@ -2976,6 +3035,11 @@ See also `lazy-update-tags'."
             (push ov lazy-jump-overlays)))))))
 
 (defun lazy-jump-next ()
+  "Select next jump in `lazy-jump-list-mode' and preview it.
+
+The user can select jumps with `lazy-jump-prev' and `lazy-jump-next'
+and the file location where the jump would lead is displayed temporarily
+so that the user can decide if he wants to jump to that location."
   (interactive)
   (let ((last-window (get-buffer-window (current-buffer))))
     (when (get-buffer lazy-jump-buffer)
@@ -2988,6 +3052,11 @@ See also `lazy-update-tags'."
     (select-window last-window)))
 
 (defun lazy-jump-prev ()
+  "Select previous jump in `lazy-jump-list-mode' and preview it.
+
+The user can select jumps with `lazy-jump-prev' and `lazy-jump-next'
+and the file location where the jump would lead is displayed temporarily
+so that the user can decide if he wants to jump to that location."
   (interactive)
   (let ((last-window (get-buffer-window (current-buffer))))
     (when (get-buffer lazy-jump-buffer)
@@ -3000,6 +3069,11 @@ See also `lazy-update-tags'."
     (select-window last-window)))
 
 (defun lazy-jump-abort ()
+  "Abort `lazy-jump-list-mode' by restoring the previous state.
+
+This closes all buffers which had to be opened to preview jumps
+to the user and displays the buffer from which jump selection
+was originally started."
   (interactive)
   (when (get-buffer-window lazy-jump-buffer)
     (delete-window (get-buffer-window lazy-jump-buffer)))
@@ -3009,6 +3083,7 @@ See also `lazy-update-tags'."
   (lazy-jump-cleanup-highlight))
 
 (defun lazy-jump-quit ()
+  "Quit `lazy-jump-list-mode', close the jump selction window."
   (interactive)
   (when (get-buffer-window lazy-jump-buffer)
     (delete-window (get-buffer-window lazy-jump-buffer)))
@@ -3017,11 +3092,19 @@ See also `lazy-update-tags'."
   (lazy-jump-cleanup-highlight (current-buffer)))
 
 (defun lazy-jump-go ()
+  "Go to a selected jump in `lazy-jump-list-mode'.
+
+See also `lazy-jump-action'."
   (interactive)
   (lazy-jump-action)
   (lazy-jump-quit))
 
-(define-derived-mode lazy-jump-list-mode tabulated-list-mode "Mk-Project jumps"
+(define-derived-mode lazy-jump-list-mode tabulated-list-mode "Lazy jumps"
+  "A mode for displaying all possible jumps to definitions in a lazy project.
+
+See also `lazy-jump-definition', `lazy-select-jumps', `lazy-jump-action',
+`lazy-jump-go', `lazy-jump-quit', `lazy-jump-abort', `lazy-jump-next' and
+`lazy-jump-prev'."
   (setq tabulated-list-format [("Word" 30 t)
                                ("File" 70 t)
                                ("Score" 5 t)
@@ -3041,6 +3124,9 @@ See also `lazy-update-tags'."
   (tabulated-list-init-header))
 
 (defun lazy-update-gtags-completions-cache (proj-name)
+  "Update the gtags completions for PROJ-NAME.
+
+See also `lazy-update-completions-cache'."
   (let* ((cmd (if (eq system-type 'windows-nt)
                   "global --match-part=first -Gq -dc \"\" & global --match-part=first -Gq -sc \"\""
                 "global --match-part=first -Gq -dc \"\"; global --match-part=first -Gq -sc \"\""))
@@ -3053,6 +3139,9 @@ See also `lazy-update-tags'."
                            completions-cache)))))
 
 (defun lazy-update-obarray-completions-cache (proj-name)
+  "Update the obarray completions for PROJ-NAME.
+
+See also `lazy-update-completions-cache'."
   (let ((completions-cache (gethash proj-name lazy-completions-cache)))
     (cl-do-all-symbols (sym)
       (when (or (fboundp sym)
@@ -3063,6 +3152,10 @@ See also `lazy-update-tags'."
                    completions-cache))))))
 
 (defun lazy-update-completions-cache (&optional proj-name)
+  "Update the completions-cache for PROJ-NAME or the current project.
+
+See also `lazy-completions-cache', `lazy-update-obarray-completions-cache'
+and `lazy-update-gtags-completions-cache'."
   (let* ((guessed-alist (lazy-guess-alist))
          (guessed-name (cadr (assoc 'name guessed-alist)))
          (proj-alist (lazy-find-alist proj-name)))
@@ -3114,11 +3207,15 @@ See also `lazy-update-tags'."
 (defun lazy-completions-for-path (elisp-string)
   (all-completions elisp-string lazy-completions-table-for-path))
 
-;; (defvar lazy-completions-table-for-filename #'completion-file-name-table)
-;; (defun lazy-completions-for-filename (filename-string)
-;;   (all-completions filename-string lazy-completions-table-for-filename))
+(defun lazy-completions (&optional prefix proj-name)
+  "Get all possible completions of symbols.
 
-(defun lazy-completions (&optional prefix proj-name buffer)
+When called without any argument this function returns all known names
+for symbols of the current project. Optionally argument PREFIX specifies
+a string prefix for which completions should be returned and PROJ-NAME can
+specifiy which project the completions should come from.
+
+See also `lazy-update-completions-cache' and `lazy-completions-cache'."
   (let* ((guessed-alist (lazy-guess-alist))
          (guessed-name (cadr (assoc 'name guessed-alist)))
          (proj-alist nil))
@@ -3135,8 +3232,6 @@ See also `lazy-update-tags'."
       (lazy-assert-proj))
     (unless prefix
       (setq prefix ""))
-    (unless buffer
-      (setq buffer (current-buffer)))
     (let ((unique-completions '())
           (case-fold-search nil))
       (when (not (gethash proj-name lazy-completions-cache))
@@ -3150,6 +3245,23 @@ See also `lazy-update-tags'."
       (reverse unique-completions))))
 
 (defun lazy-merge-obarray-jumps (obarray-jumps &rest rest)
+  "Merges jumps generated from `obarray' with jumps from other sources.
+
+When working on a project in emacs I find myself often using emacs lisp.
+I want to be able to quickly navigate to an emacs lisp function even when
+I am not working on a project written in emacs lisp. So this function
+takes a list of possible jumps generated from `obarray' in OBARRAY-JUMPS
+and a bunch of jumps from other systems in REST, and merges those jumps
+together.
+
+Note that `lazy-find-symbol' only returns jumps for 'obarray when inside
+an emacs lisp buffer, so that when I want to jump to a definition in an
+emacs lisp buffer while a project is active that is not written in emacs
+lisp this function is used. The other way around, when I am in a buffer
+that is not an emacs lisp buffer and try to jump to a definition, this
+function does nothing.
+
+See also `lazy-find-symbol'."
   (if obarray-jumps
       (let ((obarray-map (make-hash-table :test 'equal :size 100000))
             (merged-jumps nil))
@@ -3181,7 +3293,23 @@ See also `lazy-update-tags'."
         merged-jumps)
     (apply #'append rest)))
 
-(defun lazy-jump-definition (word buffer point &optional proj-name proj-alist buffer)
+(defun lazy-jump-definition (word &optional proj-name proj-alist)
+  "Jump to the definition of a symbol.
+
+When called interactively this function will present the user with a list
+of all known symbols plus the symbol at current point. The user may select
+any of the symbols or type the name of a custom symbol to jump to the definition
+of that symbol.
+
+When there is more then one possible defintion for a symbol the user will
+be presented with a list of all definition and can choose one.
+
+The WORD argument is a string specifying the symbol to jump to. Optionally
+PROJ-NAME and PROJ-ALIST can specify the project which is searched for the
+definition of the symbol.
+
+See also `lazy-find-symbol', `lazy-select-jumps', `lazy-score-jumps', `lazy-completions'
+`lazy-merge-obarray-jumps' and `lazy-jump-regexp'."
   (interactive (list (let* ((ido-enable-flex-matching t)
                             (case-fold-search nil)
                             (ido-case-fold nil)
@@ -3191,9 +3319,7 @@ See also `lazy-update-tags'."
                        (substring-no-properties (ido-completing-read "Symbol: "
                                                                      completions nil nil
                                                                      default nil
-                                                                     (when (not default) symbol))))
-                     (current-buffer)
-                     (point)))
+                                                                     (when (not default) symbol))))))
   (when (and (not lazy-name) (not proj-alist))
     (let ((guessed-name (cadr (assoc 'name (lazy-guess-alist)))))
       (when guessed-name (setq proj-name guessed-name))))
@@ -3204,23 +3330,30 @@ See also `lazy-update-tags'."
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
     (lazy-assert-proj))
-  (unless buffer
-    (setq buffer (current-buffer)))
   (let ((jumps (lazy-merge-obarray-jumps (lazy-find-symbol proj-name proj-alist 'obarray (concat "^" word "$"))
                                          (and (cl-find 'go (lazy-src-pattern-languages (cadr (assoc 'src-patterns proj-alist))))
-                                              (lazy-find-symbol proj-name proj-alist 'godef word buffer point))
+                                              (lazy-find-symbol proj-name proj-alist 'godef word (current-buffer) (point)))
                                          (or (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -d " (prin1-to-string word)))
                                              (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -s " (prin1-to-string word))))
                                          (lazy-find-symbol proj-name proj-alist 'imenu (concat "^" word "$"))
                                          )))
-    (lazy-select-jumps (lazy-score-jumps jumps (regexp-quote word) buffer))))
+    (lazy-select-jumps (lazy-score-jumps jumps (regexp-quote word) (current-buffer)))))
 
-(defun lazy-jump-regexp (regexp buffer point &optional proj-name proj-alist buffer)
+(defun lazy-jump-regexp (regexp &optional proj-name proj-alist)
+  "Jump to the defintion of symbols matching a regexp.
+
+When this funcion is called interactively it prompts the user to enter
+a regexp and then matches it against all known symbols and presents the
+user with all possible definitions of matching symbols it could find.
+
+Argument REGEXP is the regexp used to find matching symbols, optional
+arguments PROJ-NAME and PROJ-ALIST can be used to specify which project
+to search for matching symbols.
+
+See also `lazy-jump-definition'."
   (interactive (list (let* ((ido-enable-flex-matching t))
                        (substring-no-properties (ido-completing-read "Match: "
-                                                                     (lazy-completions))))
-                     (current-buffer)
-                     (point)))
+                                                                     (lazy-completions))))))
   (when (and lazy-name (not proj-alist))
     (let ((guessed-name (cadr (assoc 'name (lazy-guess-alist)))))
       (when guessed-name (setq proj-name guessed-name))))
@@ -3231,24 +3364,13 @@ See also `lazy-update-tags'."
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
     (lazy-assert-proj))
-  (unless buffer
-    (setq buffer (current-buffer)))
   (let ((jumps (lazy-merge-obarray-jumps (lazy-find-symbol proj-name proj-alist 'obarray (concat "^" regexp))
                                          ;; - no lazy-find-symbol for 'godef here because godef uses a point in a buffer, so there is nothing
                                          ;; that I could match with a regexp really
                                          (or (lazy-find-symbol proj-name proj-alist 'gtags regexp (concat "global -x -e " (prin1-to-string (concat regexp ".*"))))
                                              (lazy-find-symbol proj-name proj-alist 'gtags regexp (concat "global -x -s " (prin1-to-string (concat regexp ".*")))))
                                          (lazy-find-symbol proj-name proj-alist 'imenu regexp))))
-    (lazy-select-jumps (lazy-score-jumps jumps regexp buffer))))
-
-;; (defun lazy-jump-references (word &optional proj-name buffer)
-;;   )
-
-;; (defun lazy-jump-callees (word &optional proj-name buffer)
-;;   )
-
-;; (defun lazy-jump-callers (word &optional proj-name buffer)
-;;   )
+    (lazy-select-jumps (lazy-score-jumps jumps regexp (current-buffer)))))
 
 ;; ---------------------------------------------------------------------
 ;; Compile
