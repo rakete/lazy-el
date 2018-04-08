@@ -3184,10 +3184,14 @@ See also `lazy-update-tags'."
 (defun lazy-jump-definition (word buffer point &optional proj-name proj-alist buffer)
   (interactive (list (let* ((ido-enable-flex-matching t)
                             (case-fold-search nil)
-                            (ido-case-fold nil))
+                            (ido-case-fold nil)
+                            (symbol (thing-at-point lazy-thing-selector))
+                            (completions (lazy-completions))
+                            (default (cl-find symbol completions :test 'string-equal)))
                        (substring-no-properties (ido-completing-read "Symbol: "
-                                                                     (lazy-completions) nil nil nil nil
-                                                                     (substring-no-properties (or (thing-at-point lazy-thing-selector) "")))))
+                                                                     completions nil nil
+                                                                     default nil
+                                                                     (when (not default) symbol))))
                      (current-buffer)
                      (point)))
   (when (and (not lazy-name) (not proj-alist))
