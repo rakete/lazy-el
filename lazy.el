@@ -2618,7 +2618,48 @@ See also `lazy-update-tags'."
                                                     (goto-char (marker-position (cdr item)))
                                                     (buffer-substring-no-properties (point-at-bol) (point-at-eol))))
                                     :system system
-                                    :regexp regexp)))))))
+                                    :regexp regexp))))
+          ;; - implemented godef by taking code from go-mode.el godef--call etc
+          ;; - calls godef in that prog2 macro, tells it to read from stdin, pipes the whole buffer contents in and
+          ;; specifies a point with -o where godef should look for a symbol
+          ;; - godef spits out where the symbol is defined in the format filename:line-number:column-number which
+          ;; I match with a regexp use to build the plist to return
+          ;; - since I use -t every second line of godef output is a the definition of the symbol itself, like a function
+          ;; prototype which I collect as well
+          ((eq 'godef system)
+           (let ((word regexp)
+                 (buffer (nth 0 args))
+                 (point (nth 1 args))
+                 (godef-command (executable-find "godef")))
+             (when (and (bufferp buffer) (buffer-file-name buffer) godef-command)
+               (with-current-buffer buffer
+                 (when (save-excursion
+                         (goto-char point)
+                         (string-equal word (thing-at-point lazy-thing-selector)))
+                   (let* ((outbuf (generate-new-buffer "*godef*"))
+                          (coding-system-for-read 'utf-8)
+                          (coding-system-for-write 'utf-8)
+                          (lines (prog2
+                                     (call-process-region (point-min) (point-max) godef-command nil outbuf nil "-i" "-t" "-f" (file-truename (buffer-file-name buffer)) "-o" (number-to-string (position-bytes point)))
+                                     (with-current-buffer outbuf
+                                       (split-string (buffer-substring-no-properties (point-min) (point-max)) "\n" t))
+                                   (kill-buffer outbuf))))
+                     (cl-remove nil
+                                (cl-loop for i from 0 below (length lines)
+                                         collect (let* ((specifier (nth i lines))
+                                                        (definition (nth (+ i 1) lines)))
+                                                   (when (string-match "\\(.+\\):\\([0-9]+\\):\\([0-9]+\\)" specifier)
+                                                     (list :word word
+                                                           :line-number (string-to-number (match-string 2 specifier))
+                                                           ;; - line-column is not used anywhere, but godef supplies it so might
+                                                           ;; as well put it into the result
+                                                           :line-column (string-to-number (match-string 3 specifier))
+                                                           :file-path (match-string 1 specifier)
+                                                           :definition definition
+                                                           :system system
+                                                           :regexp regexp)))
+                                         do (setq i (+ i 1))
+                                         )))))))))))
 
 (defun lazy-score-jumps (jumps regexp buffer)
   (let ((file-map (make-hash-table :test 'equal))
@@ -2648,6 +2689,7 @@ See also `lazy-update-tags'."
              (score 0))
         (unless (and (stringp jump-path)
                      (not (file-exists-p jump-path)))
+
           (when (and jump-word
                      (string-match-p regexp jump-word))
             (setq score (+ score inc)))
@@ -2660,8 +2702,12 @@ See also `lazy-update-tags'."
                      (> score 0)
                      (string-match-p (concat "^" regexp) jump-word))
             (setq score (+ score inc)))
+
+          (when (eq system 'godef)
+            (setq score (+ score inc)))
           (when (eq system 'imenu)
             (setq score (+ score inc)))
+
           (when (and (functionp locator)
                      (eq system 'obarray))
             (setq score (+ score inc)))
@@ -2669,6 +2715,7 @@ See also `lazy-update-tags'."
                      (eq system 'obarray)
                      (> (length jump-docstring) 0))
             (setq score (+ score inc)))
+
           (when (and jump-path
                      (buffer-file-name buffer)
                      (lazy-path-equal jump-path buffer-path))
@@ -2677,13 +2724,14 @@ See also `lazy-update-tags'."
                      lazy-name
                      (lazy-path-equal jump-path basedir-path))
             (setq score (+ score inc)))
+
           (when (and jump-path
                      (boundp 'ido-buffer-history)
                      (find-buffer-visiting jump-path))
             (let ((buffer-position (or (gethash jump-path buffer-position-cache)
                                        (puthash jump-path (condition-case nil (cl-position (buffer-name (find-buffer-visiting jump-path))
-                                                                                        ido-buffer-history
-                                                                                        :test 'equal)
+                                                                                           ido-buffer-history
+                                                                                           :test 'equal)
                                                             (error nil)) buffer-position-cache)
                                        (length ido-buffer-history))))
               (setq score (+ score (- (length ido-buffer-history)
@@ -3133,13 +3181,15 @@ See also `lazy-update-tags'."
         merged-jumps)
     (apply #'append rest)))
 
-(defun lazy-jump-definition (word &optional proj-name proj-alist buffer)
+(defun lazy-jump-definition (word buffer point &optional proj-name proj-alist buffer)
   (interactive (list (let* ((ido-enable-flex-matching t)
                             (case-fold-search nil)
                             (ido-case-fold nil))
                        (substring-no-properties (ido-completing-read "Symbol: "
                                                                      (lazy-completions) nil nil nil nil
-                                                                     (substring-no-properties (or (thing-at-point lazy-thing-selector) "")))))))
+                                                                     (substring-no-properties (or (thing-at-point lazy-thing-selector) "")))))
+                     (current-buffer)
+                     (point)))
   (when (and (not lazy-name) (not proj-alist))
     (let ((guessed-name (cadr (assoc 'name (lazy-guess-alist)))))
       (when guessed-name (setq proj-name guessed-name))))
@@ -3153,15 +3203,20 @@ See also `lazy-update-tags'."
   (unless buffer
     (setq buffer (current-buffer)))
   (let ((jumps (lazy-merge-obarray-jumps (lazy-find-symbol proj-name proj-alist 'obarray (concat "^" word "$"))
-                                            (or (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -d " (prin1-to-string word)))
-                                                (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -s " (prin1-to-string word))))
-                                            (lazy-find-symbol proj-name proj-alist 'imenu (concat "^" word "$")))))
+                                         (and (cl-find 'go (lazy-src-pattern-languages (cadr (assoc 'src-patterns proj-alist))))
+                                              (lazy-find-symbol proj-name proj-alist 'godef word buffer point))
+                                         (or (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -d " (prin1-to-string word)))
+                                             (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -s " (prin1-to-string word))))
+                                         (lazy-find-symbol proj-name proj-alist 'imenu (concat "^" word "$"))
+                                         )))
     (lazy-select-jumps (lazy-score-jumps jumps (regexp-quote word) buffer))))
 
-(defun lazy-jump-regexp (regexp &optional proj-name proj-alist buffer)
+(defun lazy-jump-regexp (regexp buffer point &optional proj-name proj-alist buffer)
   (interactive (list (let* ((ido-enable-flex-matching t))
                        (substring-no-properties (ido-completing-read "Match: "
-                                                                     (lazy-completions))))))
+                                                                     (lazy-completions))))
+                     (current-buffer)
+                     (point)))
   (when (and lazy-name (not proj-alist))
     (let ((guessed-name (cadr (assoc 'name (lazy-guess-alist)))))
       (when guessed-name (setq proj-name guessed-name))))
@@ -3175,9 +3230,11 @@ See also `lazy-update-tags'."
   (unless buffer
     (setq buffer (current-buffer)))
   (let ((jumps (lazy-merge-obarray-jumps (lazy-find-symbol proj-name proj-alist 'obarray (concat "^" regexp))
-                                            (or (lazy-find-symbol proj-name proj-alist 'gtags regexp (concat "global -x -e " (prin1-to-string (concat regexp ".*"))))
-                                                (lazy-find-symbol proj-name proj-alist 'gtags regexp (concat "global -x -s " (prin1-to-string (concat regexp ".*")))))
-                                            (lazy-find-symbol proj-name proj-alist 'imenu regexp))))
+                                         ;; - no lazy-find-symbol for 'godef here because godef uses a point in a buffer, so there is nothing
+                                         ;; that I could match with a regexp really
+                                         (or (lazy-find-symbol proj-name proj-alist 'gtags regexp (concat "global -x -e " (prin1-to-string (concat regexp ".*"))))
+                                             (lazy-find-symbol proj-name proj-alist 'gtags regexp (concat "global -x -s " (prin1-to-string (concat regexp ".*")))))
+                                         (lazy-find-symbol proj-name proj-alist 'imenu regexp))))
     (lazy-select-jumps (lazy-score-jumps jumps regexp buffer))))
 
 ;; (defun lazy-jump-references (word &optional proj-name buffer)
