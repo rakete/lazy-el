@@ -2535,6 +2535,32 @@ See also `lazy-update-tags'."
 ;; - this function is also used to find symbols names if we already know the whole name, check below
 ;; how it is used in lazy-jump-definition and lazy-jump-regexp
 (defun lazy-find-symbol (proj-name proj-alist system regexp &rest args)
+  "Find possible definitions of a symbol name.
+
+This function is used by `lazy-jump-definition' to query different tagging
+systems for possible locations of a symbol names definition.
+
+The arguments PROJ-NAME and PROJ-ALIST specify the project in which we are
+searching for a definition. SYSTEM is a tagging system, its possible values
+are 'gtags, 'obarray, 'imenu and 'godef. REGEXP is a regular expression matching
+the symbol name(s) for which we are searching possible definitions.
+
+The ARGS rest argument is a list of custom arguments that are specific to the
+selected system. For example 'gtags expects a shell command as first element of
+ARGS and 'godef expects buffer and a point as first to elements of ARGS.
+
+The return value of this function is a list of jumps to locations of possible
+definitions for symbol names. A jump is a property list with the following
+properties:
+
+    :word : the definitions symbol name this jump leads to
+    :file-path : the file path for the file which contains the definition
+    :line-number : the line number where the definition is located
+    :definition : a short decription like a docstring or a function prototype
+    :system : the system supplied the location of the definition
+    :regexp : the regular expression that was used to query for this definition
+
+See also `lazy-jump-list-mode'."
   (setq proj-alist (or proj-alist
                        (lazy-find-alist proj-name)
                        (lazy-find-alist lazy-name)
@@ -2662,6 +2688,20 @@ See also `lazy-update-tags'."
                                          )))))))))))
 
 (defun lazy-score-jumps (jumps regexp buffer)
+  "Score jumps so that they can be ranked by their relevance.
+
+This function tries to determine how relevant a jump location is for the
+user. It assigns a score to the jumps so that they can be sorted and the
+most relevant jumps are shown first to the user.
+
+JUMPS is a list of jumps to score. REGEXP is the regexp that represents the
+symbol the user is looking for, a jump is more relevant the better the symbol
+name it leads to fits the symbol name the user is looking for. BUFFER is the
+buffer from which the user initiated the jumping process, a jump is more
+relevant when it leads to a buffer with the same programming language and/or
+from the same project.
+
+See also `lazy-select-jumps' and `lazy-jump-definition'."
   (let ((file-map (make-hash-table :test 'equal))
         (file-score-map (make-hash-table))
         (buffer-languages (lazy-src-pattern-languages (when (buffer-file-name buffer) (list (buffer-file-name buffer)))))
@@ -2690,41 +2730,54 @@ See also `lazy-update-tags'."
         (unless (and (stringp jump-path)
                      (not (file-exists-p jump-path)))
 
+          ;; - if the regexp that we are looking for matches the symbol name that the jump
+          ;; leads to increase the score
           (when (and jump-word
                      (string-match-p regexp jump-word))
             (setq score (+ score inc)))
+          ;; - if the regexp fits the definition so well that there no other characters
+          ;; around the symbol word in the definition, increase the score more
           (when (and jump-word
                      jump-definition
                      (> score 0)
                      (string-match-p (concat "\\<" regexp "\\>") jump-definition))
             (setq score (+ score inc)))
+          ;; - if the regexp matches from the beginning of the jump word, increase
+          ;; the score even more
           (when (and jump-word
                      (> score 0)
                      (string-match-p (concat "^" regexp) jump-word))
             (setq score (+ score inc)))
 
+          ;; - increase score for systems that I want to rank higher, imenu because the score
+          ;; cant be increased by filename scoring I think, godef because it works so well
           (when (eq system 'godef)
             (setq score (+ score inc)))
           (when (eq system 'imenu)
             (setq score (+ score inc)))
 
+          ;; - comes from obarray? increase score
           (when (and (functionp locator)
                      (eq system 'obarray))
             (setq score (+ score inc)))
+          ;; - has docstring? increase some more
           (when (and (functionp locator)
                      (eq system 'obarray)
                      (> (length jump-docstring) 0))
             (setq score (+ score inc)))
 
+          ;; - same buffer?
           (when (and jump-path
                      (buffer-file-name buffer)
                      (lazy-path-equal jump-path buffer-path))
             (setq score (+ score inc)))
+          ;; - same project?
           (when (and jump-path
                      lazy-name
                      (lazy-path-equal jump-path basedir-path))
             (setq score (+ score inc)))
 
+          ;; - in buffer from history? more score
           (when (and jump-path
                      (boundp 'ido-buffer-history)
                      (find-buffer-visiting jump-path))
@@ -2736,11 +2789,15 @@ See also `lazy-update-tags'."
                                        (length ido-buffer-history))))
               (setq score (+ score (- (length ido-buffer-history)
                                       buffer-position)))))
+
+          ;; - buffer with same language? more score
           (when (and jump-path
                      buffer-languages)
             (dolist (lang buffer-languages)
               (when (cl-find lang (lazy-src-pattern-languages (list jump-path)))
                 (setq score (+ score inc)))))
+
+          ;; - no idea
           (let ((existing-jump (gethash (or jump-line-number (setq obarray-counter (1+ obarray-counter))) line-map)))
             (unless (and existing-jump (> (plist-get existing-jump :line-score) score))
               (puthash (or jump-line-number obarray-counter) (plist-put jump :line-score score) line-map)))
@@ -2758,6 +2815,9 @@ See also `lazy-update-tags'."
       jump-list)))
 
 (defun lazy-compare-jumps (a b)
+  "Return t if A should be ranked higher then B in `lazy-select-jumps'.
+
+See also `lazy-sort-jumps'."
   (let ((file-score-a (plist-get a :file-score))
         (file-score-b (plist-get b :file-score))
         (line-score-a (plist-get a :line-score))
@@ -2791,13 +2851,29 @@ See also `lazy-update-tags'."
           (t nil))))
 
 (defun lazy-sort-jumps (jump-list)
+  "Sort JUMP-LIST for which jump should be ranked higher in `lazy-select-jumps'.
+
+See also `lazy-compare-jumps'."
   (sort jump-list 'lazy-compare-jumps))
 
-(defconst lazy-jump-buffer "*lazy: jumps*")
+(defconst lazy-jump-buffer "*lazy: jumps*"
+  "The name used for the buffer displayed by `lazy-select-jumps'.")
 
-(defvar lazy-auto-jump-to-first-jump nil)
+(defvar lazy-auto-jump-to-first-jump nil
+  "When t `lazy-select-jumps' automatically jumps to the first jump.")
 
 (defun lazy-select-jumps (jump-list &optional invoke-window)
+  "Prompt the user to select from a list of possible jumps.
+
+This opens a new window and displays all jumps from JUMP-LIST as a table
+using `lazy-jump-list-mode'. The user can navigate the list of jumps and
+preview each jump. The location of the currently selected jump is highlighted
+and displayed in INVOKE-WINDOW. If INVOKE-WINDOW is nil it is assumed that
+the location should be displayed in the window from which the user initiated
+the jumping process.
+
+See also `lazy-jump-action', `lazy-jump-buffer', `lazy-auto-jump-to-first-jump'
+and `lazy-jump-definition'."
   (unless invoke-window
     (setq invoke-window (get-buffer-window (current-buffer))))
   (let ((n (length jump-list)))
@@ -2881,14 +2957,18 @@ See also `lazy-update-tags'."
         ))))
 
 (defun lazy-jump (invoke-window full-path line-number &optional word)
-  "Display the location of a symbols definition.
+  "Jump to the location of a jump to a symbols definition.
+
+This displays the definition that a jump leads to and returns a marker for the
+location. It is called by `lazy-jump-action' together with `lazy-jump-highlight'
+to display a jump.
 
 Argument INVOKE-WINDOW specifies the window in which the definition should be
 displayd. FULL-PATH and LINE-NUMBER are the file and line number where the location
 of the definition can be found. WORD is the symbol for which we are displaying
 its definition.
 
-See also `lazy-jump-action' and `lazy-jump-highlight'."
+See also `lazy-jump-definition' and `lazy-jump-list-mode'."
   (select-window invoke-window)
   (let* ((marker nil)
          (continue-prevent-restore t))
@@ -2905,8 +2985,11 @@ See also `lazy-jump-action' and `lazy-jump-highlight'."
 (defun lazy-jump-action (&optional button)
   "Trigger a jump in `lazy-jump-list-mode' and display and highlight its location.
 
-This is only used to display a jump location, to actually got to the location
-the interactive function `lazy-jump-go' should be used.
+This is used to display a jump location when a jump is selected for preview by the
+user, to actually go to the location the function `lazy-jump-go' is used. This
+function keeps the selection window from `lazy-select-jumps' open, so the user
+can select another jump to preview, `lazy-jump-go' calls `lazy-jump-quit' to quit
+the selection and finish the jumping process.
 
 Optionally BUTTON can be specified, which is a marker at which position
 the text properties can be found that describe the jump. Inspect `lazy-select-jumps'
@@ -3001,8 +3084,7 @@ buffer.
 
 The MARKER argument is a marker for the jump that should be highlighted.
 
-See also `lazy-jump-overlays', `lazy-jump-cleanup-highlight',`lazy-jump-list-mode'
-and `lazy-jump-action'."
+See also `lazy-jump-overlays', `lazy-jump-list-mode' and `lazy-jump-action'."
   (let ((delete-buffer (lazy-jump-cleanup-highlight existing-buffer))
         ;; - setting the color of the highlight overlay here, I am experimenting with setting a fixed
         ;; color but previously just darkened the face background instead
@@ -3094,7 +3176,7 @@ was originally started."
 (defun lazy-jump-go ()
   "Go to a selected jump in `lazy-jump-list-mode'.
 
-See also `lazy-jump-action'."
+See also `lazy-jump-action' and `lazy-jump-quit'."
   (interactive)
   (lazy-jump-action)
   (lazy-jump-quit))
@@ -3102,9 +3184,27 @@ See also `lazy-jump-action'."
 (define-derived-mode lazy-jump-list-mode tabulated-list-mode "Lazy jumps"
   "A mode for displaying all possible jumps to definitions in a lazy project.
 
-See also `lazy-jump-definition', `lazy-select-jumps', `lazy-jump-action',
-`lazy-jump-go', `lazy-jump-quit', `lazy-jump-abort', `lazy-jump-next' and
-`lazy-jump-prev'."
+It is derived from `tabulated-list-mode' and displays a table with columns
+for the symbol of a jump, the location of a jump, the score which has been
+assigned to a jump, the system where the jump comes from and a definition.
+
+This mode is used for a window opened by `lazy-select-jumps' to present the
+user with a list of possible jumps. The user can navigate the list of jumps
+with `lazy-jump-next' and `lazy-jump-prev'.
+
+Each time the user selects a jump `lazy-jump-action' is triggered which previews
+the jumps location temporarily after hiding the previously previewed jump. When
+the user finally decides to jump to a definition `lazy-jump-go' is used which
+first calls `lazy-jump-action' to display the defintion by opening its file and
+scrolling to its location, and then calls `lazy-jump-quit' to close the selection
+window and finish the jumping process.
+
+If the user wants to abort the jump selection `lazy-jump-abort' is called which
+closes all buffers that were opened to preview jumps and restores the previous
+state before closing the jump selection window and returning to the location
+from where the user initiated the jump process.
+
+See also `lazy-jump-definition'."
   (setq tabulated-list-format [("Word" 30 t)
                                ("File" 70 t)
                                ("Score" 5 t)
@@ -3297,19 +3397,24 @@ See also `lazy-find-symbol'."
   "Jump to the definition of a symbol.
 
 When called interactively this function will present the user with a list
-of all known symbols plus the symbol at current point. The user may select
-any of the symbols or type the name of a custom symbol to jump to the definition
-of that symbol.
+of all known symbols from `lazy-completions' plus the symbol at current point.
+The user may select any of the known symbol names or type the name of a custom
+symbol. This function calls `lazy-find-symbol' to query different systems that
+supply possible locations of a definition for a symbol name.
 
-When there is more then one possible defintion for a symbol the user will
-be presented with a list of all definition and can choose one.
+If there is only one possible location for the definition a symbol name, it is
+displayed instantly.
 
-The WORD argument is a string specifying the symbol to jump to. Optionally
+When there is more then one possible location for a defintion of a symbol, this
+function will call `lazy-select-jumps' to present the user with a list of possible
+definition locations. The list is sorted with `lazy-score-jumps' before being
+shown to the user so that the most relevant locations are shown at the top.
+
+The WORD argument is a string specifying the symbol name to jump to. Optionally
 PROJ-NAME and PROJ-ALIST can specify the project which is searched for the
 definition of the symbol.
 
-See also `lazy-find-symbol', `lazy-select-jumps', `lazy-score-jumps', `lazy-completions'
-`lazy-merge-obarray-jumps' and `lazy-jump-regexp'."
+See also `lazy-jump-list-mode', `lazy-merge-obarray-jumps' and `lazy-jump-regexp'."
   (interactive (list (let* ((ido-enable-flex-matching t)
                             (case-fold-search nil)
                             (ido-case-fold nil)
@@ -3340,15 +3445,17 @@ See also `lazy-find-symbol', `lazy-select-jumps', `lazy-score-jumps', `lazy-comp
     (lazy-select-jumps (lazy-score-jumps jumps (regexp-quote word) (current-buffer)))))
 
 (defun lazy-jump-regexp (regexp &optional proj-name proj-alist)
-  "Jump to the defintion of symbols matching a regexp.
+  "Jump to the defintion of a symbol matching a regexp.
 
-When this funcion is called interactively it prompts the user to enter
-a regexp and then matches it against all known symbols and presents the
-user with all possible definitions of matching symbols it could find.
+When this funcion is called interactively it prompts the user to enter a regexp
+and then matches it against all known symbols and presents the user with all
+possible definitions of matching symbols it could find.
 
-Argument REGEXP is the regexp used to find matching symbols, optional
-arguments PROJ-NAME and PROJ-ALIST can be used to specify which project
-to search for matching symbols.
+It works very similar to `lazy-jump-definition', but with regular expressions.
+
+Argument REGEXP is the regexp used to find matching symbols, optional arguments
+PROJ-NAME and PROJ-ALIST can be used to specify which project to search for
+matching symbols.
 
 See also `lazy-jump-definition'."
   (interactive (list (let* ((ido-enable-flex-matching t))
