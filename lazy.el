@@ -3647,7 +3647,12 @@ See also `lazy-compile-read-command'."
   (let* ((search-point nil)
          (history (symbol-value minibuffer-history-variable))
          (current-string (buffer-substring (minibuffer-prompt-end) (point)))
-         (search-string (or lazy-compile-entered-string current-string))
+         (search-string (cond ((and current-string
+                                    lazy-compile-entered-string
+                                    (string-match (regexp-quote current-string) lazy-compile-entered-string))
+                               ;; oh my god! but I think it works...
+                               (setq lazy-compile-entered-string current-string))
+                              (t (or lazy-compile-entered-string current-string))))
          (history-pos nil))
 
     ;; - this and the next block are pretty much the same as in the function above, the only real
@@ -3674,7 +3679,8 @@ See also `lazy-compile-read-command'."
       (if history-pos
           (setq n (- history-pos (- minibuffer-history-position 1))
                 search-point t)
-        (setq n 0)))
+        (setq n 0
+              lazy-compile-entered-string nil)))
 
     ;; - there is no insertion or anything like that in this function because this function is for
     ;; when the user presses up, and the user does not expect to find 'his' entered command at the
