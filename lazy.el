@@ -1216,9 +1216,7 @@ value.
 It then uses `lazy-check-required-vars' and `lazy-check-optional-vars'
 to verify the evaluated configuration.
 
-See also `lazy-def'.
-
-"
+See also `lazy-def'."
   (interactive)
   (let* ((evaluated-config-alist `((name ,proj-name)))
          (result-alist (dolist (cv config-alist evaluated-config-alist)
@@ -1248,9 +1246,7 @@ All values within CONFIG-ALIST will be evaluated when they look
 like a lisp expression or symbol. So make sure to quote lists!
 
 See also `lazy-project-list', `lazy-eval-alist', `lazy-undef',
-`lazy-required-vars' and `lazy-optional-vars'.
-
-"
+`lazy-required-vars' and `lazy-optional-vars'."
   (interactive)
   (cond ((stringp proj-name)
          (let ((alist (lazy-eval-alist proj-name config-alist)))
