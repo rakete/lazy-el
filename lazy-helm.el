@@ -26,7 +26,7 @@
 (require 'helm-files)
 (require 'helm-ag)
 
-(defvar helm-c-source-lazy-projects
+(defvar helm-source-lazy-projects
   '((name . "Lazy projects")
     (candidates . (lambda ()
                     (sort (lazy-filter (lambda (title)
@@ -50,7 +50,7 @@
                                    (message "No todos!"))))))))
   "All configured lazy projects.")
 
-(defvar helm-c-source-lazy-todos
+(defvar helm-source-lazy-todos
   '((name . "Lazy todos")
     (candidates . (lambda () (when (functionp 'lazy-org-project-todos)
                                (lazy-org-project-todos))))
@@ -58,165 +58,47 @@
                 (lazy-load (car (helm-marked-candidates))))))
   "Current projects todos")
 
-(defun mk-helm-relative-call (fun entry)
-  (lazy-with-directory (lazy-get-config-val 'basedir)
-                          (if (file-name-absolute-p entry)
-                              (funcall fun entry)
-                            (funcall fun (expand-file-name entry (lazy-get-config-val 'basedir))))))
-
-(defun mk-helm-relative-transformer (files)
-  (helm-transform-mapcar
-   (lambda (file)
-     (unless (file-name-absolute-p file)
-      (expand-file-name file (lazy-get-config-val 'basedir)))) files))
-
-(defvar helm-c-source-lazy-files
-  `((name . "Lazy files")
-    (init . (lambda ()
-              (with-current-buffer (helm-candidate-buffer 'global)
-                ;; (unless (get-buffer (lazy-fib-name))
-                ;;   (lazy-fib-init))
-                ;;(insert-buffer (lazy-fib-name))
-                (loop for filename in (reverse (lazy-files))
-                      do (insert (concat (expand-file-name filename) "\n"))))))
-    (candidates-in-buffer)
-    (candidate-number-limit . 300)
-    (keymap . ,helm-generic-files-map)
-    (help-message . helm-generic-file-help-message)
-    (mode-line . helm-generic-file-mode-line-string)
-    (type . file))
+(defvar helm-source-lazy-files nil
   "All files of the currently active project.")
 
-(defvar lazy-helm-open-buffers-cache nil)
+(setq helm-source-lazy-files
+      (helm-build-sync-source "Lazy files"
+        :candidates (lambda () (lazy-files))
+        :keymap helm-find-files-map
+        :action helm-find-files-actions
+        :mode-line (list "File(s)" helm-mode-line-string)))
 
-(defvar helm-c-source-lazy-open-buffers
-  `((name . "Lazy buffers")
-    (init . (lambda ()
-              (let ((lazy-buffers (lazy-buffers)))
-                (setq lazy-helm-open-buffers-cache
-                      (mapcar 'buffer-name
-                              (condition-case nil
-                                  (remove-if (lambda (buf) (string-match "\*[^\*]\*" (buffer-name buf))) lazy-buffers)
-                                (error nil)))))
-              (unless helm-buffer-max-length
-                (setq helm-buffer-max-length 40))
-              (unless helm-buffer-max-len-mode
-                (setq helm-buffer-max-len-mode 40))
-              ))
-    (candidates . lazy-helm-open-buffers-cache)
-    (no-matchplugin)
-    (volatile)
-    (type . buffer)
-    ;;(match helm-c-buffer-match-major-mode)
-    (persistent-action . helm-c-buffers-list-persistent-action)
-    (keymap . ,helm-buffer-map)
-    (mode-line . helm-buffer-mode-line-string)
-    (persistent-help
-     . "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer"))
+(defvar helm-source-lazy-open-buffers nil
   "All buffers of the currently active project.")
 
-(defvar helm-c-source-lazy-friendly-files
-  `((name . "Lazy friendly files")
-    (init . (lambda ()
-              (with-current-buffer (helm-candidate-buffer 'global)
-                (dolist (friend (lazy-get-config-val 'friends nil t))
-                  (if (file-exists-p (expand-file-name friend))
-                      (insert (concat (expand-file-name friend) "\n"))
-                    (when (gethash friend lazy-project-list)
-                      (unless (get-buffer (lazy-fib-name friend))
-                        (lazy-fib-init friend))
-                      (if (with-current-buffer (lazy-fib-name friend)
-                            (save-excursion
-                              (goto-char (point-min))
-                              (file-name-absolute-p (buffer-substring (point-at-bol) (point-at-eol)))))
-                          (insert-buffer (lazy-fib-name friend))
-                        (mapc (lambda (line)
-                                (insert (concat (expand-file-name line (lazy-get-config-val 'basedir friend t)) "\n")))
-                              (lazy-fib-matches nil friend))))))
-                (goto-char (point-min))
-                (let ((inhibit-field-text-motion t)
-                      (recentf-table (make-hash-table :test 'equal)))
-                  (dolist (recentf-item recentf-list)
-                    (puthash recentf-item t recentf-table))
-                  (sort-subr nil 'forward-line 'end-of-line nil nil
-                             (lambda (a b)
-                               (let ((s1 (buffer-substring-no-properties (car a) (cdr a)))
-                                     (s2 (buffer-substring-no-properties (car b) (cdr b))))
-                                 (cond ((and (gethash s1 recentf-table)
-                                             (not (gethash s2 recentf-table)))
-                                        t)
-                                       ((and (not (gethash s1 recentf-table))
-                                             (gethash s2 recentf-table))
-                                        nil)
-                                       (t
-                                        (string> s1 s2))))))))))
-    (candidates-in-buffer)
-    (candidate-number-limit . 300)
-    (keymap . ,helm-generic-files-map)
-    (help-message . helm-generic-file-help-message)
-    (mode-line . helm-generic-file-mode-line-string)
-    (type . file))
+(setq helm-source-lazy-open-buffers
+      (helm-build-sync-source "Lazy buffers"
+        :candidates (lambda ()
+                      (mapcar 'buffer-name
+                              (condition-case nil
+                                  (cl-remove-if (lambda (buf) (string-match "\*[^\*]\*" (buffer-name buf))) (lazy-buffers))
+                                (error nil))))
+        :keymap helm-buffer-map
+        :action helm-type-buffer-actions))
+
+(defvar helm-source-lazy-friendly-files nil
   "All files of projects which are friends of this project.")
 
-(defvar lazy-helm-open-friendly-buffers-cache nil)
-
-(defvar helm-c-source-lazy-open-friendly-buffers
-  `((name . "Lazy friendly buffers")
-    (init . (lambda ()
-              (setq lazy-helm-open-friendly-buffers-cache
-                    (mapcar 'buffer-name
-                            (condition-case nil
-                                (lazy-friendly-buffers nil)
-                              (error nil))))
-              (let ((result (cl-loop for b in lazy-helm-open-buffers-cache maximize
-                                     (length b)
-                                     into len-buf maximize
-                                     (length
-                                      (with-current-buffer b
-                                        (symbol-name major-mode)))
-                                     into len-mode finally return
-                                     (cons len-buf len-mode))))
-                (unless helm-buffer-max-length
-                  (setq helm-buffer-max-length
-                        (car result)))
-                (unless helm-buffer-max-len-mode
-                  (setq helm-buffer-max-len-mode
-                        (cdr result))))))
-    (candidates . lazy-helm-open-friendly-buffers-cache)
-    (no-matchplugin)
-    (volatile)
-    (type . buffer)
-    ;;(match helm-c-buffer-match-major-mode)
-    (persistent-action . helm-c-buffers-list-persistent-action)
-    (keymap . ,helm-buffer-map)
-    (mode-line . helm-buffer-mode-line-string)
-    (persistent-help
-     . "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer"))
-  "All friendly buffers of the currently active project." )
-
-(defvar helm-c-source-lazy-open-special-buffers
-  `((name . "Lazy special buffers")
-    (candidates . (lambda () (mapcar 'buffer-name (condition-case nil
-                                                      (lazy-special-buffers)
-                                                    (error nil)))))
-    (type . buffer)
-    ;;(match helm-c-buffer-match-major-mode)
-    (persistent-action . helm-c-buffers-list-persistent-action)
-    (keymap . ,helm-buffer-map)
-    (volatile)
-    (mode-line . helm-buffer-mode-line-string)
-    (persistent-help
-     . "Show this buffer / C-u \\[helm-execute-persistent-action]: Kill this buffer"))
-  "All special buffers of the currently active project." )
+(setq helm-source-lazy-friendly-files
+      (helm-build-sync-source "Lazy friendly files"
+        :candidates (lambda ()
+                      (lazy-friendly-files))
+        :keymap helm-find-files-map
+        :action helm-type-file-actions
+        :mode-line (list "File(s)" helm-mode-line-string)))
 
 (defun lazy-helm ()
   (interactive)
-  (helm :sources '(helm-c-source-lazy-files
-                   helm-c-source-lazy-friendly-files
-                   helm-c-source-lazy-open-buffers
-                   helm-c-source-lazy-open-friendly-buffers
-                   helm-c-source-lazy-open-special-buffers
-                   helm-c-source-lazy-todos
+  (helm :sources '(helm-source-lazy-files
+                   helm-source-lazy-friendly-files
+                   helm-source-lazy-todos
+                   helm-source-lazy-projects
+                   helm-source-buffers-list
                    )
         :buffer "*helm lazy*"
         :history 'helm-file-name-history))
@@ -225,7 +107,7 @@
   (interactive "P")
   (require 'helm-mode)
   (setq helm-ag--original-window (selected-window))
-  (helm-ag--clear-variables)
+  (setq helm-ag--last-default-directory nil)
   (let* ((helm-do-ag--default-target (cond ((and lazy-name (not arg))
                                             (list (condition-case nil (lazy-get-config-val 'basedir) (error default-directory))))
                                            ((not arg)
