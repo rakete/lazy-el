@@ -134,14 +134,14 @@ See also `lazy-required-vars' and `lazy-var-before-get-functions'")
 (defvar lazy-internal-vars '()
   "Project config vars that are ignored when saving the project config.")
 
-(defun lazy-basedir-expand (var val &optional proj-name config-alist)
+(defun lazy-basedir-expand (var val &optional proj-name proj-alist)
   "Helper used in `lazy-var-before-get-functions' to expand basedir."
   ;; need to check all these to make sure the value is not nil, but a string that does
   ;; not have zero length and also exists as file/directory
   (when (and (identity val) (stringp val) (> (length val) 0) (file-exists-p val))
     (file-name-as-directory (expand-file-name val))))
 
-(defun lazy-var-get-open-file-cache (var val &optional proj-name config-alist)
+(defun lazy-var-get-open-file-cache (var val &optional proj-name proj-alist)
   "Helper used in `lazy-var-before-get-functions' to find cache location.
 
 See also `lazy-get-cache-file'."
@@ -149,7 +149,7 @@ See also `lazy-get-cache-file'."
       (expand-file-name val)
     (lazy-get-cache-file var proj-name nil)))
 
-(defun lazy-var-get-file-list-cache (var val &optional proj-name config-alist)
+(defun lazy-var-get-file-list-cache (var val &optional proj-name proj-alist)
   "Helper used in `lazy-var-before-get-functions' to find cache location.
 
 See also `lazy-get-cache-file'."
@@ -157,21 +157,21 @@ See also `lazy-get-cache-file'."
       (expand-file-name val)
     (lazy-get-cache-file var proj-name t)))
 
-(defun lazy-var-guess-languages (var val &optional proj-name config-alist)
+(defun lazy-var-guess-languages (var val &optional proj-name proj-alist)
   "Helper used in `lazy-var-before-get-functions' to guess project languages."
-  (or val (lazy-src-pattern-languages (cadr (assoc 'src-patterns config-alist)))))
+  (or val (lazy-src-pattern-languages (cadr (assoc 'src-patterns proj-alist)))))
 
 (defvar lazy-var-before-get-functions '((basedir . lazy-basedir-expand)
                                         (file-list-cache . lazy-var-get-file-list-cache)
                                         (open-files-cache . lazy-var-get-open-file-cache)
                                         (open-friends-cache . lazy-var-get-open-file-cache)
                                         (languages . lazy-var-guess-languages)
-                                        (patterns-are-regex . (lambda (var val &optional proj-name config-alist)
-                                                                (if (and config-alist
-                                                                         (not (assoc 'patterns-are-regex config-alist)))
+                                        (patterns-are-regex . (lambda (var val &optional proj-name proj-alist)
+                                                                (if (and proj-alist
+                                                                         (not (assoc 'patterns-are-regex proj-alist)))
                                                                     t
                                                                   val)))
-                                        (friends . (lambda (var val &optional proj-name config-alist)
+                                        (friends . (lambda (var val &optional proj-name proj-alist)
                                                      (loop for friend in val
                                                            if (gethash friend lazy-project-list)
                                                            collect friend))))
@@ -1173,16 +1173,20 @@ See also `lazy-var-before-get-functions', `lazy-set-config-val'."
   (unless proj-name
     (lazy-assert-proj)
     (setq proj-name lazy-name))
-  (let* ((proj-alist (or proj-alist (lazy-find-alist proj-name nil)))
-         (fn (cdr (assoc key lazy-var-before-get-functions)))
-         (val (or (when fn
-                    (funcall fn key (cadr (assoc key proj-alist)) proj-name proj-alist))
-                  (and (assoc key proj-alist)
-                       (cadr (assoc key proj-alist)))
-                  (let ((parent (cadr (assoc 'parent proj-alist))))
-                    (when (and inherit parent)
-                      (lazy-get-config-val key parent t))))))
-    (if fn (funcall fn key val proj-name proj-alist) val)))
+  (condition-case e
+      (let* ((proj-alist (or proj-alist (lazy-find-alist proj-name nil)))
+             (fn (cdr (assoc key lazy-var-before-get-functions)))
+             (val (or (when (functionp fn)
+                        (funcall fn key (cadr (assoc key proj-alist)) proj-name proj-alist))
+                      (and (assoc key proj-alist)
+                           (cadr (assoc key proj-alist)))
+                      (let ((parent (cadr (assoc 'parent proj-alist))))
+                        (when (and inherit parent)
+                          (lazy-get-config-val key parent t))))))
+        val)
+    (error (progn
+             (message "lazy-get-config-val: error when getting %s\n%s" (prin1-to-string key) e)
+             nil))))
 
 (defalias 'lazy-config-val 'lazy-get-config-val
   "Alias for `lazy-get-config-val' to ensure backward compatibility.")
