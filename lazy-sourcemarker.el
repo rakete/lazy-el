@@ -76,12 +76,13 @@
 
 (defun lazy-sourcemarker-save ()
   (interactive)
-  (if (or (condition-case nil (lazy-assert-proj) (error t))
-          (not (or (lazy-buffer-p (current-buffer))
-                   (lazy-friendly-buffer-p (current-buffer)))))
-      (continue-save)
-    (lazy-sourcemarker-with-project-db
-       (continue-save))))
+  (when (buffer-file-name (current-buffer))
+    (if (or (condition-case nil (lazy-assert-proj) (error t))
+            (not (or (lazy-buffer-p (current-buffer))
+                     (lazy-friendly-buffer-p (current-buffer)))))
+        (continue-save)
+      (lazy-sourcemarker-with-project-db
+       (continue-save)))))
 
 (defun lazy-sourcemarker-save-all ()
   (interactive)
