@@ -46,9 +46,10 @@
 
 (defun lazy-sourcemarker-write-project-db ()
   (interactive)
-  (when lazy-name
-    (lazy-sourcemarker-with-project-db
-     (continue-write-db))))
+  (if lazy-name
+      (lazy-sourcemarker-with-project-db
+       (continue-write-db))
+    (continue-write-db)))
 
 (defun lazy-sourcemarker-restore ()
   (interactive)
@@ -133,6 +134,8 @@
 
 ;;(sort '((0 . "foo") (1 . "bar")) (lambda (a b) (> (car a) (car b))))
 
+(defvar lazy-sourcemarker-idle-timer-write-project-db nil)
+
 (with-eval-after-load 'lazy-sourcemarker
   (progn
      (add-to-list 'lazy-optional-vars '(sourcemarker-db-path . (stringp)))
@@ -162,7 +165,10 @@
      (remove-hook 'after-save-hook 'continue-save)
      (add-hook 'after-save-hook 'lazy-sourcemarker-save)
      (add-hook 'kill-buffer-hook 'lazy-sourcemarker-save)
-     (run-with-idle-timer 120 t 'lazy-sourcemarker-write-project-db)
+
+     (cancel-timer continue-idle-timer-write-db)
+     (setq continue-idle-timer-write-db nil)
+     (setq lazy-sourcemarker-idle-timer-write-project-db (run-with-idle-timer 5 t 'lazy-sourcemarker-write-project-db))
 
      (add-hook 'lazy-before-files-load-hook (lambda ()
                                               (remove-hook 'find-file-hook 'lazy-sourcemarker-restore)
