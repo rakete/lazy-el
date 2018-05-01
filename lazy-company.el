@@ -17,13 +17,15 @@
 (defvar lazy-company-history-length 20)
 
 (defun lazy-company-add-history (proj-name)
-  (let ((completion (substring-no-properties (nth company-selection company-candidates))))
-    (let ((history (gethash proj-name lazy-company-history)))
-      (setq history (cl-remove-if (lambda (last) (string-equal last completion)) history))
-      (when (eq (length history) lazy-company-history-length)
-        (setq history (butlast history 1)))
-      (push completion history)
-      (puthash proj-name history lazy-company-history))))
+  (let ((candidate (nth company-selection company-candidates)))
+    (when candidate
+      (let ((completion (substring-no-properties candidate)))
+        (let ((history (gethash proj-name lazy-company-history)))
+          (setq history (cl-remove-if (lambda (last) (string-equal last completion)) history))
+          (when (eq (length history) lazy-company-history-length)
+            (setq history (butlast history 1)))
+          (push completion history)
+          (puthash proj-name history lazy-company-history))))))
 
 (defun lazy-company-history-candidates (prefix proj-name)
   (cl-remove-if-not 'identity (mapcar (lambda (last) (when (string-match (concat "^" prefix) last) last))
