@@ -3975,25 +3975,27 @@ The compile command history search is implemented in `lazy-compile-read-command'
                        (lazy-find-alist proj-name)
                        (lazy-find-alist lazy-name)
                        (lazy-guess-alist)))
-  (setq proj-name (cadr (assoc 'name proj-alist)))
+  (let ((proj-alist-name (cadr (assoc 'name proj-alist))))
+    (when (or (not proj-name)
+              (not (string-equal proj-name proj-alist-name)))
+      (setq proj-name proj-alist-name)))
   (unless (and proj-name proj-alist)
     (lazy-assert-proj)
     (setq proj-name lazy-name))
-  (cond
-   ((string= event "finished\n")
-    (let ((zeitgeist-prevent-send t))
-      (with-current-buffer (get-buffer (lazy-fib-name proj-name))
-        (when (lazy-get-config-val 'file-list-cache proj-name t proj-alist)
-          (write-file (lazy-get-config-val 'file-list-cache proj-name t proj-alist))
-          (rename-buffer (lazy-fib-name proj-name))
-          (set-buffer-modified-p nil))
-        (setq buffer-read-only t)))
-    (unless quiet
-      (message "Refreshing %s buffer...done" (lazy-fib-name proj-name))))
-   (t
-    (lazy-fib-clear proj-name)
-    (unless quiet
-      (message "Failed to generate the %s buffer!" (lazy-fib-name proj-name))))))
+  (cond ((string= event "finished\n")
+         (let ((zeitgeist-prevent-send t))
+           (with-current-buffer (get-buffer (lazy-fib-name proj-name))
+             (when (lazy-get-config-val 'file-list-cache proj-name t proj-alist)
+               (write-file (lazy-get-config-val 'file-list-cache proj-name t proj-alist))
+               (rename-buffer (lazy-fib-name proj-name))
+               (set-buffer-modified-p nil))
+             (setq buffer-read-only t)))
+         (unless quiet
+           (message "Refreshing %s buffer...done" (lazy-fib-name proj-name))))
+        (t
+         (lazy-fib-clear proj-name)
+         (unless quiet
+           (message "Failed to generate the %s buffer!" (lazy-fib-name proj-name))))))
 
 (defun lazy-find-cmd-src-args (src-patterns &optional proj-name proj-alist)
   "Generate the ( -name <pat1> -o -name <pat2> ...) pattern for find cmd"
@@ -4404,7 +4406,7 @@ See also `lazy-update'.")
 
 See also `lazy-update'.")
 
-(defun lazy-after-save-update (&optional proj-name)
+(defun lazy-after-save-update (&optional proj-name proj-alist)
   "This functions gets added to `after-save-hook' and `after-load-hook' by lazy-el. It
 runs `lazy-update' after the idle time specified in `lazy-after-save-update-idle-time'
 has passed.
@@ -4413,34 +4415,37 @@ If `lazy-prevent-after-save-update' is set this will not do anything.
 
 See also `lazy-update-tags' and `lazy-after-save-update-in-progress'."
   (unless lazy-after-save-update-in-progress
-    (if (and (not (or lazy-prevent-after-save-update
-                      (string-match ".*recentf.*" (buffer-name (current-buffer)))
-                      (string-match ".*file-list-cache.*" (buffer-name (current-buffer)))
-                      (string-match ".*sourcemarker-db.*" (buffer-name (current-buffer)))
-                      (string-match ".*continue-db.*" (buffer-name (current-buffer)))
-                      (string-match ".*archive-contents.*" (buffer-name (current-buffer)))
-                      (string-match ".*\*http .*\*" (buffer-name (current-buffer)))))
-             (buffer-file-name (current-buffer))
-             (get-buffer-window (current-buffer) 'visible))
-        (progn
-          (setq proj-name (or proj-name
-                              ;; - prefer guessed name even when lazy-name is set, so that when I edit a file
-                              ;; that belongs to another project then the currently active one, the other project
-                              ;; gets updated
-                              (cadr (assoc 'name (lazy-guess-alist)))
-                              lazy-name))
-          (when proj-name
-            (setq lazy-after-save-update-in-progress t)
-            (run-with-idle-timer lazy-after-save-update-idle-time nil
-                                 (lambda (&optional p proj-name buffer)
-                                   (lazy-update p proj-name buffer)
-                                   ;; - explicitly set lazy-after-save-update-in-progress to nil here because I had
-                                   ;; problems with it remaining t even when lazy-update had already run
-                                   (setq lazy-after-save-update-in-progress nil))
-                                 ;; - previously I used a bunch of global variables to remember the project and
-                                 ;; buffer that were active when the idle timer was set, but then I found out I
-                                 ;; can just supply proj-name and (current-buffer) as arguments here
-                                 nil proj-name (current-buffer)))))))
+    (when (and (not (or lazy-prevent-after-save-update
+                        (eq (hash-table-count lazy-project-list) 0)
+                        (string-match ".*recentf.*" (buffer-name (current-buffer)))
+                        (string-match ".*file-list-cache.*" (buffer-name (current-buffer)))
+                        (string-match ".*sourcemarker-db.*" (buffer-name (current-buffer)))
+                        (string-match ".*continue-db.*" (buffer-name (current-buffer)))
+                        (string-match ".*archive-contents.*" (buffer-name (current-buffer)))
+                        (string-match ".*\*http .*\*" (buffer-name (current-buffer)))))
+               (buffer-file-name (current-buffer))
+               (get-buffer-window (current-buffer) 'visible))
+      (setq proj-alist (or (lazy-find-alist proj-name)
+                           proj-alist
+                           (lazy-guess-alist)))
+      (setq proj-name (or proj-name
+                          ;; - prefer guessed name even when lazy-name is set, so that when I edit a file
+                          ;; that belongs to another project then the currently active one, the other project
+                          ;; gets updated
+                          (cadr (assoc 'name proj-alist))
+                          lazy-name))
+      (when (and proj-name proj-alist)
+        (setq lazy-after-save-update-in-progress t)
+        (run-with-idle-timer lazy-after-save-update-idle-time nil
+                             (lambda (&optional p proj-name buffer)
+                               (lazy-update p proj-name buffer)
+                               ;; - explicitly set lazy-after-save-update-in-progress to nil here because I had
+                               ;; problems with it remaining t even when lazy-update had already run
+                               (setq lazy-after-save-update-in-progress nil))
+                             ;; - previously I used a bunch of global variables to remember the project and
+                             ;; buffer that were active when the idle timer was set, but then I found out I
+                             ;; can just supply proj-name and (current-buffer) as arguments here
+                             nil proj-name (current-buffer))))))
 
 (defun lazy-update-src-patterns (&optional buffer)
   "Update the src patterns of the current projects configuration by adding
