@@ -5042,9 +5042,7 @@ defined in `lazy-buildsystems'."
                          :buffer-fun 'lazy-config-buffer
                          :save-fun 'lazy-config-save
                          :insert-fun 'lazy-config-insert)
-    (let ((projects-el (expand-file-name "projects.el" (file-name-as-directory lazy-global-cache-root))))
-      (when (file-exists-p projects-el)
-        (load-file projects-el)))))
+    ))
 
 (provide 'lazy)
 
