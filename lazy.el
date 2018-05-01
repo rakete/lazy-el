@@ -3423,7 +3423,8 @@ See also `lazy-jump-list-mode', `lazy-merge-obarray-jumps' and `lazy-jump-regexp
                             (default (cl-find symbol completions :test 'string-equal)))
                        (substring-no-properties (ido-completing-read "Symbol: "
                                                                      completions nil nil
-                                                                     (unless (and (eq major-mode 'emacs-lisp-mode)
+                                                                     (unless (and (or (eq major-mode 'emacs-lisp-mode)
+                                                                                      (eq major-mode 'lisp-interaction-mode))
                                                                                   (string-equal default "nil"))
                                                                        default)
                                                                      nil
