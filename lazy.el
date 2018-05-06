@@ -860,7 +860,10 @@ See also `lazy-update-tags'.")
 
 (defvar lazy-thing-selector 'symbol)
 
-(defvar lazy-completions-cache (make-hash-table :test 'equal))
+(defvar lazy-project-symbols (make-hash-table :test 'equal))
+
+(defvar lazy-project-symbols-max-symbol-length (make-hash-table :test 'equal))
+(defvar lazy-project-symbols-max-filename-length (make-hash-table :test 'equal))
 
 (defvar lazy-project-list (make-hash-table :test 'equal))
 
@@ -1266,7 +1269,9 @@ See also `lazy-project-list', `lazy-eval-alist', `lazy-undef',
   "Opposite of `lazy-def'."
   (interactive "sProject: ")
   (remhash proj-name lazy-project-list)
-  (remhash proj-name lazy-completions-cache))
+  (remhash proj-name lazy-project-symbols)
+  (remhash proj-name lazy-project-symbols-max-symbol-length)
+  (remhash proj-name lazy-project-symbols-max-filename-length))
 
 
 
@@ -2414,7 +2419,7 @@ See also `lazy-language-tag-systems', `lazy-setup-tags', `lazy-jump-definition' 
              (inputs (cl-loop for sys in ordering
                               if (gethash sys gtags-commands)
                               collect (concat (mapconcat #'identity (gethash sys sys-files) "\n") "\n"))))
-        (lazy-process-group "gtags" commands inputs 'lazy-update-completions-cache (list proj-name) debug)
+        (lazy-process-group "gtags" commands inputs 'lazy-update-symbols (list proj-name) debug)
         ))
     ;; - if I'd ever implement rtags, or any other system really, then this would become another section
     (when (gethash 'rtags sys-files)
@@ -3223,39 +3228,10 @@ See also `lazy-jump-definition'."
   (define-key lazy-jump-list-mode-map (kbd "<return>") 'lazy-jump-go)
   (tabulated-list-init-header))
 
-(defun lazy-update-gtags-completions-cache (proj-name)
-  "Update the gtags completions for PROJ-NAME.
-
-See also `lazy-update-completions-cache'."
-  (let* ((cmd (if (eq system-type 'windows-nt)
-                  "global --match-part=first -Gq -dc \"\" & global --match-part=first -Gq -sc \"\""
-                "global --match-part=first -Gq -dc \"\"; global --match-part=first -Gq -sc \"\""))
-         (completions (split-string (condition-case nil (shell-command-to-string cmd) (error "")) "\n" t))
-         (completions-cache (gethash proj-name lazy-completions-cache)))
-    (when completions
-      (cl-loop for completion in completions
-               do (puthash completion
-                           nil
-                           completions-cache)))))
-
-(defun lazy-update-obarray-completions-cache (proj-name)
-  "Update the obarray completions for PROJ-NAME.
-
-See also `lazy-update-completions-cache'."
-  (let ((completions-cache (gethash proj-name lazy-completions-cache)))
-    (cl-do-all-symbols (sym)
-      (when (or (fboundp sym)
-                (boundp sym))
-        (let* ((completion (symbol-name sym)))
-          (puthash completion
-                   nil
-                   completions-cache))))))
-
-(defun lazy-update-completions-cache (&optional proj-name)
+(defun lazy-update-symbols (&optional proj-name)
   "Update the completions-cache for PROJ-NAME or the current project.
 
-See also `lazy-completions-cache', `lazy-update-obarray-completions-cache'
-and `lazy-update-gtags-completions-cache'."
+See also `lazy-project-symbols'."
   (let* ((guessed-alist (lazy-guess-alist))
          (guessed-name (cadr (assoc 'name guessed-alist)))
          (proj-alist (lazy-find-alist proj-name)))
@@ -3273,19 +3249,44 @@ and `lazy-update-gtags-completions-cache'."
                  proj-alist guessed-alist)))
     (unless proj-name
       (lazy-assert-proj))
-    (if (not (hash-table-p (gethash proj-name lazy-completions-cache)))
-        (puthash proj-name (make-hash-table :test 'equal :size 100000) lazy-completions-cache)
-      (maphash (lambda (k v)
-                 (remhash k (gethash proj-name lazy-completions-cache)))
-               (gethash proj-name lazy-completions-cache)))
-    (unless (string-equal lazy-name proj-name)
-      (lazy-setup-tags proj-name))
-    (lazy-update-gtags-completions-cache proj-name)
-    (unless (string-equal lazy-name proj-name)
-      (lazy-setup-tags lazy-name))
-    ;; (lazy-update-imenu-completions-cache proj-name)
-    (when (cl-find 'elisp (lazy-src-pattern-languages (lazy-get-config-val 'src-patterns proj-name nil proj-alist)))
-      (lazy-update-obarray-completions-cache proj-name))
+
+    (let ((symbols-cache (make-hash-table :test 'equal :size 100000))
+          (default-directory (or (lazy-get-config-val 'basedir proj-name) default-directory)))
+
+      (lazy-setup-tags proj-name)
+      (let* ((cmd (if (eq system-type 'windows-nt)
+                      "global -x -s \".\" & global -x -s \".\""
+                    "global -x -d \".\"; global -x -s \".\""))
+             (global-output (split-string (condition-case nil (shell-command-to-string cmd) (error "")) "\n" t))
+             (max-symbol-length (gethash proj-name lazy-project-symbols-max-symbol-length 0))
+             (max-filename-length (gethash proj-name lazy-project-symbols-max-filename-length 0)))
+        (when global-output
+          (cl-loop for line in global-output
+                   do (let ((tokens (split-string line " " t)))
+                        (when (and (listp tokens)
+                                   (> (length tokens) 2))
+                          (let* ((default-directory (lazy-get-config-val 'basedir proj-name))
+                                 (symbol-name (nth 0 tokens))
+                                 (line-number (string-to-number (nth 1 tokens)))
+                                 (relative-path (nth 2 tokens))
+                                 (absolute-path (expand-file-name relative-path))
+                                 (filename (file-name-nondirectory absolute-path))
+                                 (definition (mapconcat 'identity (nthcdr 3 tokens) " "))
+                                 (symbol-locations (gethash symbol-name symbols-cache))
+                                 (location (list line-number absolute-path definition)))
+                            (when (> (length symbol-name) max-symbol-length)
+                              (setq max-symbol-length (length symbol-name))
+                              (puthash proj-name max-symbol-length lazy-project-symbols-max-symbol-length))
+                            (when (> (length filename) max-filename-length)
+                              (setq max-filename-length (length filename))
+                              (puthash proj-name max-filename-length lazy-project-symbols-max-filename-length))
+                            (puthash symbol-name
+                                     (append symbol-locations (list location))
+                                     symbols-cache)))))))
+      (lazy-setup-tags lazy-name)
+
+      (puthash proj-name symbols-cache lazy-project-symbols))
+
     (garbage-collect)))
 
 (defvar lazy-completions-table-for-elisp (completion-table-merge
@@ -3307,7 +3308,7 @@ and `lazy-update-gtags-completions-cache'."
 (defun lazy-completions-for-path (elisp-string)
   (all-completions elisp-string lazy-completions-table-for-path))
 
-(defun lazy-completions (&optional prefix proj-name)
+(defun lazy-completions (&optional prefix proj-name buffer)
   "Get all possible completions of symbols.
 
 When called without any argument this function returns all known names
@@ -3315,7 +3316,7 @@ for symbols of the current project. Optionally argument PREFIX specifies
 a string prefix for which completions should be returned and PROJ-NAME can
 specifiy which project the completions should come from.
 
-See also `lazy-update-completions-cache' and `lazy-completions-cache'."
+See also `lazy-update-symbols' and `lazy-project-symbols'."
   (let* ((guessed-alist (lazy-guess-alist))
          (guessed-name (cadr (assoc 'name guessed-alist)))
          (proj-alist nil))
@@ -3332,17 +3333,26 @@ See also `lazy-update-completions-cache' and `lazy-completions-cache'."
       (lazy-assert-proj))
     (unless prefix
       (setq prefix ""))
-    (let ((unique-completions '())
+    (unless buffer
+      (setq buffer (current-buffer)))
+    (let ((unique-completions (make-hash-table :test 'equal))
           (case-fold-search nil))
-      (when (not (gethash proj-name lazy-completions-cache))
-        (lazy-update-completions-cache proj-name))
-      (when (hash-table-p (gethash proj-name lazy-completions-cache))
+      (when (or (cl-find 'elisp (lazy-src-pattern-languages (lazy-get-config-val 'src-patterns proj-name nil proj-alist)))
+                (eq 'emacs-lisp-mode (with-current-buffer buffer major-mode)))
+        (cl-do-all-symbols (sym)
+          (when (or (fboundp sym)
+                    (boundp sym))
+            (let* ((completion (symbol-name sym)))
+              (puthash completion nil unique-completions)))))
+      (when (not (gethash proj-name lazy-project-symbols))
+        (lazy-update-symbols proj-name))
+      (when (hash-table-p (gethash proj-name lazy-project-symbols))
         (maphash (lambda (k v)
                    (when (or (string-equal prefix "")
                              (string-match (concat "^" prefix) k))
-                     (push k unique-completions)))
-                 (gethash proj-name lazy-completions-cache)))
-      (reverse unique-completions))))
+                     (puthash k nil unique-completions)))
+                 (gethash proj-name lazy-project-symbols)))
+      (reverse (hash-table-keys unique-completions)))))
 
 (defun lazy-merge-obarray-jumps (obarray-jumps &rest rest)
   "Merges jumps generated from `obarray' with jumps from other sources.
