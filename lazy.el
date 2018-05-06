@@ -2482,29 +2482,28 @@ See also `lazy-update-tags'."
   (setq proj-name (or proj-name
                       lazy-name
                       (cadr (assoc 'name (lazy-guess-alist)))))
-  (unless proj-name
-    (lazy-assert-proj))
-  (let ((proj-systems (lazy-src-pattern-tag-systems (lazy-get-config-val 'src-patterns proj-name)))
-        (available-systems '()))
-    (when (or (cl-find 'gtags proj-systems)
-              (cl-find 'gtags+rtags proj-systems)
-              (cl-find 'gtags+exuberant-ctags proj-systems)
-              (cl-find 'gtags+universal-ctags proj-systems)
-              (cl-find 'gtags+pygments proj-systems))
-      (let* ((gtags-file (file-truename (expand-file-name "GTAGS" (lazy-get-cache-dir nil proj-name))))
-             (gtags-file-alternative (expand-file-name "GTAGS" (lazy-get-config-val 'basedir proj-name))))
-        (cond ((file-exists-p gtags-file)
-               (let ((gtags-dbpath (lazy-dirname gtags-file))
-                     (gtags-root "/"))
-                 ;; - hack, gnu global under windows has problems with directories that have a trailing slash
-                 ;; so this just removes the last slash from the path
-                 (when (eq system-type 'windows-nt)
-                   (string-match "\\(.*\\)/" gtags-dbpath)
-                   (setq gtags-dbpath (match-string 1 gtags-dbpath)))
-                 (setenv "GTAGSDBPATH" gtags-dbpath)
-                 (setenv "GTAGSROOT" gtags-root)
-                 (add-to-list 'available-systems 'gtags))))))
-    available-systems))
+  (when proj-name
+    (let ((proj-systems (lazy-src-pattern-tag-systems (lazy-get-config-val 'src-patterns proj-name)))
+          (available-systems '()))
+      (when (or (cl-find 'gtags proj-systems)
+                (cl-find 'gtags+rtags proj-systems)
+                (cl-find 'gtags+exuberant-ctags proj-systems)
+                (cl-find 'gtags+universal-ctags proj-systems)
+                (cl-find 'gtags+pygments proj-systems))
+        (let* ((gtags-file (file-truename (expand-file-name "GTAGS" (lazy-get-cache-dir nil proj-name))))
+               (gtags-file-alternative (expand-file-name "GTAGS" (lazy-get-config-val 'basedir proj-name))))
+          (cond ((file-exists-p gtags-file)
+                 (let ((gtags-dbpath (lazy-dirname gtags-file))
+                       (gtags-root "/"))
+                   ;; - hack, gnu global under windows has problems with directories that have a trailing slash
+                   ;; so this just removes the last slash from the path
+                   (when (eq system-type 'windows-nt)
+                     (string-match "\\(.*\\)/" gtags-dbpath)
+                     (setq gtags-dbpath (match-string 1 gtags-dbpath)))
+                   (setenv "GTAGSDBPATH" gtags-dbpath)
+                   (setenv "GTAGSROOT" gtags-root)
+                   (add-to-list 'available-systems 'gtags))))))
+      available-systems)))
 
 (defadvice ido-switch-buffer (around lazy-ido-switch-buffer-setup-tags first nil activate)
   (let ((previous-buffer (current-buffer)))
