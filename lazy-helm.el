@@ -108,18 +108,20 @@
   (require 'helm-mode)
   (setq helm-ag--original-window (selected-window))
   (setq helm-ag--last-default-directory nil)
-  (let* ((helm-do-ag--default-target (cond ((and lazy-name (not arg))
-                                            (list (condition-case nil (lazy-get-config-val 'basedir) (error default-directory))))
-                                           ((not arg)
-                                            (list default-directory))
-                                           (arg
-                                            (helm-read-file-name
-                                             "Search in file(s): "
-                                             :default default-directory
-                                             :marked-candidates t :must-match t))))
-         (helm-ag--default-directory (car-safe helm-do-ag--default-target))
-         (helm-do-ag--extensions (helm-ag--do-ag-searched-extensions)))
+  (let* ((helm-ag--default-target (cond ((and lazy-name (not arg))
+                                         (list (condition-case nil (lazy-get-config-val 'basedir) (error default-directory))))
+                                        ((not arg)
+                                         (list default-directory))
+                                        (arg
+                                         (helm-read-file-name
+                                          "Search in file(s): "
+                                          :default default-directory
+                                          :marked-candidates t :must-match t))))
+         (helm-ag--default-directory (car-safe helm-ag--default-target))
+         (helm-do-ag--extensions (when helm-ag--default-target
+                                   (helm-ag--do-ag-searched-extensions))))
     (helm-ag--set-do-ag-option)
+    (helm-ag--set-command-features)
     (helm-ag--save-current-context)
     (helm-attrset 'name (helm-ag--helm-header helm-ag--default-directory)
                   helm-source-do-ag)
