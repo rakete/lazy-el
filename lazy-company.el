@@ -101,30 +101,6 @@
     (init (setq-local lazy-company-project-name (or lazy-company-project-name (cadr (assoc 'name (lazy-guess-alist))))))))
 
 ;;;###autoload
-(defun lazy-company-project-cached (command &optional arg &rest ignored)
-  (interactive (list 'interactive))
-  (cl-case command
-    (interactive (company-begin-backend 'company-project))
-    (no-cache nil)
-    (sorted nil)
-    (duplicates nil)
-    (prefix (and (not (company-in-string-or-comment))
-                 (buffer-file-name (current-buffer))
-                 (or lazy-company-project-name
-                     lazy-name)
-                 (or (eq lazy-company-complete-in-projects t)
-                     (cl-find (or lazy-name
-                                  lazy-company-project-name) lazy-company-complete-in-projects))
-                 (company-grab-symbol)))
-    (candidates (append (lazy-completions arg lazy-company-project-name)
-                        (lazy-company-dabbrev-candidates arg)))
-    (meta (lazy-eldoc-function-meta arg lazy-company-project-name (lazy-find-alist lazy-company-project-name)))
-    ;;doc
-    ;;location
-    (post-completion (lazy-company-add-history lazy-company-project-name))
-    (init (setq-local lazy-company-project-name (or lazy-company-project-name (cadr (assoc 'name (lazy-guess-alist))))))))
-
-;;;###autoload
 (defun lazy-company-project-runtime (command &optional arg &rest ignored)
   (interactive (list 'interactive))
   (cl-case command
