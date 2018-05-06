@@ -2477,6 +2477,8 @@ or `lazy-completions'.
 
 See also `lazy-update-tags'."
   (interactive)
+  (setenv "GTAGSDBPATH" "")
+  (setenv "GTAGSROOT" "")
   (setq proj-name (or proj-name
                       lazy-name
                       (cadr (assoc 'name (lazy-guess-alist)))))
