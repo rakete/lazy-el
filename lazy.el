@@ -2531,7 +2531,9 @@ See also `lazy-update-tags'."
                                                                                   (symbol-name (quote ,sym))))
                                                              0))
                               ((facep (quote ,sym)) (find-definition-noselect (quote ,sym) 'defface))
-                              (((symbol-plist (quote ,sym)) (find-definition-noselect (quote ,sym) nil))))))
+                              ;; ((symbol-plist (quote ,sym)) (find-definition-noselect (quote ,sym) nil))
+                              ;; ((symbolp (quote ,sym)) (find-definition-noselect (quote ,sym) nil))
+                              (t nil))))
          location))))
 
 ;; - given a system and a regexp, this tries to match regexp with jumps aquired from system and returns
@@ -2609,8 +2611,9 @@ See also `lazy-jump-list-mode'."
                               (or (fboundp sym)
                                   (boundp sym)
                                   (facep sym)
-                                  (featurep sym)
-                                  (symbol-plist sym)))
+                                  ;; (featurep sym)
+                                  ;; (symbol-plist sym)
+                                  ))
                      (let* ((word sym-name)
                             (doc (condition-case nil
                                      (if (fboundp sym)
