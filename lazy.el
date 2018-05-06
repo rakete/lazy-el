@@ -3443,16 +3443,13 @@ See also `lazy-jump-list-mode', `lazy-merge-obarray-jumps' and `lazy-jump-regexp
                                                                                   (string-equal default "nil"))
                                                                        default)
                                                                      nil
-                                                                     (when (not default)
-                                                                       symbol))))))
-  (when (and (not lazy-name) (not proj-alist))
+                                                                     nil)))))
+  (unless proj-name
     (let ((guessed-name (cadr (assoc 'name (lazy-guess-alist)))))
-      (when guessed-name (setq proj-name guessed-name))))
-  (setq proj-alist (or proj-alist
-                       (lazy-find-alist proj-name)
-                       (lazy-find-alist lazy-name)
-                       (lazy-guess-alist)))
-  (setq proj-name (cadr (assoc 'name proj-alist)))
+      (setq proj-name (or guessed-name lazy-name))))
+  (when (or (and (not proj-alist) proj-name)
+            (not (string-equal proj-name (cadr (assoc 'name proj-alist)))))
+    (setq proj-alist (lazy-find-alist proj-name)))
   (unless (and proj-name proj-alist)
     (lazy-assert-proj))
   (let ((jumps (lazy-merge-obarray-jumps (lazy-find-symbol proj-name proj-alist 'obarray (concat "^" word "$"))
