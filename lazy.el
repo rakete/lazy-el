@@ -2642,8 +2642,9 @@ See also `lazy-jump-list-mode'."
                                        (nthcdr 3 imenu-alist))))
              (cl-loop for item in marker-list
                       if (or (string-match (concat "[^ (]*\\(" regexp "[^ ]*\\)[ ]*(" ) (car item))
-                             (string-match (concat "\\(" regexp "[^ ]*\\)") (car item)))
-                      collect (list :word (match-string 1 (car item))
+                             (string-match (concat "\\(" regexp "[^ ]*\\)") (car item))
+                             (string-match regexp (car item)))
+                      collect (list :word (or (match-string 1 (car item)) (match-string 0 (car item)))
                                     :line-number (with-current-buffer (marker-buffer (cdr item))
                                                    (save-excursion
                                                      (line-number-at-pos (marker-position (cdr item)))))
