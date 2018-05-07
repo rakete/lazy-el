@@ -103,6 +103,99 @@
         :buffer "*helm lazy*"
         :history 'helm-file-name-history))
 
+(defface lazy-helm-symbol-definition-face
+  '((((background dark)) :foreground "LightSkyBlue")
+    (((background light)) :foreground "NavyBlue"))
+  "Face used for symbol definitions in lazy-helm.")
+
+(defface lazy-helm-symbol-line-numbers-face
+  '((((background dark)) :foreground "MediumSpringGreen")
+    (((background light)) :foreground "DarkGreen"))
+  "Face used for line numbers in lazy-helm.")
+
+(defun lazy-helm-symbols (&optional proj-name invoke-window word)
+  (interactive)
+  (unless proj-name
+    (let ((guessed-name (cadr (assoc 'name (lazy-guess-alist)))))
+      (setq proj-name (or guessed-name lazy-name))))
+  (unless proj-name
+    (lazy-assert-proj))
+  (unless invoke-window
+    (setq invoke-window (get-buffer-window (current-buffer))))
+  (unless word
+    (setq word (substring-no-properties (or (thing-at-point lazy-thing-selector) ""))))
+  (unless (gethash proj-name lazy-project-symbols)
+    (lazy-update-symbols proj-name))
+  (let ((project-symbols (gethash proj-name lazy-project-symbols))
+        (candidates-by-path (make-hash-table :test 'equal :size 100))
+        (sources '())
+        (max-symbol-length (gethash proj-name lazy-project-symbols-max-symbol-length 50))
+        (one-symbol-match nil)
+        (sorted-paths '())
+        (basedir (lazy-get-config-val 'basedir proj-name))
+        (buffer-file-name (file-truename (or (buffer-file-name (helm--current-buffer)) "/"))))
+    (when (hash-table-p project-symbols)
+      (maphash (lambda (path symbols-by-path)
+                 (let ((candidates '()))
+                   (maphash (lambda (symbol symbol-locations)
+                              (when (and (not one-symbol-match)
+                                         (string-match (regexp-quote word) symbol))
+                                (setq one-symbol-match t))
+                              (let ((symbol-display (if (> (length symbol) max-symbol-length)
+                                                        (concat (substring symbol 0 (- max-symbol-length 3)) "...")
+                                                      (format (concat "%-" (prin1-to-string max-symbol-length) "s") symbol))))
+                                (cl-dolist (location symbol-locations)
+                                  (let* ((line-number (nth 0 location))
+                                         (definition (nth 1 location))
+                                         (display (concat symbol-display
+                                                          " "
+                                                          (propertize (format "%8s" line-number) 'face 'lazy-helm-symbol-line-numbers-face)
+                                                          " "
+                                                          (propertize definition 'face 'lazy-helm-symbol-definition-face)
+                                                          ))
+                                         (candidate (cons display (list symbol line-number path))))
+                                    (setq candidates (append candidates (list candidate)))))))
+                            symbols-by-path)
+                   (when (> (length candidates) 0)
+                     (puthash path candidates candidates-by-path)
+                     (let ((score -1))
+                       (when (string-equal buffer-file-name path)
+                         (setq score (+ score 10)))
+                       (when (string-equal basedir (file-name-directory path))
+                         (setq score (+ score 10)))
+                       (when (string-match (concat "^" (regexp-quote basedir) "\\(.*\\)") (file-name-directory path))
+                         (setq score (+ score 10))
+                         (let ((rest-length (length (split-string (match-string 1 (file-name-directory path)) "/"))))
+                           (when (< rest-length 10)
+                             (setq score (+ score (- 10 (- rest-length 1)))))))
+                       (setq sorted-paths (append sorted-paths (list (cons score path))))))))
+               project-symbols)
+      (setq sorted-paths (sort sorted-paths
+                               (lambda (a b)
+                                 (if (eq (car a) (car b))
+                                     (string-lessp (cdr a) (cdr b))
+                                   (> (car a) (car b))
+                                   ))))
+      (cl-dolist (path sorted-paths)
+        (let* ((candidates (gethash (cdr path) candidates-by-path))
+               (source (helm-build-sync-source (cdr path)
+                         :candidates candidates
+                         :candidate-number-limit most-positive-fixnum
+                         :action (lambda (candidate)
+                                   (let* ((symbol-name (nth 0 candidate))
+                                          (line-number (nth 1 candidate))
+                                          (absolute-path (nth 2 candidate)))
+                                     (with-current-buffer (helm--current-buffer)
+                                       (ring-insert xref--marker-ring (point-marker))
+                                       (lazy-jump-highlight (find-buffer-visiting absolute-path)
+                                                            (lazy-jump invoke-window absolute-path line-number symbol-name)))))
+                         )))
+          (setq sources (append sources (list source)))))
+      (helm :sources sources
+            :truncate-lines t
+            :input (when one-symbol-match word)
+            ))))
+
 (defun lazy-helm-do-ag (&optional arg)
   (interactive "P")
   (require 'helm-mode)
