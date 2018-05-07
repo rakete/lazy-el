@@ -169,7 +169,8 @@
 
      (cancel-timer continue-idle-timer-write-db)
      (setq continue-idle-timer-write-db nil)
-     (setq lazy-sourcemarker-idle-timer-write-project-db (run-with-idle-timer 5 t 'lazy-sourcemarker-write-project-db))
+     (setq lazy-sourcemarker-idle-timer-write-project-db (run-with-idle-timer 120 t 'lazy-sourcemarker-write-project-db))
+     (add-hook 'kill-emacs-hook 'lazy-sourcemarker-write-project-db)
 
      (add-hook 'lazy-before-files-load-hook (lambda ()
                                               (remove-hook 'find-file-hook 'lazy-sourcemarker-restore)
