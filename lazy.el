@@ -862,9 +862,6 @@ See also `lazy-update-tags'.")
 
 (defvar lazy-project-symbols (make-hash-table :test 'equal))
 
-(defvar lazy-project-symbols-max-symbol-length (make-hash-table :test 'equal))
-(defvar lazy-project-symbols-max-filename-length (make-hash-table :test 'equal))
-
 (defvar lazy-project-list (make-hash-table :test 'equal))
 
 ;; ---------------------------------------------------------------------
@@ -1269,9 +1266,7 @@ See also `lazy-project-list', `lazy-eval-alist', `lazy-undef',
   "Opposite of `lazy-def'."
   (interactive "sProject: ")
   (remhash proj-name lazy-project-list)
-  (remhash proj-name lazy-project-symbols)
-  (remhash proj-name lazy-project-symbols-max-symbol-length)
-  (remhash proj-name lazy-project-symbols-max-filename-length))
+  (remhash proj-name lazy-project-symbols))
 
 
 
@@ -3254,47 +3249,80 @@ See also `lazy-project-symbols'."
     (unless proj-name
       (lazy-assert-proj))
 
-    (let ((symbols-cache (make-hash-table :test 'equal :size 100000))
-          (default-directory (or (lazy-get-config-val 'basedir proj-name) default-directory)))
+    (let* ((proj-symbols (make-hash-table :test 'equal :size 100000))
+           (default-directory (or (lazy-get-config-val 'basedir proj-name) default-directory)))
 
-      (lazy-setup-tags proj-name)
-      (let* ((cmd (if (eq system-type 'windows-nt)
-                      "global -x -s \".\" & global -x -s \".\""
-                    "global -x -d \".\"; global -x -s \".\""))
-             (global-output (split-string (condition-case nil (shell-command-to-string cmd) (error "")) "\n" t))
-             (max-symbol-length (gethash proj-name lazy-project-symbols-max-symbol-length 0))
-             (max-filename-length (gethash proj-name lazy-project-symbols-max-filename-length 0)))
-        (when global-output
-          (cl-loop for line in global-output
-                   do (let ((tokens (split-string line " " t)))
-                        (when (and (listp tokens)
-                                   (> (length tokens) 2))
-                          (let* ((default-directory (lazy-get-config-val 'basedir proj-name))
-                                 (symbol-name (nth 0 tokens))
-                                 (line-number (string-to-number (nth 1 tokens)))
-                                 (relative-path (nth 2 tokens))
-                                 (absolute-path (expand-file-name relative-path))
-                                 (filename (file-name-nondirectory absolute-path))
-                                 (definition (mapconcat 'identity (nthcdr 3 tokens) " "))
-                                 (symbols-in-path (gethash absolute-path symbols-cache (make-hash-table :test 'equal :size 10)))
-                                 (symbol-locations (gethash symbol-name symbols-in-path))
-                                 (location (list line-number definition))
-                                 )
-                            (when (> (length symbol-name) max-symbol-length)
-                              (setq max-symbol-length (length symbol-name))
-                              (puthash proj-name max-symbol-length lazy-project-symbols-max-symbol-length))
-                            (when (> (length filename) max-filename-length)
-                              (setq max-filename-length (length filename))
-                              (puthash proj-name max-filename-length lazy-project-symbols-max-filename-length))
-                            (puthash symbol-name
-                                     (append symbol-locations (list location))
-                                     symbols-in-path)
-                            (puthash absolute-path symbols-in-path symbols-cache)
-                            )))
-                   )))
-      (lazy-setup-tags lazy-name)
+      (when (lazy-setup-tags proj-name)
+        (let* ((cmd "global -c")
+               (global-output (split-string (condition-case nil (shell-command-to-string cmd) (error "")) "\n" t)))
+          (when global-output
+            (cl-loop for symbol in global-output
+                     do (puthash symbol t proj-symbols))
+            (puthash proj-name proj-symbols lazy-project-symbols))
+          (lazy-setup-tags lazy-name))))))
 
-      (puthash proj-name symbols-cache lazy-project-symbols))))
+;; (defun lazy-update-symbols (&optional proj-name)
+;;   "Update the completions-cache for PROJ-NAME or the current project.
+
+;; See also `lazy-project-symbols'."
+;;   (let* ((guessed-alist (lazy-guess-alist))
+;;          (guessed-name (cadr (assoc 'name guessed-alist)))
+;;          (proj-alist (lazy-find-alist proj-name)))
+;;     (cond ((and (not proj-name)
+;;                 lazy-name
+;;                 (lazy-buffer-p (current-buffer) lazy-name))
+;;            (setq proj-name lazy-name
+;;                  proj-alist (lazy-find-alist lazy-name)))
+;;           ((or (and proj-name
+;;                     (not proj-alist)
+;;                     guessed-alist)
+;;                (and (not proj-name)
+;;                     guessed-name))
+;;            (setq proj-name guessed-name
+;;                  proj-alist guessed-alist)))
+;;     (unless proj-name
+;;       (lazy-assert-proj))
+
+;;     (let ((symbols-cache (make-hash-table :test 'equal :size 100000))
+;;           (default-directory (or (lazy-get-config-val 'basedir proj-name) default-directory)))
+
+;;       (when (and nil (lazy-setup-tags proj-name))
+;;         (let* ((cmd (if (eq system-type 'windows-nt)
+;;                         "global -x -s \".\" & global -x -s \".\""
+;;                       "global -x -d \".\"; global -x -s \".\""))
+;;                (global-output (split-string (condition-case nil (shell-command-to-string cmd) (error "")) "\n" t))
+;;                (max-symbol-length (gethash proj-name lazy-project-symbols-max-symbol-length 0))
+;;                (max-filename-length (gethash proj-name lazy-project-symbols-max-filename-length 0)))
+;;           (when global-output
+;;             (cl-loop for line in global-output
+;;                      do (let ((tokens (split-string line " " t)))
+;;                           (when (and (listp tokens)
+;;                                      (> (length tokens) 2))
+;;                             (let* ((default-directory (lazy-get-config-val 'basedir proj-name))
+;;                                    (symbol-name (nth 0 tokens))
+;;                                    (line-number (string-to-number (nth 1 tokens)))
+;;                                    (relative-path (nth 2 tokens))
+;;                                    (absolute-path (expand-file-name relative-path))
+;;                                    (filename (file-name-nondirectory absolute-path))
+;;                                    (definition (mapconcat 'identity (nthcdr 3 tokens) " "))
+;;                                    (symbols-in-path (gethash absolute-path symbols-cache (make-hash-table :test 'equal :size 10)))
+;;                                    (symbol-locations (gethash symbol-name symbols-in-path))
+;;                                    (location (list line-number definition))
+;;                                    )
+;;                               (when (> (length symbol-name) max-symbol-length)
+;;                                 (setq max-symbol-length (length symbol-name))
+;;                                 (puthash proj-name max-symbol-length lazy-project-symbols-max-symbol-length))
+;;                               (when (> (length filename) max-filename-length)
+;;                                 (setq max-filename-length (length filename))
+;;                                 (puthash proj-name max-filename-length lazy-project-symbols-max-filename-length))
+;;                               (puthash symbol-name
+;;                                        (append symbol-locations (list location))
+;;                                        symbols-in-path)
+;;                               (puthash absolute-path symbols-in-path symbols-cache)
+;;                               )))
+;;                      )))
+;;         (lazy-setup-tags lazy-name)
+;;         (puthash proj-name symbols-cache lazy-project-symbols)))))
 
 (defvar lazy-completions-table-for-elisp (completion-table-merge
                                           elisp--local-variables-completion-table
@@ -3355,12 +3383,8 @@ See also `lazy-update-symbols' and `lazy-project-symbols'."
       (when (not (gethash proj-name lazy-project-symbols))
         (lazy-update-symbols proj-name))
       (when (hash-table-p (gethash proj-name lazy-project-symbols))
-        (maphash (lambda (_ symbols-in-path)
-                   (maphash (lambda (k v)
-                              (when (or (not prefix)
-                                        (string-match regex-prefix k))
-                                (puthash k nil unique-completions)))
-                            symbols-in-path))
+        (maphash (lambda (symbol-name _)
+                   (puthash symbol-name nil unique-completions))
                  (gethash proj-name lazy-project-symbols)))
       (reverse (hash-table-keys unique-completions)))))
 

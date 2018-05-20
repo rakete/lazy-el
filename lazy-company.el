@@ -57,19 +57,6 @@
   (when (derived-mode-p 'emacs-lisp-mode 'inferior-emacs-lisp-mode)
     (lazy-completions-for-elisp prefix)))
 
-(defun lazy-company-dabbrev-candidates (arg)
-  (if (and lazy-company-project-name
-           (hash-table-p lazy-project-symbols)
-           (hash-table-p (gethash lazy-company-project-name lazy-project-symbols)))
-      (let ((case-fold-search company-dabbrev-code-ignore-case)
-            (project-completions (gethash lazy-company-project-name lazy-project-symbols))
-            (dabbrevs (cl-remove-duplicates (company-dabbrev-code 'candidates arg) :test 'equal)))
-        (cl-loop for dab in dabbrevs
-                 if (gethash dab project-completions t)
-                 collect dab))
-    (company-dabbrev-code 'candidates arg)))
-
-
 (defun lazy-company-project-history (command &optional arg &rest ignored)
   (interactive (list 'interactive))
   (cl-case command
@@ -111,8 +98,7 @@
     (candidates (append (lazy-company-gtags-candidates arg)
                         (lazy-company-imenu-candidates arg)
                         (when (cl-find 'elisp (lazy-src-pattern-languages (lazy-get-config-val 'src-patterns lazy-company-project-name)))
-                          (lazy-company-obarray-candidates arg))
-                        (lazy-company-dabbrev-candidates arg)))
+                          (lazy-company-obarray-candidates arg))))
     (meta (lazy-eldoc-function-meta arg lazy-company-project-name (lazy-find-alist lazy-company-project-name)))
     ;;doc
     ;;location
