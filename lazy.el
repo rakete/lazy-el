@@ -28,6 +28,7 @@
 (require 'compile)
 (require 'color)
 (require 'imenu)
+(require 'recentf)
 
 (declare-function lazy-org-project-buffer-name "lazy-orgmode")
 (declare-function lazy-org-config-save "lazy-orgmode")
@@ -155,7 +156,7 @@ See also `lazy-get-cache-file'."
 See also `lazy-get-cache-file'."
   (if val
       (expand-file-name val)
-    (lazy-get-cache-file var proj-name t)))
+    (lazy-get-cache-file var proj-name t proj-alist)))
 
 (defun lazy-var-guess-languages (var val &optional proj-name proj-alist)
   "Helper used in `lazy-var-before-get-functions' to guess project languages."
@@ -1712,7 +1713,7 @@ See also `lazy-check-required-vars'"
       (when (and config-value (not (cl-every (lambda (check) (funcall check config-value)) config-checks)))
         (error "Optional config value '%s' has invalid value '%s' in %s!" (symbol-name config-symbol) (prin1-to-string config-value) proj-name)))))
 
-(cl-defun lazy-get-cache-file (symbol &optional proj-name (inherit t))
+(cl-defun lazy-get-cache-file (symbol &optional proj-name (inherit t) proj-alist)
   "Get the cache path of SYMBOL for project PROJ-NAME or the currently active project.
 
 The argument INHERIT controls whether to look for SYMBOL in parent projects or not.
@@ -1723,7 +1724,8 @@ SYMBOL can be any project var, this function does not create a file, it just ret
 the path.
 
 See also `lazy-global-cache-root' and `lazy-get-cache-dir'."
-  (let ((proj-alist (or (lazy-find-alist proj-name)
+  (let ((proj-alist (or proj-alist
+                        (lazy-find-alist proj-name)
                         (lazy-find-alist lazy-name)
                         (lazy-guess-alist))))
     (setq proj-name (cadr (assoc 'name proj-alist)))
@@ -2266,7 +2268,7 @@ See also `lazy-language-tag-systems', `lazy-setup-tags', `lazy-jump-definition' 
   (unless (and proj-name proj-alist)
     (lazy-assert-proj))
   (unless files
-    (setq files (lazy-unique-files proj-name)))
+    (setq files (hash-table-keys (lazy-unique-files proj-name))))
   (let ((default-directory (lazy-get-config-val 'basedir proj-name nil proj-alist))
         (gtags-executable (executable-find "gtags"))
         (global-executable (executable-find "global"))
@@ -2281,54 +2283,55 @@ See also `lazy-language-tag-systems', `lazy-setup-tags', `lazy-jump-definition' 
     ;; - the nested loops look like the could be switched, but the language of a file needs to detected
     ;; first, so that we can then decide which tagging systems to use for that language
     (dolist (f files)
-      (let ((lang (car-safe (lazy-src-pattern-languages (list f)))))
-        (push lang languages)
-        (dolist (sys (cdr (assoc lang lazy-language-tag-systems)))
-          (cond ((and (or (eq sys 'gtags+rtags))
-                      gtags-executable
-                      global-executable
-                      rtags-executable)
-                 (cl-return (puthash 'gtags+rtags
-                                     (append (list f) (gethash 'gtags+rtags sys-files))
-                                     sys-files)))
-                ((and (eq sys 'rtags)
-                      rtags-executable)
-                 (cl-return (puthash 'rtags
-                                     (append (list f) (gethash 'rtags sys-files))
-                                     sys-files)))
-                ((and (eq sys 'gtags)
-                      gtags-executable
-                      global-executable)
-                 (cl-return (puthash 'gtags
-                                     (append (list f) (gethash 'gtags sys-files))
-                                     sys-files)))
-                ((and (or (eq sys 'gtags)
-                          (eq sys 'gtags+exuberant-ctags)
-                          (eq sys 'gtags+universal-ctags))
-                      gtags-executable
-                      global-executable
-                      ctags-universal-executable)
-                 (cl-return (puthash 'gtags+universal-ctags
-                                     (append (list f) (gethash 'gtags+universal-ctags sys-files))
-                                     sys-files)))
-                ((and (eq sys 'gtags+exuberant-ctags)
-                      gtags-executable
-                      global-executable
-                      ctags-exuberant-executable)
-                 ;; - I had a fallback to gtags here if exuberant is not found, but removed it,
-                 ;; it does not make sense, while exuberant can parse many languages, gtags alone
-                 ;; can only parse a few
-                 (cl-return (puthash 'gtags+exuberant-ctags
-                                     (append (list f) (gethash 'gtags+exuberant-ctags sys-files))
-                                     sys-files)))
-                ((and (or (eq sys 'gtags)
-                          (eq sys 'gtags+pygments))
-                      gtags-executable
-                      global-executable
-                      pygments-executable)
-                 (cl-return (puthash 'gtags+pygments
-                                     (append (list f) (gethash 'gtags+pygments sys-files))
-                                     sys-files)))))))
+      (unless (string-match "node_modules" f)
+        (let ((lang (car-safe (lazy-src-pattern-languages (list f)))))
+          (push lang languages)
+          (dolist (sys (cdr (assoc lang lazy-language-tag-systems)))
+            (cond ((and (or (eq sys 'gtags+rtags))
+                        gtags-executable
+                        global-executable
+                        rtags-executable)
+                   (cl-return (puthash 'gtags+rtags
+                                       (append (list f) (gethash 'gtags+rtags sys-files))
+                                       sys-files)))
+                  ((and (eq sys 'rtags)
+                        rtags-executable)
+                   (cl-return (puthash 'rtags
+                                       (append (list f) (gethash 'rtags sys-files))
+                                       sys-files)))
+                  ((and (eq sys 'gtags)
+                        gtags-executable
+                        global-executable)
+                   (cl-return (puthash 'gtags
+                                       (append (list f) (gethash 'gtags sys-files))
+                                       sys-files)))
+                  ((and (or (eq sys 'gtags)
+                            (eq sys 'gtags+exuberant-ctags)
+                            (eq sys 'gtags+universal-ctags))
+                        gtags-executable
+                        global-executable
+                        ctags-universal-executable)
+                   (cl-return (puthash 'gtags+universal-ctags
+                                       (append (list f) (gethash 'gtags+universal-ctags sys-files))
+                                       sys-files)))
+                  ((and (eq sys 'gtags+exuberant-ctags)
+                        gtags-executable
+                        global-executable
+                        ctags-exuberant-executable)
+                   ;; - I had a fallback to gtags here if exuberant is not found, but removed it,
+                   ;; it does not make sense, while exuberant can parse many languages, gtags alone
+                   ;; can only parse a few
+                   (cl-return (puthash 'gtags+exuberant-ctags
+                                       (append (list f) (gethash 'gtags+exuberant-ctags sys-files))
+                                       sys-files)))
+                  ((and (or (eq sys 'gtags)
+                            (eq sys 'gtags+pygments))
+                        gtags-executable
+                        global-executable
+                        pygments-executable)
+                   (cl-return (puthash 'gtags+pygments
+                                       (append (list f) (gethash 'gtags+pygments sys-files))
+                                       sys-files))))))))
     ;; - why did I do this, I don't know anymore
     ;; - it looks like it was supposed to make sure everything that scanned with either gtags
     ;; or gtags+exuberant-ctags is guaranteed to be scanned by both, but I can't remember
@@ -2445,9 +2448,10 @@ I implemented it mainly to execute multiple gtags calls in the background, each 
              (process (start-process-shell-command proc-name (when debug proc-name) command))
              (input (nth n inputs)))
         (when debug
+          (with-current-buffer (get-buffer-create (concat proc-name "-input"))
+            (insert input))
           (message "%s" proc-name)
-          (message "%s" command)
-          (message "%s" input))
+          (message "%s" command))
         (set-process-sentinel process (apply-partially 'lazy-process-group name commands inputs terminator terminator-args debug (1+ n)))
         (when input
           (process-send-string process input))
@@ -2495,8 +2499,10 @@ See also `lazy-update-tags'."
                    (when (eq system-type 'windows-nt)
                      (string-match "\\(.*\\)/" gtags-dbpath)
                      (setq gtags-dbpath (match-string 1 gtags-dbpath)))
-                   (setenv "GTAGSDBPATH" gtags-dbpath)
-                   (setenv "GTAGSROOT" gtags-root)
+                   (when (and (file-exists-p gtags-dbpath)
+                              (file-exists-p gtags-root))
+                     (setenv "GTAGSDBPATH" gtags-dbpath)
+                     (setenv "GTAGSROOT" gtags-root))
                    (add-to-list 'available-systems 'gtags))))))
       available-systems)))
 
@@ -4011,7 +4017,7 @@ The compile command history search is implemented in `lazy-compile-read-command'
         (set-buffer-modified-p nil)
         (setq buffer-read-only t)))))
 
-(defun lazy-fib-cb (process event &optional proj-name proj-alist quiet)
+(defun lazy-fib-cb (process event &optional proj-name proj-alist quiet old-files)
   "Handle failure to complete fib building"
   (setq proj-alist (or proj-alist
                        (lazy-find-alist proj-name)
@@ -4024,20 +4030,29 @@ The compile command history search is implemented in `lazy-compile-read-command'
   (unless (and proj-name proj-alist)
     (lazy-assert-proj)
     (setq proj-name lazy-name))
-  (cond ((string= event "finished\n")
-         (let ((zeitgeist-prevent-send t))
-           (with-current-buffer (get-buffer (lazy-fib-name proj-name))
-             (when (lazy-get-config-val 'file-list-cache proj-name t proj-alist)
-               (write-file (lazy-get-config-val 'file-list-cache proj-name t proj-alist))
-               (rename-buffer (lazy-fib-name proj-name))
-               (set-buffer-modified-p nil))
-             (setq buffer-read-only t)))
-         (unless quiet
-           (message "Refreshing %s buffer...done" (lazy-fib-name proj-name))))
-        (t
-         (lazy-fib-clear proj-name)
-         (unless quiet
-           (message "Failed to generate the %s buffer!" (lazy-fib-name proj-name))))))
+  (let ((new-files '()))
+    (cond ((string= event "finished\n")
+           (let ((zeitgeist-prevent-send t)
+                 (recentf-hash (make-hash-table :test 'equal)))
+             (with-current-buffer (get-buffer (lazy-fib-name proj-name))
+               (when (lazy-get-config-val 'file-list-cache proj-name t proj-alist)
+                 (write-file (lazy-get-config-val 'file-list-cache proj-name t proj-alist))
+                 (rename-buffer (lazy-fib-name proj-name))
+                 (set-buffer-modified-p nil))
+               (setq buffer-read-only t))
+             (dolist (recent-file recentf-list)
+               (puthash recent-file t recentf-hash))
+             (dolist (file (hash-table-keys (lazy-unique-files proj-name)))
+               (when (or (not (gethash file old-files))
+                         (gethash file recentf-hash))
+                 (push file new-files))))
+           (unless quiet
+             (message "Refreshing %s buffer...done" (lazy-fib-name proj-name))))
+          (t
+           (lazy-fib-clear proj-name)
+           (unless quiet
+             (message "Failed to generate the %s buffer!" (lazy-fib-name proj-name)))))
+    new-files))
 
 (defun lazy-find-cmd-src-args (src-patterns &optional proj-name proj-alist)
   "Generate the ( -name <pat1> -o -name <pat2> ...) pattern for find cmd"
@@ -4078,7 +4093,7 @@ The compile command history search is implemented in `lazy-compile-read-command'
 
 (defvar lazy-index-processes (make-hash-table))
 
-(cl-defun lazy-index (&optional proj-name proj-alist (async t) (do-friends nil) (quiet nil) (terminator nil) (parent nil))
+(cl-defun lazy-index (&optional proj-name proj-alist (async t) (do-friends nil) (quiet nil) (terminator nil) (parent nil) (old-files (make-hash-table :test 'equal)))
   "Regenerate the *file-index* buffer."
   (interactive)
   (setq proj-alist (or proj-alist
@@ -4127,8 +4142,8 @@ The compile command history search is implemented in `lazy-compile-read-command'
         (puthash process (list (length friends) nil) lazy-index-processes)
         (setq parent process))
       (set-process-sentinel (get-process proc-name) `(lambda (p e)
-                                                       (lazy-fib-cb p e ,proj-name (quote ,proj-alist) ,quiet)
-                                                       (let ((tuple (gethash ,parent lazy-index-processes)))
+                                                       (let ((new-files (lazy-fib-cb p e ,proj-name (quote ,proj-alist) ,quiet (quote ,old-files)))
+                                                             (tuple (gethash ,parent lazy-index-processes)))
                                                          (when (and tuple (quote ,terminator))
                                                            (let ((friends-num (nth 0 tuple))
                                                                  (friends-list (nth 1 tuple)))
@@ -4137,7 +4152,7 @@ The compile command history search is implemented in `lazy-compile-read-command'
                                                                             (and (= friends-num (length friends-list))
                                                                                  (cl-every (lambda (o) (eq (process-status o) 'exit)) friends-list))))
                                                                (remhash ,parent lazy-index-processes)
-                                                               (funcall (quote ,terminator) ,proj-name (quote ,proj-alist))))))))
+                                                               (funcall (quote ,terminator) ,proj-name (quote ,proj-alist) new-files)))))))
       (unless async
         (while (or (string-equal (process-status process) "run")
                    (equal (process-status process) 'run))
@@ -4146,7 +4161,7 @@ The compile command history search is implemented in `lazy-compile-read-command'
         (dolist (friend friends)
           (let ((friend-alist (lazy-find-alist friend)))
             (when friend-alist
-              (lazy-index friend friend-alist async nil quiet terminator parent))))))))
+              (lazy-index friend friend-alist async nil quiet terminator parent old-files))))))))
 
 (defun lazy-fib-matches (&optional regex proj-name proj-alist)
   "Return list of files in *file-index* matching regex.
@@ -4200,11 +4215,10 @@ Returned file paths are relative to the project's basedir."
     (setq proj-name lazy-name))
   (let ((proj-files (lazy-files proj-name nil t))
         (friendly-files (lazy-friendly-files proj-name nil t))
-        (unique-friends '()))
-    (dolist (f friendly-files)
-      (unless (cl-find f proj-files :test 'equal)
-        (setq unique-friends (append (list f) unique-friends))))
-    (append proj-files unique-friends)))
+        (unique-files (make-hash-table :test 'equal)))
+    (dolist (file (append proj-files friendly-files))
+      (puthash file t unique-files))
+    unique-files))
 
 (defun lazy-friendly-files (&optional proj-name proj-alist truenames)
   (setq proj-alist (or proj-alist
@@ -4442,7 +4456,7 @@ that only one is scheduled at the same time.
 
 See also `lazy-update'.")
 
-(defvar lazy-after-save-update-idle-time 4
+(defvar lazy-after-save-update-idle-time 10
   "Can be used to customize the amount of idle time needed to run a pending
 `lazy-after-save-update' operation.
 
@@ -4479,15 +4493,15 @@ See also `lazy-update-tags' and `lazy-after-save-update-in-progress'."
       (when (and proj-name proj-alist)
         (setq lazy-after-save-update-in-progress t)
         (run-with-idle-timer lazy-after-save-update-idle-time nil
-                             (lambda (&optional p proj-name buffer)
-                               (lazy-update p proj-name buffer)
+                             (lambda (&optional p proj-name proj-alist buffer)
+                               (lazy-update p proj-name proj-alist buffer)
                                ;; - explicitly set lazy-after-save-update-in-progress to nil here because I had
                                ;; problems with it remaining t even when lazy-update had already run
                                (setq lazy-after-save-update-in-progress nil))
                              ;; - previously I used a bunch of global variables to remember the project and
                              ;; buffer that were active when the idle timer was set, but then I found out I
                              ;; can just supply proj-name and (current-buffer) as arguments here
-                             nil proj-name (current-buffer))))))
+                             nil proj-name proj-alist (current-buffer))))))
 
 (defun lazy-update-src-patterns (&optional buffer)
   "Update the src patterns of the current projects configuration by adding
@@ -4530,7 +4544,7 @@ See also `lazy-update' and `lazy-set-config-val'."
                    (not (cl-some (lambda (pattern) (string-match pattern buildsystem-file-found)) src-patterns)))
           (lazy-set-config-val 'src-patterns (add-to-list 'src-patterns (concat ".*" (regexp-quote buildsystem-file-found) "$"))))))))
 
-(defun lazy-update (&optional p proj-name buffer)
+(defun lazy-update (&optional p proj-name proj-alist buffer)
   "Update the tags database, the file index and source patterns of the project
 the current buffer belongs to.
 
@@ -4544,25 +4558,34 @@ After running this function sets `lazy-after-save-update-in-progress' to nil.
 
 See also `lazy-index' and `lazy-update-tags'."
   (interactive "p")
+  (setq proj-alist (or (lazy-find-alist proj-name)
+                       proj-alist
+                       (lazy-guess-alist)))
   (setq proj-name (or proj-name
-                      (cadr (assoc 'name (lazy-guess-alist)))
+                      (cadr (assoc 'name proj-alist))
                       lazy-name))
   (unless proj-name
     (lazy-assert-proj))
   (unless buffer
     (setq buffer (current-buffer)))
-  (condition-case e
-      (progn
-        (when (buffer-file-name buffer)
-          (lazy-update-src-patterns buffer))
-        (when (or p (lazy-buffer-p buffer proj-name) (lazy-friendly-buffer-p buffer proj-name))
-          (lazy-index proj-name nil t nil t
-                      (lambda (&optional proj-name proj-alist files debug)
-                        (lazy-update-tags proj-name proj-alist files debug))))
-        (setq lazy-after-save-update-in-progress nil))
-    (error (progn
-             (setq lazy-after-save-update-in-progress nil)
-             (message "error in lazy-after-save-update: %s" (prin1-to-string e)))))
+  (when (and proj-name proj-alist)
+    (condition-case e
+        (progn
+          (when (buffer-file-name buffer)
+            (lazy-update-src-patterns buffer))
+          (when (or p (lazy-buffer-p buffer proj-name) (lazy-friendly-buffer-p buffer proj-name))
+            (lazy-index proj-name nil t nil t
+                        (lambda (&optional proj-name proj-alist files debug)
+                          (lazy-update-tags proj-name proj-alist files debug))
+                        nil
+                        (when (and (lazy-get-config-val 'file-list-cache proj-name t)
+                                   (file-readable-p (lazy-get-config-val 'file-list-cache proj-name t)))
+                          (lazy-unique-files proj-name))
+                        ))
+          (setq lazy-after-save-update-in-progress nil))
+      (error (progn
+               (setq lazy-after-save-update-in-progress nil)
+               (message "error in lazy-update: %s" (prin1-to-string e))))))
   t)
 
 
