@@ -3820,6 +3820,9 @@ See also `lazy-compile'."
     (define-key minibuffer-local-completion-map (kbd "<right>") 'right-char)
     (define-key minibuffer-local-completion-map (kbd "<left>") 'left-char)
 
+    (define-key minibuffer-local-completion-map (kbd "C-y") 'yank)
+    (define-key minibuffer-local-completion-map (kbd "C-SPC") 'set-mark-command)
+
     (define-key minibuffer-local-completion-map " " (lambda () (interactive)
                                                       (insert " ")
                                                       (lazy-compile-history-search-reset)))
