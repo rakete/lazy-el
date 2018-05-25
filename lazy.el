@@ -3479,22 +3479,26 @@ See also `lazy-jump-list-mode', `lazy-merge-obarray-jumps' and `lazy-jump-regexp
                                                                        default)
                                                                      nil
                                                                      nil)))))
-  (unless proj-name
-    (let ((guessed-name (cadr (assoc 'name (lazy-guess-alist)))))
-      (setq proj-name (or guessed-name lazy-name))))
-  (when (or (and (not proj-alist) proj-name)
-            (not (string-equal proj-name (cadr (assoc 'name proj-alist)))))
-    (setq proj-alist (lazy-find-alist proj-name)))
-  (unless (and proj-name proj-alist)
-    (lazy-assert-proj))
-  (let ((jumps (lazy-merge-obarray-jumps (lazy-find-symbol proj-name proj-alist 'obarray (concat "^" word "$"))
-                                         (and (cl-find 'go (lazy-src-pattern-languages (cadr (assoc 'src-patterns proj-alist))))
-                                              (lazy-find-symbol proj-name proj-alist 'godef word (current-buffer) (point)))
-                                         (or (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -d " (prin1-to-string word)))
-                                             (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -s " (prin1-to-string word))))
-                                         (lazy-find-symbol proj-name proj-alist 'imenu (concat "^" word "$"))
-                                         )))
-    (lazy-select-jumps (lazy-score-jumps jumps (regexp-quote word) (current-buffer)))))
+  (let* ((guessed-alist (lazy-guess-alist))
+         (guessed-name (cadr (assoc 'name guessed-alist))))
+    (unless proj-name
+      (setq proj-name (or (when (and (lazy-find-alist guessed-name)
+                                     (lazy-buffer-p (current-buffer) guessed-name))
+                            guessed-name)
+                          lazy-name)))
+    (unless proj-alist
+      (setq proj-alist (or (lazy-find-alist proj-name)
+                           guessed-alist)))
+    (unless (and proj-name proj-alist (string-equal proj-name (cadr (assoc 'name proj-alist))))
+      (lazy-assert-proj))
+    (let ((jumps (lazy-merge-obarray-jumps (lazy-find-symbol proj-name proj-alist 'obarray (concat "^" word "$"))
+                                           (and (cl-find 'go (lazy-src-pattern-languages (cadr (assoc 'src-patterns proj-alist))))
+                                                (lazy-find-symbol proj-name proj-alist 'godef word (current-buffer) (point)))
+                                           (or (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -d " (prin1-to-string word)))
+                                               (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -s " (prin1-to-string word))))
+                                           (lazy-find-symbol proj-name proj-alist 'imenu (concat "^" word "$"))
+                                           )))
+      (lazy-select-jumps (lazy-score-jumps jumps (regexp-quote word) (current-buffer))))))
 
 (defun lazy-jump-regexp (regexp &optional proj-name proj-alist)
   "Jump to the defintion of a symbol matching a regexp.
@@ -3513,23 +3517,26 @@ See also `lazy-jump-definition'."
   (interactive (list (let* ((ido-enable-flex-matching t))
                        (substring-no-properties (ido-completing-read "Match: "
                                                                      (lazy-completions))))))
-  (when (and lazy-name (not proj-alist))
-    (let ((guessed-name (cadr (assoc 'name (lazy-guess-alist)))))
-      (when guessed-name (setq proj-name guessed-name))))
-  (setq proj-alist (or proj-alist
-                       (lazy-find-alist proj-name)
-                       (lazy-find-alist lazy-name)
-                       (lazy-guess-alist)))
-  (setq proj-name (cadr (assoc 'name proj-alist)))
-  (unless (and proj-name proj-alist)
-    (lazy-assert-proj))
-  (let ((jumps (lazy-merge-obarray-jumps (lazy-find-symbol proj-name proj-alist 'obarray (concat "^" regexp))
-                                         ;; - no lazy-find-symbol for 'godef here because godef uses a point in a buffer, so there is nothing
-                                         ;; that I could match with a regexp really
-                                         (or (lazy-find-symbol proj-name proj-alist 'gtags regexp (concat "global -x -e " (prin1-to-string (concat regexp ".*"))))
-                                             (lazy-find-symbol proj-name proj-alist 'gtags regexp (concat "global -x -s " (prin1-to-string (concat regexp ".*")))))
-                                         (lazy-find-symbol proj-name proj-alist 'imenu regexp))))
-    (lazy-select-jumps (lazy-score-jumps jumps regexp (current-buffer)))))
+  (let* ((guessed-alist (lazy-guess-alist))
+         (guessed-name (cadr (assoc 'name guessed-alist))))
+    (unless proj-name
+      (setq proj-name (or (when (and (lazy-find-alist guessed-name)
+                                     (lazy-buffer-p (current-buffer) guessed-name))
+                            guessed-name)
+                          lazy-name)))
+    (unless proj-alist
+      (setq proj-alist (or (lazy-find-alist proj-name)
+                           guessed-alist)))
+    (setq proj-name (cadr (assoc 'name proj-alist)))
+    (unless (and proj-name proj-alist)
+      (lazy-assert-proj))
+    (let ((jumps (lazy-merge-obarray-jumps (lazy-find-symbol proj-name proj-alist 'obarray (concat "^" regexp))
+                                           ;; - no lazy-find-symbol for 'godef here because godef uses a point in a buffer, so there is nothing
+                                           ;; that I could match with a regexp really
+                                           (or (lazy-find-symbol proj-name proj-alist 'gtags regexp (concat "global -x -e " (prin1-to-string (concat regexp ".*"))))
+                                               (lazy-find-symbol proj-name proj-alist 'gtags regexp (concat "global -x -s " (prin1-to-string (concat regexp ".*")))))
+                                           (lazy-find-symbol proj-name proj-alist 'imenu regexp))))
+      (lazy-select-jumps (lazy-score-jumps jumps regexp (current-buffer))))))
 
 ;; ---------------------------------------------------------------------
 ;; Compile
