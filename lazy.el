@@ -1371,12 +1371,22 @@ See also `lazy-config-save'."
                            (not (string-equal (prin1-to-string (funcall (cdr (assoc (car k) lazy-var-before-get-functions)) (car k) nil))
                                               (prin1-to-string (lazy-get-config-val (car k) proj-name))))
                            insert-internal))
-               do (when (or insert-undefined
-                            (assoc (car k) config-alist))
-                    (setq string (concat string "(" (symbol-name (car k)) " " (prin1-to-string (cadr (assoc (car k) config-alist))) ")"))
-                    (unless (eq (car k) (car (last lazy-optional-vars)))
-                      (setq string (concat string "\n")))
-                    (indent-according-to-mode)))
+               do (let* ((key (car k))
+                         (value (cadr (assoc key config-alist))))
+                    (when (or insert-undefined
+                              value)
+                      (setq string (concat string "("
+                                           (symbol-name key)
+                                           " "
+                                           (cond ((and (eq key 'compile-cmd)
+                                                       (listp value))
+                                                  (concat "(" (mapconcat #'prin1-to-string value "\n") ")"))
+                                                 (t
+                                                  (prin1-to-string value)))
+                                           ")"))
+                      (unless (eq key (car (last lazy-optional-vars)))
+                        (setq string (concat string "\n")))
+                      (indent-according-to-mode))))
       (setq string (concat string "))\n"))
       (if (string-match ".*\(basedir .*" string)
           (progn (insert string)
