@@ -1235,8 +1235,6 @@ See also `lazy-def'."
                                 (value (condition-case nil (eval lisp) (error lisp))))
                            (unless (eq key 'name)
                              (add-to-list 'evaluated-config-alist `(,key ,value)))))))
-    (when (gethash proj-name lazy-project-list)
-      (setq result-alist (lazy-alist-union (gethash proj-name lazy-project-list) result-alist)))
     ;; both check vars functions error, but I don't want to interrupt when loading emacs,
     ;; so this catches the errors but still outputs the error message
     (if (or (condition-case err (lazy-check-required-vars proj-name result-alist) (error (message (error-message-string err))))
@@ -1437,6 +1435,9 @@ The requested operation is specified in STATE as :create or :edit. The
 project name is given in PROJ-NAME and its configuration in CONFIG-ALIST.
 
 See also `lazy-define-backend'."
+  (unless proj-name
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
   (cl-case state
     (:create
      (let* ((proj-b (current-buffer))
@@ -1454,19 +1455,21 @@ See also `lazy-define-backend'."
        (lazy-backend-create-project-mode 'elisp)
        (buffer-enable-undo)))
     (:edit
-     (let* ((config-alist (lazy-find-alist))
-            (marker (lazy-find-save-location-marker))
+     (let* ((config-alist (lazy-find-alist proj-name))
+            (marker (lazy-find-save-location-marker proj-name))
             (buf (or (get-buffer "*lazy: edit project*")
                      (make-indirect-buffer (marker-buffer marker) "*lazy: edit project*")))
             (window (display-buffer buf)))
-       (select-window window)
-       (set-window-start window (marker-position marker))
-       (lisp-interaction-mode)
-       (goto-char (marker-position marker))
-       (lazy-config-save lazy-name config-alist)
-       (set-window-dedicated-p window t)
-       (lazy-backend-edit-project-mode 'elisp)
-       (buffer-enable-undo)))
+       (with-current-buffer buf
+         (select-window window)
+         (set-window-start window (marker-position marker))
+         (lisp-interaction-mode)
+         (goto-char (marker-position marker))
+         (lazy-config-save proj-name config-alist)
+         (set-window-dedicated-p window t)
+         (lazy-backend-edit-project-mode 'elisp)
+         (buffer-enable-undo)
+         (setq-local lazy-name proj-name))))
     (:finalize-create
      (let ((result nil))
        (while (not (setq result (condition-case nil (eval (read (buffer-string))) (error nil)))))
@@ -1487,8 +1490,8 @@ See also `lazy-define-backend'."
              (save-buffer)
              (kill-buffer)
              (when (and (not (condition-case nil (lazy-assert-proj) (error t)))
-                        (string-equal (cadr (assoc 'name edited-alist)) lazy-name))
-               (lazy-def lazy-name edited-alist)))))))))
+                        (string-equal (cadr (assoc 'name edited-alist)) proj-name))
+               (lazy-def proj-name edited-alist)))))))))
 
 
 
@@ -1622,10 +1625,10 @@ See also `lazy-backend-list' and `lazy-config-buffer'.
       (call-interactively 'lazy-create)
     (when (and (string-equal (buffer-name (current-buffer)) "*lazy: edit project*")
                (fboundp 'lazy-org-config-save)
-               (not (lazy-get-config-val 'org-file lazy-name))
-               (y-or-n-p (concat "Create .org file for " lazy-name "? ")))
+               (not (lazy-get-config-val 'org-file proj-name))
+               (y-or-n-p (concat "Create .org file for " proj-name "? ")))
       (progn (kill-buffer)
-             (lazy-org-config-save lazy-name (lazy-find-alist lazy-name t))))
+             (lazy-org-config-save proj-name (lazy-find-alist proj-name t))))
     (lazy-backend-funcall (lazy-detect-backend proj-name)
                           'buffer :edit proj-name)))
 

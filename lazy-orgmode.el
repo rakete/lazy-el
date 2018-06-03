@@ -178,6 +178,10 @@ Optionally PROJ-NAME can be specified to test a specific project other
 than the current one."
   (let ((guessed-alist nil))
     (cond
+     ((and proj-name
+           (lazy-find-alist proj-name)
+           (lazy-get-config-val 'org-file proj-name))
+      nil)
      ;; 1. project loaded, org -> nothing
      ((and (not (condition-case nil (lazy-assert-proj) (error t)))
            (lazy-get-config-val 'org-file lazy-name))
@@ -781,7 +785,7 @@ See also `lazy-org-get-project-buffer'."
     (lazy-assert-proj)
     (setq proj-name lazy-name))
   (lazy-org-assert-org proj-name)
-  (let* ((marker (lazy-org-project-marker))
+  (let* ((marker (lazy-org-project-marker proj-name))
          (buffername (or bufname (lazy-org-project-buffer-name proj-name)))
          (headline (lazy-org-entry-headline marker))
          (org-show-hierarchy-above t)
@@ -1143,6 +1147,9 @@ The requested operation is specified in STATE as :create or :edit. The
 project name is given in PROJ-NAME and its configuration in CONFIG-ALIST.
 
 See also `lazy-define-backend', `lazy-org-buffer' and `lazy-config-buffer'."
+  (unless proj-name
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
   (case state
     (:create
      (when (and (boundp 'org-complex-heading-regexp)
@@ -1172,7 +1179,7 @@ See also `lazy-define-backend', `lazy-org-buffer' and `lazy-config-buffer'."
          (lazy-backend-create-project-mode 'org-mode)
          (buffer-enable-undo))))
     (:edit
-     (let* ((buf (lazy-org-get-project-buffer nil "*lazy: edit project*"))
+     (let* ((buf (lazy-org-get-project-buffer proj-name "*lazy: edit project*"))
             (window (display-buffer buf)))
        (select-window window)
        (set-window-dedicated-p window t)
@@ -1180,7 +1187,8 @@ See also `lazy-define-backend', `lazy-org-buffer' and `lazy-config-buffer'."
            (org-cycle))
        (buffer-disable-undo)
        (lazy-backend-edit-project-mode 'org-mode)
-       (buffer-enable-undo)))
+       (buffer-enable-undo)
+       (setq-local lazy-name proj-name)))
     (:finalize-create
      (save-excursion
        (let ((has-error t))
