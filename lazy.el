@@ -4578,6 +4578,10 @@ See also `lazy-update' and `lazy-set-config-val'."
                    (not (cl-some (lambda (pattern) (string-match pattern buildsystem-file-found)) src-patterns)))
           (lazy-set-config-val 'src-patterns (add-to-list 'src-patterns (concat ".*" (regexp-quote buildsystem-file-found) "$"))))))))
 
+(defun lazy-file-modtime (filename)
+  (when (file-exists-p filename)
+    (nth 5 (file-attributes (expand-file-name filename)))))
+
 (defun lazy-update (&optional p proj-name proj-alist buffer)
   "Update the tags database, the file index and source patterns of the project
 the current buffer belongs to.
@@ -4592,6 +4596,7 @@ After running this function sets `lazy-after-save-update-in-progress' to nil.
 
 See also `lazy-index' and `lazy-update-tags'."
   (interactive "p")
+
   (setq proj-alist (or (lazy-find-alist proj-name)
                        proj-alist
                        (lazy-guess-alist)))
@@ -4607,15 +4612,30 @@ See also `lazy-index' and `lazy-update-tags'."
         (progn
           (when (buffer-file-name buffer)
             (lazy-update-src-patterns buffer))
-          (when (or p (lazy-buffer-p buffer proj-name) (lazy-friendly-buffer-p buffer proj-name))
-            (lazy-index proj-name nil t nil t
-                        (lambda (&optional proj-name proj-alist files debug)
-                          (lazy-update-tags proj-name proj-alist files debug))
-                        nil
-                        (when (and (lazy-get-config-val 'file-list-cache proj-name t)
-                                   (file-readable-p (lazy-get-config-val 'file-list-cache proj-name t)))
-                          (lazy-unique-files proj-name))
-                        ))
+          (when (or p
+                    (lazy-buffer-p buffer proj-name proj-alist)
+                    (lazy-friendly-buffer-p buffer proj-name))
+            (let ((do-friends '()))
+              (dolist (friend (lazy-get-config-val 'friends proj-name t proj-alist))
+                (let* ((friend-alist (cond ((file-directory-p friend)
+                                            (lazy-make-temporary-friend-alist friend proj-name proj-alist))
+                                           (t
+                                            (lazy-find-alist friend))))
+                       (friend-name (cadr (assoc 'name friend-alist))))
+                  (when (and friend-name friend-alist
+                             (time-less-p (lazy-file-modtime (lazy-get-config-val 'file-list-cache friend-name t friend-alist))
+                                          (gethash proj-name lazy-project-timestamp (current-time))))
+                    (push friend do-friends))))
+              (lazy-index proj-name proj-alist t do-friends t
+                          (lambda (&optional proj-name proj-alist files debug)
+                            (lazy-update-tags proj-name proj-alist files t))
+                          nil
+                          (let ((cache-file (lazy-get-config-val 'file-list-cache proj-name t proj-alist)))
+                            (when (and cache-file
+                                       (file-readable-p cache-file)
+                                       (time-less-p (gethash proj-name lazy-project-timestamp (current-time)) (lazy-file-modtime cache-file)))
+                              (lazy-unique-files proj-name)))
+                          )))
           (setq lazy-after-save-update-in-progress nil))
       (error (progn
                (setq lazy-after-save-update-in-progress nil)
