@@ -708,6 +708,7 @@ See also `lazy-def', `lazy-org-entry-alist' and `lazy-org-entry-undefine-project
            (alist (lazy-eval-alist proj-name (lazy-org-entry-alist marker))))
       (when alist
         (puthash proj-name alist lazy-project-list)
+        (puthash proj-name (current-time) lazy-project-timestamp)
         ;;(message "Defined: %s" proj-name)
         alist))))
 

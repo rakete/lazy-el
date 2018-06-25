@@ -865,6 +865,8 @@ See also `lazy-update-tags'.")
 
 (defvar lazy-project-list (make-hash-table :test 'equal))
 
+(defvar lazy-project-timestamp (make-hash-table :test 'equal))
+
 ;; ---------------------------------------------------------------------
 ;; Customization
 ;; ---------------------------------------------------------------------
@@ -1256,6 +1258,7 @@ See also `lazy-project-list', `lazy-eval-alist', `lazy-undef',
            (when (and alist (file-exists-p (cadr (assoc 'basedir alist))))
              (puthash proj-name alist lazy-project-list)
              (message "Defined: %s" proj-name)
+             (puthash proj-name (current-time) lazy-project-timestamp)
              alist)))
         ((and (functionp 'lazy-org-entry-define-project)
               (eq major-mode 'org-mode)
@@ -1855,6 +1858,7 @@ See also `lazy-load', `lazy-unload', `lazy-fib-init', `lazy-visit-saved-open-fil
                (progn (message "eval startup-hook...") (eval startup-hook))))))
     (lazy-update-tags proj-name)
     (add-to-list 'lazy-project-history proj-name)
+    (puthash proj-name (current-time) lazy-project-timestamp)
     (message "Loading project %s done" proj-name)))
 
 (defun lazy-load (&optional proj-name)
