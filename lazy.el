@@ -58,16 +58,21 @@ See also `lazy-open-files-cache', `lazy-open-friends-cache', `lazy-file-list-cac
 (defvar lazy-name nil
   "Name of the current project. Required. First argument to lazy-def.")
 
-(defun lazy-fib-name (&optional proj-name)
+(defun lazy-fib-name (&optional proj-name proj-alist)
   "Buffer name of the file-list cache. This buffer contains a
 list of all the files under the project's basedir (minus those
 matching ignore-patterns) or, if index-find-cmd is set, the list
 of files found by calling the custom find command."
+  (setq proj-alist (or proj-alist
+                       (lazy-find-alist proj-name)
+                       (lazy-find-alist lazy-name)
+                       (lazy-guess-alist)))
+  (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless proj-name
     (lazy-assert-proj)
     (setq proj-name lazy-name))
-  (let ((top-level-parent (lazy-get-config-val 'parent proj-name)))
-    (while (and top-level-parent (lazy-get-config-val 'parent top-level-parent))
+  (let ((top-level-parent (lazy-get-config-val 'parent proj-name nil proj-alist)))
+    (while (and top-level-parent (lazy-get-config-val 'parent top-level-parent nil))
       (setq top-level-parent (lazy-get-config-val 'parent top-level-parent)))
     (concat "*" (or top-level-parent proj-name) " file-index*")))
 
@@ -171,11 +176,7 @@ See also `lazy-get-cache-file'."
                                                                 (if (and proj-alist
                                                                          (not (assoc 'patterns-are-regex proj-alist)))
                                                                     t
-                                                                  val)))
-                                        (friends . (lambda (var val &optional proj-name proj-alist)
-                                                     (loop for friend in val
-                                                           if (gethash friend lazy-project-list)
-                                                           collect friend))))
+                                                                  val))))
   "Config vars from `lazy-required-vars' and `lazy-optional-vars' (except 'name')
 can be associated with a function in this association list, which will be
 applied to the value of the var right after it is taken from the config-alist.
@@ -1381,7 +1382,8 @@ See also `lazy-config-save'."
                       (setq string (concat string "("
                                            (symbol-name key)
                                            " "
-                                           (cond ((and (eq key 'compile-cmd)
+                                           (cond ((and (or (eq key 'compile-cmd)
+                                                           (eq key 'friends))
                                                        (listp value))
                                                   (concat "(" (mapconcat #'prin1-to-string value "\n") ")"))
                                                  (t
@@ -3384,7 +3386,8 @@ See also `lazy-update-symbols' and `lazy-project-symbols'."
          (proj-alist nil))
     (cond ((and (not proj-name)
                 lazy-name
-                (lazy-buffer-p (current-buffer) lazy-name))
+                (or (lazy-buffer-p (current-buffer) lazy-name)
+                    (lazy-friendly-buffer-p (current-buffer) lazy-name)))
            (setq proj-name lazy-name
                  proj-alist (lazy-find-alist lazy-name)))
           ((and (not proj-name)
@@ -4025,25 +4028,37 @@ The compile command history search is implemented in `lazy-compile-read-command'
 ;; Files
 ;; ---------------------------------------------------------------------
 
-(defun lazy-fib-init (&optional proj-name quiet)
+(defun lazy-fib-init (&optional proj-name proj-alist)
   "Either load the *file-index* buffer from the file cache, or create it afresh."
-  (if (and (lazy-get-config-val 'file-list-cache proj-name t)
-           (file-readable-p (lazy-get-config-val 'file-list-cache proj-name t)))
-      (let ((zeitgeist-prevent-send t))
-        (with-current-buffer (find-file-noselect (lazy-get-config-val 'file-list-cache proj-name t))
-          (with-current-buffer (rename-buffer (lazy-fib-name proj-name))
-            (setq buffer-read-only t)
-            (set-buffer-modified-p nil)
-            (unless quiet
-              (message (concat "Loading " (lazy-fib-name proj-name) " from %s") (lazy-get-config-val 'file-list-cache proj-name t))))))
-    (lazy-index proj-name)))
-
-(defun lazy-fib-clear (&optional proj-name)
-  "Clear the contents of the fib buffer"
-  (unless proj-name
+  (setq proj-alist (or proj-alist
+                       (lazy-find-alist proj-name)
+                       (lazy-find-alist lazy-name)
+                       (lazy-guess-alist)))
+  (setq proj-name (cadr (assoc 'name proj-alist)))
+  (unless (and proj-name proj-alist)
     (lazy-assert-proj)
     (setq proj-name lazy-name))
-  (let ((buf (get-buffer (lazy-fib-name proj-name))))
+  (if (and (lazy-get-config-val 'file-list-cache proj-name t proj-alist)
+           (file-readable-p (lazy-get-config-val 'file-list-cache proj-name t proj-alist)))
+      (let ((zeitgeist-prevent-send t))
+        (with-current-buffer (find-file-noselect (lazy-get-config-val 'file-list-cache proj-name t proj-alist))
+          (with-current-buffer (rename-buffer (lazy-fib-name proj-name proj-alist))
+            (setq buffer-read-only t)
+            (set-buffer-modified-p nil)
+            (message (concat "Loading " (lazy-fib-name proj-name proj-alist) " from %s") (lazy-get-config-val 'file-list-cache proj-name t proj-alist)))))
+    (lazy-index proj-name proj-alist)))
+
+(defun lazy-fib-clear (&optional proj-name proj-alist)
+  "Clear the contents of the fib buffer"
+  (setq proj-alist (or proj-alist
+                       (lazy-find-alist proj-name)
+                       (lazy-find-alist lazy-name)
+                       (lazy-guess-alist)))
+  (setq proj-name (cadr (assoc 'name proj-alist)))
+  (unless (and proj-name proj-alist)
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (let ((buf (get-buffer (lazy-fib-name proj-name proj-alist))))
     (when buf
       (with-current-buffer buf
         (setq buffer-read-only nil)
@@ -4068,24 +4083,25 @@ The compile command history search is implemented in `lazy-compile-read-command'
     (cond ((string= event "finished\n")
            (let ((zeitgeist-prevent-send t)
                  (recentf-hash (make-hash-table :test 'equal)))
-             (with-current-buffer (get-buffer (lazy-fib-name proj-name))
+             (with-current-buffer (get-buffer (lazy-fib-name proj-name proj-alist))
                (when (lazy-get-config-val 'file-list-cache proj-name t proj-alist)
-                 (write-file (lazy-get-config-val 'file-list-cache proj-name t proj-alist))
-                 (rename-buffer (lazy-fib-name proj-name))
-                 (set-buffer-modified-p nil))
+                 (write-file (lazy-get-config-val 'file-list-cache proj-name t proj-alist)))
+               (rename-buffer (lazy-fib-name proj-name proj-alist))
+               (set-buffer-modified-p nil)
                (setq buffer-read-only t))
              (dolist (recent-file recentf-list)
                (puthash recent-file t recentf-hash))
              (dolist (file (hash-table-keys (lazy-unique-files proj-name)))
-               (when (or (not (gethash file old-files))
+               (when (or (not (hash-table-p old-files))
+                         (not (gethash file old-files))
                          (gethash file recentf-hash))
                  (push file new-files))))
            (unless quiet
-             (message "Refreshing %s buffer...done" (lazy-fib-name proj-name))))
+             (message "Refreshing %s buffer...done" (lazy-fib-name proj-name proj-alist))))
           (t
-           (lazy-fib-clear proj-name)
+           (lazy-fib-clear proj-name proj-alist)
            (unless quiet
-             (message "Failed to generate the %s buffer!" (lazy-fib-name proj-name)))))
+             (message "Failed to generate the %s buffer!" (lazy-fib-name proj-name proj-alist)))))
     new-files))
 
 (defun lazy-find-cmd-src-args (src-patterns &optional proj-name proj-alist)
@@ -4125,6 +4141,20 @@ The compile command history search is implemented in `lazy-compile-read-command'
     (setq proj-name lazy-name))
   (concat " -not " (lazy-find-cmd-src-args (append ignore-patterns (list ".*/flycheck_.*")) proj-name proj-alist)))
 
+(defun lazy-make-temporary-friend-alist (friend-dir proj-name proj-alist)
+  (let* ((friend-basedir (expand-file-name friend-dir))
+         (friend-name (concat "." proj-name "-internal-" (mapconcat #'identity (split-string friend-basedir "/") "-")))
+         (friend-languages (lazy-get-config-val 'languages proj-name t proj-alist))
+         (friend-src-patterns (lazy-get-config-val 'src-patterns proj-name t proj-alist))
+         (friend-ignore-patterns (lazy-get-config-val 'ignore-patterns proj-name t proj-alist))
+         (friend-patterns-are-regex (lazy-get-config-val 'patterns-are-regex proj-name t proj-alist)))
+    (list (list 'name friend-name)
+          (list 'basedir friend-basedir)
+          (list 'languages friend-languages)
+          (list 'src-patterns friend-src-patterns)
+          (list 'ignore-patterns friend-ignore-patterns)
+          (list 'patterns-are-regex friend-patterns-are-regex))))
+
 (defvar lazy-index-processes (make-hash-table))
 
 (cl-defun lazy-index (&optional proj-name proj-alist (async t) (do-friends nil) (quiet nil) (terminator nil) (parent nil) (old-files (make-hash-table :test 'equal)))
@@ -4137,12 +4167,15 @@ The compile command history search is implemented in `lazy-compile-read-command'
                        ))
   (setq proj-name (cadr (assoc 'name proj-alist)))
   (unless (and proj-name proj-alist)
-    (lazy-assert-proj))
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
   (unless do-friends
     (setq do-friends (and (string-equal proj-name lazy-name)
                           (lazy-has-univ-arg))))
   (let* ((process)
-         (friends (lazy-get-config-val 'friends proj-name nil proj-alist))
+         (friends (if (listp do-friends)
+                      do-friends
+                    (lazy-get-config-val 'friends proj-name nil proj-alist)))
          (default-directory (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist)))
          (start-dir (if lazy-file-index-relative-paths
                         "."
@@ -4157,20 +4190,20 @@ The compile command history search is implemented in `lazy-compile-read-command'
                            (lazy-find-cmd-ignore-args (lazy-get-config-val 'ignore-patterns proj-name t proj-alist) proj-name proj-alist)))
          (proc-name (concat "index-process-" proj-name)))
     (when (lazy-get-config-val 'file-list-cache proj-name t proj-alist)
-      (lazy-fib-clear proj-name)
+      (lazy-fib-clear proj-name proj-alist)
       (when (lazy-get-vcs-path proj-name)
         (setq find-cmd (concat find-cmd " -not -path " (concat "'*/" (lazy-get-vcs-path proj-name) "/*'"))))
       ;; - had a problem under windows where gfind could not read some file and then always exit with error, this hack
       ;; works around that and makes the command always exit with 0, may be neccessary on linux at some point too
       (when (eq system-type 'windows-nt)
         (setq find-cmd (concat find-cmd  " 2> nul & exit /b 0")))
-      (with-current-buffer (get-buffer-create (lazy-fib-name proj-name))
+      (with-current-buffer (get-buffer-create (lazy-fib-name proj-name proj-alist))
         (buffer-disable-undo) ;; this is a large change we don't need to undo
         (setq buffer-read-only nil))
       (unless quiet
         (message "lazy-index cmd: \"%s\"" find-cmd)
-        (message "Refreshing %s buffer..." (lazy-fib-name proj-name)))
-      (setq process (start-process-shell-command proc-name (lazy-fib-name proj-name) find-cmd))
+        (message "Refreshing %s buffer..." (lazy-fib-name proj-name proj-alist)))
+      (setq process (start-process-shell-command proc-name (lazy-fib-name proj-name proj-alist) find-cmd))
       (if parent
           (push process (cadr (gethash parent lazy-index-processes)))
         (puthash process (list (length friends) nil) lazy-index-processes)
@@ -4182,7 +4215,7 @@ The compile command history search is implemented in `lazy-compile-read-command'
                                                            (let ((friends-num (nth 0 tuple))
                                                                  (friends-list (nth 1 tuple)))
                                                              (when (and (eq (process-status ,parent) 'exit)
-                                                                        (or (not ,do-friends)
+                                                                        (or (not (quote ,do-friends))
                                                                             (and (= friends-num (length friends-list))
                                                                                  (cl-every (lambda (o) (eq (process-status o) 'exit)) friends-list))))
                                                                (remhash ,parent lazy-index-processes)
@@ -4193,9 +4226,15 @@ The compile command history search is implemented in `lazy-compile-read-command'
           (sleep-for 0 4)))
       (when do-friends
         (dolist (friend friends)
-          (let ((friend-alist (lazy-find-alist friend)))
+          (let* ((friend-alist (cond ((file-directory-p friend)
+                                      (lazy-make-temporary-friend-alist friend proj-name proj-alist))
+                                     ((file-exists-p friend)
+                                      nil)
+                                     (t
+                                      (lazy-find-alist friend))))
+                 (friend-name (or (cadr (assoc 'name friend-alist)) friend)))
             (when friend-alist
-              (lazy-index friend friend-alist async nil quiet terminator parent old-files))))))))
+              (lazy-index friend-name friend-alist async nil quiet nil parent old-files))))))))
 
 (defun lazy-fib-matches (&optional regex proj-name proj-alist)
   "Return list of files in *file-index* matching regex.
@@ -4209,10 +4248,10 @@ Returned file paths are relative to the project's basedir."
                        (lazy-find-alist lazy-name)
                        (lazy-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
-  (unless (get-buffer (lazy-fib-name proj-name))
-    (lazy-fib-init proj-name))
+  (unless (get-buffer (lazy-fib-name proj-name proj-alist))
+    (lazy-fib-init proj-name proj-alist))
   (when (or proj-alist (gethash proj-name lazy-project-list nil))
-    (with-current-buffer (lazy-fib-name proj-name)
+    (with-current-buffer (lazy-fib-name proj-name proj-alist)
       (let ((basedir (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist)))
             (current-filename nil)
             (case-fold-search nil))
@@ -4265,12 +4304,16 @@ Returned file paths are relative to the project's basedir."
     (setq proj-name lazy-name))
   (let* ((basedir (file-truename (lazy-get-config-val 'basedir proj-name t proj-alist)))
          (friendly-files (cl-mapcan (lambda (friend)
-                                      (let ((friend-file (lazy-with-directory basedir (expand-file-name friend))))
-                                        (if (file-exists-p friend-file)
-                                            (list friend-file)
-                                          (lazy-files friend nil truenames))))
+                                      (cond ((file-directory-p friend)
+                                             (let* ((friend-alist (lazy-make-temporary-friend-alist friend proj-name proj-alist))
+                                                    (friend-name (cadr (assoc 'name friend-alist))))
+                                               (lazy-files friend-name friend-alist truenames)))
+                                            ((file-exists-p friend)
+                                             (list (lazy-with-directory basedir (expand-file-name friend))))
+                                            (t
+                                             (lazy-files friend nil truenames))))
                                     (lazy-get-config-val 'friends proj-name t proj-alist))))
-    friendly-files))
+  friendly-files))
 
 (defun lazy-dired ()
   "Open dired in the project's basedir (or jump to the existing dired buffer)"
@@ -4294,87 +4337,35 @@ Act like `lazy-multi-occur-with-friends' if called with prefix arg."
 ;; Friends
 ;; ---------------------------------------------------------------------
 
-(defun lazy-find-friendly-projects (&optional proj-name)
-  (unless proj-name
-    (lazy-assert-proj)
-    (setq proj-name lazy-name))
-  ;; go through all configs
-  ;; collect all projects which have the requested name in their friend list
-  ;; remove duplicates and return
-  (let ((r '()))
-    (maphash (lambda (k c)
-               (unless (string-equal k proj-name)
-                 (when (cl-some (lambda (f)
-                                  (string-equal f proj-name))
-                                (lazy-config-val 'friends c))
-                   (setq r (append r `(,k))))))
-             lazy-project-list)
-    (cl-remove-duplicates (append r (lazy-config-val 'friends proj-name t)) :test #'string-equal)))
-
-(defun lazy-fib-friend-matches (&optional regex proj-name proj-alist)
-  (setq proj-alist (or proj-alist
-                       (lazy-find-alist proj-name)
-                       (lazy-find-alist lazy-name)
-                       (lazy-guess-alist)))
-  (setq proj-name (cadr (assoc 'name proj-alist)))
-  (unless (and proj-name proj-alist)
-    (lazy-assert-proj)
-    (setq proj-name lazy-name))
-  (let ((resulting-matches '())
-        (case-fold-search nil))
-    (dolist (friend (lazy-get-config-val 'friends proj-name t proj-alist) resulting-matches)
-      (if (file-exists-p (lazy-with-directory (lazy-get-config-val 'basedir proj-name t proj-alist)
-                                              (expand-file-name friend)))
-          (if regex
-              (when (string-match regex friend) (add-to-list 'resulting-matches (expand-file-name friend)))
-            (add-to-list 'resulting-matches (expand-file-name friend)))
-        (setq resulting-matches (append resulting-matches
-                                        (let ((friend-alist (lazy-find-alist friend)))
-                                          (when friend-alist
-                                            (mapcar (lambda (f)
-                                                      (expand-file-name (concat (file-name-as-directory (lazy-get-config-val 'basedir friend t friend-alist)) f)))
-                                                    (lazy-fib-matches regex friend friend-alist))))))))
-    ))
-
 (defun lazy-friendly-buffer-p (buf &optional proj-name)
   "Check if BUF is a friend of PROJ-NAME.
 
 See also `lazy-buffer-p'."
-  (unless (lazy-buffer-p buf)
-    (let ((file-name (lazy-buffer-name buf)))
-      (if (and file-name
-               (cl-block "friend-loop"
-                 (dolist (f (lazy-find-friendly-projects proj-name))
-                   (if (file-exists-p (expand-file-name f))
-                       (when (string-equal f file-name)
-                         (cl-return-from "friend-loop" t))
-                     (when (lazy-find-alist f t)
-                       (let* ((friend-config (lazy-find-alist f t))
-                              (non-slash-basedir (expand-file-name (car (cdr (assoc 'basedir friend-config)))))
-                              (slash-basedir (if (string-equal (substring non-slash-basedir -1) "/")
-                                                 non-slash-basedir
-                                               (concat non-slash-basedir "/")))
-                              (case-fold-search nil))
-                         (when (or (string-match (concat "^" (regexp-quote slash-basedir)) file-name)
-                                   (string-match (concat "^" (regexp-quote (file-truename slash-basedir))) file-name))
-                           (cl-return-from "friend-loop" t))))))))
-          t
-        nil))))
+  (unless proj-name
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (unless (or (lazy-buffer-p buf)
+              (not (buffer-file-name buf)))
+    (let ((buf-file-name (lazy-buffer-name buf)))
+      (cl-block "find-match-loop"
+        (dolist (friend (lazy-get-config-val 'friends proj-name t))
+          (let* ((friend-alist (lazy-find-alist friend)))
+            (cond (friend-alist
+                   (when (and (lazy-path-equal (lazy-dirname buf-file-name) (lazy-get-config-val 'basedir nil t friend-alist))
+                              (cl-some (lambda (re) (string-match re buf-file-name)) (lazy-get-config-val 'src-patterns nil t friend-alist)))
+                     (cl-return-from "find-match-loop" t)))
+                  ((file-directory-p friend)
+                   (when (lazy-path-equal (lazy-dirname buf-file-name) friend)
+                     (cl-return-from "find-match-loop" t))))))))))
 
 (defun lazy-friendly-file-buffer-p (buf &optional proj-name)
   (and (buffer-file-name buf)
        (lazy-friendly-buffer-p buf proj-name)))
 
-(defun lazy-friendly-special-buffer-p (buf &optional proj-name)
-  (let ((case-fold-search nil))
-    (and (string-match "\*[^\*]\*" (buffer-name buf))
-         (lazy-friendly-buffer-p buf proj-name))))
-
 (defun lazy-friendly-dired-buffer-p (buf &optional proj-name)
   (and (with-current-buffer buf
          (eq major-mode 'dired-mode))
        (lazy-friendly-buffer-p buf proj-name)))
-
 
 (defun lazy-friendly-buffers (&optional proj-name)
   "Return all buffers that are friendly to the project."
@@ -4392,17 +4383,6 @@ See also `lazy-buffer-p'."
     (lazy-assert-proj)
     (setq proj-name lazy-name))
   (cl-remove-if (lambda (buf) (not (buffer-file-name buf))) (lazy-friendly-buffers proj-name)))
-
-(defun lazy-friendly-special-buffers (&optional proj-name friends-only)
-  (unless proj-name
-    (lazy-assert-proj)
-    (setq proj-name lazy-name))
-  (let ((case-fold-search nil))
-    (append (cl-remove-if (lambda (buf) (not (string-match "\*[^\*]\*" (buffer-name buf)))) (lazy-friendly-buffers proj-name))
-            (cl-remove-if (lambda (buf) (or (and (symbolp 'lazy-org-project-buffer-name)
-                                                 (not (string-equal (lazy-org-project-buffer-name proj-name) (buffer-name buf))))
-                                            (compilation-buffer-p buf)))
-                          (buffer-list)))))
 
 (defun lazy-friendly-dired-buffers (&optional proj-name)
   (unless proj-name
@@ -4470,15 +4450,6 @@ See also `lazy-buffer-p'."
   (multi-occur (lazy-filter (lambda (b) (if (buffer-file-name b) b nil))
                             (append (lazy-buffers) (lazy-friendly-buffers)))
                regex))
-
-(defun lazy-friend-basedirs ()
-  "Return all friends basedirs. This may also return single filenames instead of a directory."
-  (let* ((basedirs '()))
-    (dolist (f (lazy-find-friendly-projects) basedirs)
-      (if (file-exists-p (expand-file-name f))
-          (add-to-list 'basedirs f)
-        (when (and f (lazy-config-val 'basedir f))
-          (add-to-list 'basedirs (lazy-config-val 'basedir f)))))))
 
 ;; ---------------------------------------------------------------------
 ;; After saving
