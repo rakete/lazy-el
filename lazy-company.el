@@ -13,24 +13,6 @@
 
 (defvar lazy-company-project-name nil)
 
-(defvar lazy-company-history (make-hash-table :test 'equal))
-(defvar lazy-company-history-length 20)
-
-(defun lazy-company-add-history (proj-name)
-  (let ((candidate (nth company-selection company-candidates)))
-    (when candidate
-      (let ((completion (substring-no-properties candidate)))
-        (let ((history (gethash proj-name lazy-company-history)))
-          (setq history (cl-remove-if (lambda (last) (string-equal last completion)) history))
-          (when (eq (length history) lazy-company-history-length)
-            (setq history (butlast history 1)))
-          (push completion history)
-          (puthash proj-name history lazy-company-history))))))
-
-(defun lazy-company-history-candidates (prefix proj-name)
-  (cl-remove-if-not 'identity (mapcar (lambda (last) (when (string-match (concat "^" prefix) last) last))
-                                   (gethash proj-name lazy-company-history))))
-
 (defun lazy-company-gtags-candidates (prefix)
   (let* ((cmd (concat "global --match-part=first -Gq -c \"" prefix "\""))
          (completions (split-string (condition-case nil (shell-command-to-string cmd) (error nil)) "\n" t)))
@@ -57,28 +39,6 @@
   (when (derived-mode-p 'emacs-lisp-mode 'inferior-emacs-lisp-mode)
     (lazy-completions-for-elisp prefix)))
 
-(defun lazy-company-project-history (command &optional arg &rest ignored)
-  (interactive (list 'interactive))
-  (cl-case command
-    (interactive (company-begin-backend 'company-project))
-    (no-cache nil)
-    (sorted nil)
-    (duplicates nil)
-    (prefix (and (not (company-in-string-or-comment))
-                 (buffer-file-name (current-buffer))
-                 (or lazy-name
-                     lazy-company-project-name)
-                 (or (eq lazy-company-complete-in-projects t)
-                     (cl-find (or lazy-name
-                                  lazy-company-project-name) lazy-company-complete-in-projects))
-                 (company-grab-symbol)))
-    (candidates (lazy-company-history-candidates arg lazy-company-project-name))
-    (meta (lazy-eldoc-function-meta arg lazy-company-project-name (lazy-find-alist lazy-company-project-name)))
-    ;;doc
-    ;;location
-    (post-completion (lazy-company-add-history lazy-company-project-name))
-    (init (setq-local lazy-company-project-name (or lazy-company-project-name (cadr (assoc 'name (lazy-guess-alist))))))))
-
 ;;;###autoload
 (defun lazy-company-project-runtime (command &optional arg &rest ignored)
   (interactive (list 'interactive))
@@ -93,7 +53,8 @@
                      lazy-company-project-name)
                  (or (eq lazy-company-complete-in-projects t)
                      (cl-find (or lazy-name
-                                  lazy-company-project-name) lazy-company-complete-in-projects))
+                                  lazy-company-project-name)
+                              lazy-company-complete-in-projects))
                  (company-grab-symbol)))
     (candidates (append (lazy-company-gtags-candidates arg)
                         (lazy-company-imenu-candidates arg)
@@ -102,25 +63,7 @@
     (meta (lazy-eldoc-function-meta arg lazy-company-project-name (lazy-find-alist lazy-company-project-name)))
     ;;doc
     ;;location
-    (post-completion (lazy-company-add-history lazy-company-project-name))
     (init (setq-local lazy-company-project-name (or lazy-company-project-name (cadr (assoc 'name (lazy-guess-alist))))))))
-
-(defun lazy-company-transform-history-to-front (candidates)
-  (if (functionp company-backend)
-      candidates
-    (let ((low-priority (cdr (memq :with company-backend))))
-      (if (null low-priority)
-          candidates
-        (let ((history (gethash lazy-company-project-name lazy-company-history))
-              (history-candidates)
-              (other-candidates))
-          (dolist (c (reverse candidates))
-            (if (memq c history)
-                (push c history-candidates)
-              (push c other-candidates)
-              ))
-          (setq history-candidates (sort history-candidates (lambda (a b) (< (cl-position a history :test 'equal) (cl-position b history :test 'equal)))))
-          (append history-candidates other-candidates))))))
 
 (provide 'lazy-company)
 
