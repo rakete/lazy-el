@@ -4991,14 +4991,18 @@ defined in `lazy-buildsystems'."
                                            (unless buffer
                                              (setq buffer (current-buffer)))
                                            (when (buffer-file-name buffer)
-                                             `(10 . ,(car (split-string (file-name-nondirectory (expand-file-name (buffer-file-name buffer))) "\\."))))))
+                                             (let* ((buf-file-name (expand-file-name (buffer-file-name buffer)))
+                                                    (name-from-buffer (car (split-string (file-name-nondirectory buf-file-name) "\\."))))
+                                               `(10 . ,name-from-buffer)))))
                                         ((basedir)
-                                         (let ((pname (car (reverse (split-string basedir "/" t)))))
+                                         (let ((name-from-basedir (car (reverse (split-string basedir "/" t)))))
                                            (when (loop for ig in lazy-incubator-paths
                                                        if (lazy-path-equal ig basedir)
                                                        return nil
                                                        finally return t)
-                                             `(100 . ,pname))))))
+                                             (when (lazy-find-alist name-from-basedir)
+                                               (setq name-from-basedir (mapconcat #'identity (reverse (subseq (reverse (split-string basedir "/" t)) 0 2)) "-")))
+                                             `(100 . ,name-from-basedir))))))
                                (src-patterns . (((basedir mode)
                                                  (lazy-guess-src-patterns-from-basedir-and-mode basedir mode))))
                                (patterns-are-regex . ((nil
