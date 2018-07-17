@@ -58,15 +58,30 @@
                 (lazy-load (car (helm-marked-candidates))))))
   "Current projects todos")
 
+
+(defun lazy-helm-build-files-source (&optional cached)
+  (helm-build-sync-source "Lazy files"
+    :candidates (if cached (lazy-files) #'lazy-files)
+    :keymap helm-find-files-map
+    :action helm-find-files-actions
+    :mode-line (list "File(s)" helm-mode-line-string)))
+
 (defvar helm-source-lazy-files nil
   "All files of the currently active project.")
 
-(setq helm-source-lazy-files
-      (helm-build-sync-source "Lazy files"
-        :candidates (lambda () (lazy-files))
-        :keymap helm-find-files-map
-        :action helm-find-files-actions
-        :mode-line (list "File(s)" helm-mode-line-string)))
+(setq helm-source-lazy-files (lazy-helm-build-files-source))
+
+(defun lazy-helm-build-friendly-files-source (&optional cached)
+  (helm-build-sync-source "Lazy friendly files"
+    :candidates (if cached (lazy-friendly-files) #'lazy-friendly-files)
+    :keymap helm-find-files-map
+    :action helm-type-file-actions
+    :mode-line (list "File(s)" helm-mode-line-string)))
+
+(defvar helm-source-lazy-friendly-files nil
+  "All files of projects which are friends of this project.")
+
+(setq helm-source-lazy-friendly-files (lazy-helm-build-friendly-files-source))
 
 (defvar helm-source-lazy-open-buffers nil
   "All buffers of the currently active project.")
@@ -80,17 +95,6 @@
                                 (error nil))))
         :keymap helm-buffer-map
         :action helm-type-buffer-actions))
-
-(defvar helm-source-lazy-friendly-files nil
-  "All files of projects which are friends of this project.")
-
-(setq helm-source-lazy-friendly-files
-      (helm-build-sync-source "Lazy friendly files"
-        :candidates (lambda ()
-                      (lazy-friendly-files))
-        :keymap helm-find-files-map
-        :action helm-type-file-actions
-        :mode-line (list "File(s)" helm-mode-line-string)))
 
 (defun lazy-helm ()
   (interactive)
