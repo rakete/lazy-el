@@ -218,17 +218,29 @@
                                         ((not arg)
                                          (list default-directory))
                                         (arg
-                                         (helm-read-file-name
-                                          "Search in file(s): "
-                                          :default default-directory
-                                          :marked-candidates t :must-match t))))
-         (helm-ag--default-directory (car-safe helm-ag--default-target))
+                                         (progn
+                                           (when cached-settings
+                                             (remhash lazy-name lazy-helm-do-ag-per-project-settings))
+                                           (helm-read-file-name
+                                            "Search in file(s): "
+                                            :default default-directory
+                                            :marked-candidates t :must-match t)))))
          (helm-do-ag--extensions (when helm-ag--default-target
                                    (if (and lazy-name (not arg) cached-settings (or (lazy-buffer-p (current-buffer)) (lazy-friendly-buffer-p (current-buffer))))
                                        (cdr cached-settings)
                                      (helm-ag--do-ag-searched-extensions)))))
-    (when (and lazy-name arg)
-      (puthash lazy-name (cons helm-ag--default-target helm-do-ag--extensions) lazy-helm-do-ag-per-project-settings))
+    (when lazy-name
+      (if arg
+          (puthash lazy-name (cons helm-ag--default-target helm-do-ag--extensions) lazy-helm-do-ag-per-project-settings)
+        (let ((proj-basedir (list (lazy-get-config-val 'basedir lazy-name t)))
+              (friend-basedirs (cl-loop for friend in (lazy-get-config-val 'friends)
+                                        collect (if (lazy-find-alist friend)
+                                                    (lazy-get-config-val 'basedir friend t)
+                                                  (if (file-directory-p friend)
+                                                      friend
+                                                    (lazy-dirname friend))))))
+          (setq helm-ag--default-target (append proj-basedir friend-basedirs)))))
+    (setq helm-ag--default-directory (car-safe helm-ag--default-target))
     (helm-ag--set-do-ag-option)
     (helm-ag--set-command-features)
     (helm-ag--save-current-context)
@@ -240,7 +252,7 @@
           :buffer (concat "*helm ag*"
                           (when (and (or arg cached-settings)
                                      (or (lazy-buffer-p (current-buffer)) (lazy-friendly-buffer-p (current-buffer)))
-                                     (or (not (lazy-path-equal helm-ag--default-directory (print default-directory)))
+                                     (or (not (lazy-path-equal helm-ag--default-directory default-directory))
                                          (not (string-equal (prin1-to-string helm-do-ag--extensions) "(\"*\")"))))
                             (concat " " helm-ag--default-directory
                                     (when helm-do-ag--extensions
