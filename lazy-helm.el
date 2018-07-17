@@ -141,7 +141,21 @@
                 :input (when one-symbol-match word))
         (message "No symbols found!")))))
 
+(require 'helm-ag)
+
 (defvar lazy-helm-do-ag-per-project-settings (make-hash-table :test 'equal))
+
+(defvar lazy-helm-source-do-ag
+  (helm-build-async-source "The Silver Searcher"
+    :init 'helm-ag--do-ag-set-command
+    :candidates-process 'helm-ag--do-ag-candidate-process
+    :persistent-action  'helm-ag--persistent-action
+    :action helm-ag--actions
+    :nohighlight nil
+    :requires-pattern 3
+    :candidate-number-limit most-positive-fixnum
+    :keymap helm-do-ag-map
+    :follow (and helm-follow-mode-persistent 1)))
 
 (defun lazy-helm-do-ag (&optional arg)
   (interactive "P")
@@ -185,8 +199,8 @@
     (helm-ag--set-command-features)
     (helm-ag--save-current-context)
     (helm-attrset 'name (helm-ag--helm-header helm-ag--default-directory)
-                  helm-source-do-ag)
-    (helm :sources '(helm-source-do-ag)
+                  lazy-helm-source-do-ag)
+    (helm :sources '(lazy-helm-source-do-ag)
           :input (helm-ag--insert-thing-at-point helm-ag-insert-at-point)
           :keymap helm-do-ag-map
           :buffer (concat "*helm ag*"
