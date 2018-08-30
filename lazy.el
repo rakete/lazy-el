@@ -4145,7 +4145,7 @@ The compile command history search is implemented in `lazy-compile-read-command'
 
 (defun lazy-make-temporary-friend-alist (friend-dir proj-name proj-alist)
   (let* ((friend-basedir (expand-file-name friend-dir))
-         (friend-name (concat "." proj-name "-internal-" (mapconcat #'identity (split-string friend-basedir "/") "-")))
+         (friend-name (concat "." proj-name "-internal-" (mapconcat #'identity (split-string friend-basedir "/" t "/*") "-")))
          (friend-languages (lazy-get-config-val 'languages proj-name t proj-alist))
          (friend-src-patterns (lazy-get-config-val 'src-patterns proj-name t proj-alist))
          (friend-ignore-patterns (lazy-get-config-val 'ignore-patterns proj-name t proj-alist))
