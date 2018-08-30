@@ -182,7 +182,9 @@
          (helm-do-ag--extensions (when helm-ag--default-target
                                    (if (and lazy-name (not arg) cached-settings (or (lazy-buffer-p (current-buffer)) (lazy-friendly-buffer-p (current-buffer))))
                                        (cdr cached-settings)
-                                     (helm-ag--do-ag-searched-extensions)))))
+                                     (helm-ag--do-ag-searched-extensions))))
+         (helm-ag--default-directory nil)
+         (helm-ag-ignore-patterns nil))
     (when lazy-name
       (if arg
           (puthash lazy-name (cons helm-ag--default-target helm-do-ag--extensions) lazy-helm-do-ag-per-project-settings)
@@ -193,7 +195,9 @@
                                                   (if (file-directory-p friend)
                                                       friend
                                                     (lazy-dirname friend))))))
-          (setq helm-ag--default-target (append proj-basedir friend-basedirs)))))
+          (setq helm-ag--default-target (append proj-basedir friend-basedirs)
+                ;;helm-ag-ignore-patterns (lazy-get-config-val 'ignore-patterns lazy-name t)
+                ))))
     (setq helm-ag--default-directory (car-safe helm-ag--default-target))
     (helm-ag--set-do-ag-option)
     (helm-ag--set-command-features)
