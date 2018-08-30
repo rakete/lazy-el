@@ -4159,7 +4159,7 @@ The compile command history search is implemented in `lazy-compile-read-command'
 
 (defvar lazy-index-processes (make-hash-table))
 
-(cl-defun lazy-index (&optional proj-name proj-alist (async t) (do-friends nil) (quiet nil) (terminator nil) (parent nil) (old-files (make-hash-table :test 'equal)))
+(cl-defun lazy-index (&optional proj-name proj-alist (async t) (do-friends t) (quiet nil) (terminator nil) (parent nil) (old-files (make-hash-table :test 'equal)))
   "Regenerate the *file-index* buffer."
   (interactive)
   (setq proj-alist (or proj-alist
