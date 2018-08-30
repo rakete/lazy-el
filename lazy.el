@@ -2300,7 +2300,10 @@ See also `lazy-language-tag-systems', `lazy-setup-tags', `lazy-jump-definition' 
     ;; - the nested loops look like the could be switched, but the language of a file needs to detected
     ;; first, so that we can then decide which tagging systems to use for that language
     (dolist (f files)
-      (unless (string-match "node_modules" f)
+      (unless (or (string-match "node_modules" f)
+                  (string-match "minified\\.js" f)
+                  (string-match "min\\.js" f)
+                  (string-match "hoops_web_viewer\\.js" f))
         (let ((lang (car-safe (lazy-src-pattern-languages (list f)))))
           (push lang languages)
           (dolist (sys (cdr (assoc lang lazy-language-tag-systems)))
