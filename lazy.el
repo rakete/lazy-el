@@ -4221,7 +4221,7 @@ The compile command history search is implemented in `lazy-compile-read-command'
                                                                             (and (= friends-num (length friends-list))
                                                                                  (cl-every (lambda (o) (eq (process-status o) 'exit)) friends-list))))
                                                                (remhash ,parent lazy-index-processes)
-                                                               (funcall (quote ,terminator) ,proj-name (quote ,proj-alist) new-files)))))))
+                                                               (funcall (quote ,terminator) ,proj-name (quote ,proj-alist) nil)))))))
       (unless async
         (while (or (string-equal (process-status process) "run")
                    (equal (process-status process) 'run))
@@ -4469,6 +4469,8 @@ See also `lazy-update'.")
 
 See also `lazy-update'.")
 
+(defvar lazy-after-save-update-timer nil)
+
 (defun lazy-after-save-update (&optional proj-name proj-alist)
   "This functions gets added to `after-save-hook' and `after-load-hook' by lazy-el. It
 runs `lazy-update' after the idle time specified in `lazy-after-save-update-idle-time'
@@ -4477,38 +4479,41 @@ has passed.
 If `lazy-prevent-after-save-update' is set this will not do anything.
 
 See also `lazy-update-tags' and `lazy-after-save-update-in-progress'."
-  (unless lazy-after-save-update-in-progress
-    (when (and (not (or lazy-prevent-after-save-update
-                        (eq (hash-table-count lazy-project-list) 0)
-                        (string-match ".*recentf.*" (buffer-name (current-buffer)))
-                        (string-match ".*file-list-cache.*" (buffer-name (current-buffer)))
-                        (string-match ".*sourcemarker-db.*" (buffer-name (current-buffer)))
-                        (string-match ".*continue-db.*" (buffer-name (current-buffer)))
-                        (string-match ".*archive-contents.*" (buffer-name (current-buffer)))
-                        (string-match ".*\*http .*\*" (buffer-name (current-buffer)))))
-               (buffer-file-name (current-buffer))
-               (get-buffer-window (current-buffer) 'visible))
-      (setq proj-alist (or (lazy-find-alist proj-name)
-                           proj-alist
-                           (lazy-guess-alist)))
-      (setq proj-name (or proj-name
-                          ;; - prefer guessed name even when lazy-name is set, so that when I edit a file
-                          ;; that belongs to another project then the currently active one, the other project
-                          ;; gets updated
-                          (cadr (assoc 'name proj-alist))
-                          lazy-name))
-      (when (and proj-name proj-alist)
-        (setq lazy-after-save-update-in-progress t)
-        (run-with-idle-timer lazy-after-save-update-idle-time nil
-                             (lambda (&optional p proj-name proj-alist buffer)
-                               (lazy-update p proj-name proj-alist buffer)
-                               ;; - explicitly set lazy-after-save-update-in-progress to nil here because I had
-                               ;; problems with it remaining t even when lazy-update had already run
-                               (setq lazy-after-save-update-in-progress nil))
-                             ;; - previously I used a bunch of global variables to remember the project and
-                             ;; buffer that were active when the idle timer was set, but then I found out I
-                             ;; can just supply proj-name and (current-buffer) as arguments here
-                             nil proj-name proj-alist (current-buffer))))))
+  (when (and (not (or lazy-prevent-after-save-update
+                      (eq (hash-table-count lazy-project-list) 0)
+                      (string-match ".*recentf.*" (buffer-name (current-buffer)))
+                      (string-match ".*file-list-cache.*" (buffer-name (current-buffer)))
+                      (string-match ".*sourcemarker-db.*" (buffer-name (current-buffer)))
+                      (string-match ".*continue-db.*" (buffer-name (current-buffer)))
+                      (string-match ".*archive-contents.*" (buffer-name (current-buffer)))
+                      (string-match ".*\*http .*\*" (buffer-name (current-buffer)))))
+             (buffer-file-name (current-buffer))
+             (get-buffer-window (current-buffer) 'visible))
+    (setq proj-alist (if proj-name
+                         (lazy-find-alist proj-name)
+                       (or proj-alist
+                           (lazy-guess-alist))))
+    (setq proj-name (or proj-name
+                        ;; - prefer guessed name even when lazy-name is set, so that when I edit a file
+                        ;; that belongs to another project then the currently active one, the other project
+                        ;; gets updated
+                        (cadr (assoc 'name proj-alist))
+                        lazy-name))
+    (when (and proj-name proj-alist (not (string-equal lazy-after-save-update-in-progress proj-name)))
+      (setq lazy-after-save-update-in-progress proj-name)
+      (setq lazy-after-save-update-timer
+            (run-with-idle-timer lazy-after-save-update-idle-time nil
+                                 (lambda (&optional p proj-name proj-alist buffer)
+                                   (message "Run idle timer for lazy-after-save-update in buffer %s of project %s..." (buffer-name buffer) proj-name)
+                                   ;; - explicitly set lazy-after-save-update-in-progress to nil here because I had
+                                   ;; problems with it remaining t even when lazy-update had already run
+                                   (setq lazy-after-save-update-timer nil)
+                                   (setq lazy-after-save-update-in-progress nil)
+                                   (lazy-update p proj-name proj-alist buffer))
+                                 ;; - previously I used a bunch of global variables to remember the project and
+                                 ;; buffer that were active when the idle timer was set, but then I found out I
+                                 ;; can just supply proj-name and (current-buffer) as arguments here
+                                 nil proj-name proj-alist (current-buffer))))))
 
 (defun lazy-update-src-patterns (&optional buffer)
   "Update the src patterns of the current projects configuration by adding
