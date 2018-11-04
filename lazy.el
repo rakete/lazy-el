@@ -2469,6 +2469,7 @@ I implemented it mainly to execute multiple gtags calls in the background, each 
              (input (nth n inputs)))
         (when debug
           (with-current-buffer (get-buffer-create (concat proc-name "-input"))
+            (delete-region (point-min) (point-max))
             (insert input))
           (message "%s" proc-name)
           (message "%s" command))
