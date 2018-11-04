@@ -29,6 +29,7 @@
 (require 'color)
 (require 'imenu)
 (require 'recentf)
+(require 'dumb-jump)
 
 (declare-function lazy-org-project-buffer-name "lazy-orgmode")
 (declare-function lazy-org-config-save "lazy-orgmode")
@@ -2716,7 +2717,25 @@ See also `lazy-jump-list-mode'."
                                                            :system system
                                                            :regexp regexp)))
                                          do (setq i (+ i 1))
-                                         )))))))))))
+                                         ))))))))
+          ((eq 'dumb system)
+           (let* ((buffer (nth 0 args))
+                  (point (nth 1 args))
+                  (default-directory (if (buffer-file-name buffer)
+                                         (lazy-dirname (buffer-file-name buffer))
+                                       default-directory)))
+             (save-excursion
+               (with-current-buffer buffer
+                 (goto-char point)
+                 (let* ((info (dumb-jump-get-results regexp))
+                        (results (plist-get info :results)))
+                   (cl-loop for result in results
+                            collect (list :word (plist-get result :target)
+                                          :line-number (plist-get result :line)
+                                          :file-path (plist-get result :path)
+                                          :definition (plist-get result :context)
+                                          :system system
+                                          :regexp regexp))))))))))
 
 (defun lazy-score-jumps (jumps regexp buffer)
   "Score jumps so that they can be ranked by their relevance.
@@ -3516,7 +3535,8 @@ See also `lazy-jump-list-mode', `lazy-merge-obarray-jumps' and `lazy-jump-regexp
                                            (and (cl-find 'go (lazy-src-pattern-languages (cadr (assoc 'src-patterns proj-alist))))
                                                 (lazy-find-symbol proj-name proj-alist 'godef word (current-buffer) (point)))
                                            (or (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -d " (prin1-to-string word)))
-                                               (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -s " (prin1-to-string word))))
+                                               (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -s " (prin1-to-string word)))
+                                               (lazy-find-symbol proj-name proj-alist 'dumb word (current-buffer) (point)))
                                            (lazy-find-symbol proj-name proj-alist 'imenu (concat "^" word "$"))
                                            )))
       (lazy-select-jumps (lazy-score-jumps jumps (regexp-quote word) (current-buffer))))))
@@ -4574,7 +4594,6 @@ After running this function sets `lazy-after-save-update-in-progress' to nil.
 
 See also `lazy-index' and `lazy-update-tags'."
   (interactive "p")
-
   (setq proj-alist (or (lazy-find-alist proj-name)
                        proj-alist
                        (lazy-guess-alist)))
