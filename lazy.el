@@ -100,6 +100,8 @@ See also `lazy-optional-vars' and `lazy-var-before-get-functions'.")
                              (languages . (listp))
                              (src-patterns . (listp))
                              (ignore-patterns . (listp))
+                             (ignore-symbols . (listp))
+                             (ignore-gtags . (listp))
                              (vcs . (symbolp))
                              (compile-cmd . ((lambda (v) (or (functionp v) (commandp v) (stringp v) (listp v)))))
                              (startup-hook . ((lambda (v) (or (functionp v) (commandp v) (stringp v) (listp v)))))
@@ -2301,10 +2303,7 @@ See also `lazy-language-tag-systems', `lazy-setup-tags', `lazy-jump-definition' 
     ;; - the nested loops look like the could be switched, but the language of a file needs to detected
     ;; first, so that we can then decide which tagging systems to use for that language
     (dolist (f files)
-      (unless (or (string-match "node_modules" f)
-                  (string-match "minified\\.js" f)
-                  (string-match "min\\.js" f)
-                  (string-match "hoops_web_viewer\\.js" f))
+      (unless (cl-some (lambda (regexp) (string-match regexp f)) (lazy-get-config-val 'ignore-gtags proj-name proj-alist))
         (let ((lang (car-safe (lazy-src-pattern-languages (list f)))))
           (push lang languages)
           (dolist (sys (cdr (assoc lang lazy-language-tag-systems)))
@@ -3293,15 +3292,15 @@ See also `lazy-project-symbols'."
                  proj-alist guessed-alist)))
     (unless proj-name
       (lazy-assert-proj))
-
     (let* ((proj-symbols (make-hash-table :test 'equal :size 100000))
            (default-directory (or (lazy-get-config-val 'basedir proj-name) default-directory)))
-
       (when (lazy-setup-tags proj-name)
         (let* ((cmd "global -c")
-               (global-output (split-string (condition-case nil (shell-command-to-string cmd) (error "")) "\n" t)))
+               (global-output (split-string (condition-case nil (shell-command-to-string cmd) (error "")) "\n" t))
+               (ignore-symbols (lazy-get-config-val 'ignore-symbols proj-name)))
           (when global-output
             (cl-loop for symbol in global-output
+                     unless (cl-some (lambda (regexp) (string-match regexp symbol)) ignore-symbols)
                      do (puthash symbol t proj-symbols))
             (puthash proj-name proj-symbols lazy-project-symbols))
           (lazy-setup-tags lazy-name))))))
