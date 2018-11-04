@@ -3513,17 +3513,23 @@ See also `lazy-jump-list-mode', `lazy-merge-obarray-jumps' and `lazy-jump-regexp
                             (default (cl-find symbol completions :test 'string-equal)))
                        (substring-no-properties (ido-completing-read "Symbol: "
                                                                      completions nil nil
-                                                                     (unless (and (or (eq major-mode 'emacs-lisp-mode)
-                                                                                      (eq major-mode 'lisp-interaction-mode))
-                                                                                  (string-equal default "nil"))
-                                                                       default)
+                                                                     (or (unless (and (or (eq major-mode 'emacs-lisp-mode)
+                                                                                          (eq major-mode 'lisp-interaction-mode))
+                                                                                      (string-equal default "nil"))
+                                                                           default)
+                                                                         (thing-at-point 'symbol))
                                                                      nil
                                                                      nil)))))
   (let* ((guessed-alist (lazy-guess-alist))
          (guessed-name (cadr (assoc 'name guessed-alist))))
     (unless proj-name
-      (setq proj-name (or (when (and (lazy-find-alist guessed-name)
-                                     (lazy-buffer-p (current-buffer) guessed-name))
+      (setq proj-name (or (when (and (not (string-equal lazy-name guessed-name))
+                                     (lazy-find-alist guessed-name)
+                                     (or (lazy-buffer-p (current-buffer) guessed-name)
+                                         (lazy-friendly-buffer-p (current-buffer) guessed-name))
+                                     (or (not lazy-name)
+                                         (and (not (lazy-buffer-p (current-buffer) lazy-name))
+                                              (not (lazy-friendly-buffer-p (current-buffer) lazy-name)))))
                             guessed-name)
                           lazy-name)))
     (unless proj-alist
@@ -4509,17 +4515,24 @@ See also `lazy-update-tags' and `lazy-after-save-update-in-progress'."
                       (string-match ".*\*http .*\*" (buffer-name (current-buffer)))))
              (buffer-file-name (current-buffer))
              (get-buffer-window (current-buffer) 'visible))
-    (setq proj-alist (if proj-name
-                         (lazy-find-alist proj-name)
-                       (or proj-alist
-                           (lazy-guess-alist))))
+    (setq proj-alist (cond (proj-name
+                            (lazy-find-alist proj-name))
+                           (proj-alist
+                            proj-alist)
+                           ((and lazy-name
+                                 (or (lazy-buffer-p (current-buffer) lazy-name)
+                                     (lazy-friendly-buffer-p (current-buffer) lazy-name)))
+                            (lazy-find-alist lazy-name))
+                           (t
+                            (lazy-guess-alist))))
     (setq proj-name (or proj-name
                         ;; - prefer guessed name even when lazy-name is set, so that when I edit a file
                         ;; that belongs to another project then the currently active one, the other project
                         ;; gets updated
                         (cadr (assoc 'name proj-alist))
                         lazy-name))
-    (when (and proj-name proj-alist (not (string-equal lazy-after-save-update-in-progress proj-name)))
+    (when (and proj-name proj-alist (and (or (not lazy-name) (string-equal proj-name lazy-name))
+                                         (not (string-equal lazy-after-save-update-in-progress proj-name))))
       (setq lazy-after-save-update-in-progress proj-name)
       (setq lazy-after-save-update-timer
             (run-with-idle-timer lazy-after-save-update-idle-time nil
