@@ -1974,14 +1974,16 @@ See also `lazy-friendly-buffer-p'."
              (file-exists-p file-name)
              (lazy-get-config-val 'basedir proj-name t proj-alist)
              (cl-loop for pattern in (lazy-get-config-val 'src-patterns proj-name t proj-alist)
-                      if (string-match (if (lazy-get-config-val 'patterns-are-regex proj-name t proj-alist)
-                                           pattern
-                                         (regexp-quote pattern))
-                                       file-name)
-                      return t
-                      finally return nil)
+                            if (string-match (if (lazy-get-config-val 'patterns-are-regex proj-name t proj-alist)
+                                                 pattern
+                                               (regexp-quote pattern))
+                                             file-name)
+                            return t
+                            finally return nil)
              (or (string-match (concat "^" (regexp-quote basedir)) file-name)
-                 (string-match (concat "^" (regexp-quote (file-truename basedir))) file-name)))
+                 (let ((true-file-name (file-truename file-name))
+                       (true-basedir (file-truename basedir)))
+                   (string-match (concat "^" (regexp-quote true-basedir)) true-file-name))))
         proj-name
       nil)))
 
