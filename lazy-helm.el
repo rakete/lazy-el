@@ -186,7 +186,7 @@
          (helm-ag--default-directory nil)
          (helm-ag-ignore-patterns nil))
     (when lazy-name
-      (if (or arg helm-ag--default-target)
+      (if (and arg helm-ag--default-target (or (lazy-buffer-p (current-buffer)) (lazy-friendly-buffer-p (current-buffer))))
           (puthash lazy-name (cons helm-ag--default-target helm-do-ag--extensions) lazy-helm-do-ag-per-project-settings)
         (let ((proj-basedir (list (lazy-get-config-val 'basedir lazy-name t)))
               (friend-basedirs (cl-loop for friend in (lazy-get-config-val 'friends)
@@ -195,9 +195,9 @@
                                                   (if (file-directory-p friend)
                                                       friend
                                                     (lazy-dirname friend))))))
-          (setq helm-ag--default-target (append helm-ag--default-target proj-basedir friend-basedirs)
-                ;;helm-ag-ignore-patterns (lazy-get-config-val 'ignore-patterns lazy-name t)
-                ))))
+          (setq helm-ag--default-target (cl-remove-duplicates (cl-mapcar (lambda (dir) (directory-file-name dir))
+                                                                         (append helm-ag--default-target proj-basedir friend-basedirs))
+                                                              :test #'string-equal)))))
     (setq helm-ag--default-directory (car-safe helm-ag--default-target))
     (helm-ag--set-do-ag-option)
     (helm-ag--set-command-features)
@@ -208,13 +208,8 @@
           :input (helm-ag--insert-thing-at-point helm-ag-insert-at-point)
           :keymap helm-do-ag-map
           :buffer (concat "*helm ag*"
-                          (when (and (or arg cached-settings)
-                                     (or (lazy-buffer-p (current-buffer)) (lazy-friendly-buffer-p (current-buffer)))
-                                     ;; (or (not (lazy-path-equal helm-ag--default-directory default-directory))
-                                     ;;     (not (string-equal (prin1-to-string helm-do-ag--extensions) "(\"*\")")))
-                                     )
-                            (concat " " helm-ag--default-directory
-                                    (when helm-do-ag--extensions
-                                      (concat "/" (prin1-to-string helm-do-ag--extensions)))))))))
+                          (concat " " helm-ag--default-directory
+                                  (when helm-do-ag--extensions
+                                    (concat "/" (prin1-to-string helm-do-ag--extensions))))))))
 
 (provide 'lazy-helm)
