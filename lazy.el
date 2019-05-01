@@ -2262,7 +2262,7 @@ statements in there. You need to manually copy, paste and modify those yourself.
                 (t
                  executable))))))
 
-(defun* lazy-update-tags (&optional proj-name proj-alist files (debug t))
+(defun* lazy-update-tags (&optional proj-name proj-alist files (debug nil))
   "Create or update the projects tags database. The current implementation uses gtags together with
 universal-ctags, exuberant-ctags and pygments to generate a tags database. It tries to use those in projects
 consisting of multiple languages to generate a tags database that contains all symbols from all languages.
@@ -4082,7 +4082,7 @@ The compile command history search is implemented in `lazy-compile-read-command'
             (setq buffer-read-only t)
             (set-buffer-modified-p nil)
             (message (concat "Loading " (lazy-fib-name proj-name proj-alist) " from %s") (lazy-get-config-val 'file-list-cache proj-name t proj-alist)))))
-    (lazy-index proj-name proj-alist)))
+    (lazy-index proj-name proj-alist t t t)))
 
 (defun lazy-fib-clear (&optional proj-name proj-alist)
   "Clear the contents of the fib buffer"
@@ -4545,7 +4545,7 @@ See also `lazy-update-tags' and `lazy-after-save-update-in-progress'."
       (setq lazy-after-save-update-timer
             (run-with-idle-timer lazy-after-save-update-idle-time nil
                                  (lambda (&optional p proj-name proj-alist buffer)
-                                   (message "Run idle timer for lazy-after-save-update in buffer %s of project %s..." (buffer-name buffer) proj-name)
+                                   ;;(message "Run idle timer for lazy-after-save-update in buffer %s of project %s..." (buffer-name buffer) proj-name)
                                    ;; - explicitly set lazy-after-save-update-in-progress to nil here because I had
                                    ;; problems with it remaining t even when lazy-update had already run
                                    (setq lazy-after-save-update-timer nil)
@@ -4630,9 +4630,10 @@ See also `lazy-index' and `lazy-update-tags'."
         (progn
           (when (buffer-file-name buffer)
             (lazy-update-src-patterns buffer))
-          (when (or p
-                    (lazy-buffer-p buffer proj-name proj-alist)
-                    (lazy-friendly-buffer-p buffer proj-name))
+          (when (and (not (get-buffer-window (get-buffer "*helm lazy*") 'visible))
+                     (or p
+                         (lazy-buffer-p buffer proj-name proj-alist)
+                         (lazy-friendly-buffer-p buffer proj-name)))
             (let ((do-friends '()))
               (dolist (friend (lazy-get-config-val 'friends proj-name t proj-alist))
                 (let* ((friend-alist (cond ((file-directory-p friend)
@@ -4646,7 +4647,7 @@ See also `lazy-index' and `lazy-update-tags'."
                     (push friend do-friends))))
               (lazy-index proj-name proj-alist t do-friends t
                           (lambda (&optional proj-name proj-alist files debug)
-                            (lazy-update-tags proj-name proj-alist files t))
+                            (lazy-update-tags proj-name proj-alist files nil))
                           nil
                           (let ((cache-file (lazy-get-config-val 'file-list-cache proj-name t proj-alist)))
                             (when (and cache-file
