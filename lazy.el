@@ -3978,7 +3978,9 @@ accordingly.
 If COMINT is non-nil the opened *compilation* buffer will be in comint-mode.
 
 See also `lazy-compile'."
-  (let ((compilation-ask-about-save (not (called-interactively-p 'interactive)))
+  (let ((compilation-ask-about-save (if (not compilation-ask-about-save)
+                                        nil
+                                      (not (called-interactively-p 'interactive))))
         (compilation-read-command (not (called-interactively-p 'interactive))))
     (save-some-buffers (not compilation-ask-about-save)
                        compilation-save-buffers-predicate)
