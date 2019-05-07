@@ -863,7 +863,7 @@ See also `lazy-org-get-project-buffer' and `lazy-org-config-buffer'.
   (interactive)
   (when (get-buffer "lazy: edit project")
     (with-current-buffer (get-buffer "lazy: edit project")
-      (save-buffer)
+      (lazy-silent-save-buffer)
       (kill-buffer)))
   (lazy-org-assert-org proj-name t)
   (display-buffer (lazy-org-get-project-buffer proj-name)))
@@ -1129,7 +1129,7 @@ See also `lazy-org-entry-nearest-active'.
                                      (lazy-org-config-insert proj-name config-alist nil nil headline))
                                     ((eq major-mode 'org-mode)
                                      (lazy-org-config-insert proj-name config-alist nil nil headline))))))
-         (save-buffer)
+         (lazy-silent-save-buffer)
          (set-buffer-modified-p mod)
          (lazy-org-entry-define-project saved-marker))))))
 
@@ -1225,7 +1225,7 @@ See also `lazy-define-backend', `lazy-org-buffer' and `lazy-config-buffer'."
          (goto-char (marker-position marker))
          (unless (eq (condition-case nil (lazy-org-entry-define-project) (error 'error))
                      'error)
-           (save-buffer)
+           (lazy-silent-save-buffer)
            (kill-buffer)))))))
 
 

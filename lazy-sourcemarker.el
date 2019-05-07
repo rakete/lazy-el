@@ -46,10 +46,11 @@
 
 (defun lazy-sourcemarker-write-project-db ()
   (interactive)
-  (if lazy-name
-      (lazy-sourcemarker-with-project-db
-       (continue-write-db))
-    (continue-write-db)))
+  (lazy-silent
+    (if lazy-name
+        (lazy-sourcemarker-with-project-db
+         (continue-write-db))
+      (continue-write-db))))
 
 (defun lazy-sourcemarker-restore ()
   (interactive)

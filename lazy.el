@@ -887,6 +887,11 @@ See also `lazy-update-tags'.")
 ;; Utils
 ;; ---------------------------------------------------------------------
 
+(defmacro lazy-silent (&rest body)
+  (declare (indent 0))
+  (let ((message-log-max nil))
+    `(with-temp-message (or (current-message) "") ,@body)))
+
 (defun lazy-save-state ()
   "Save the currently open project files."
   (when lazy-name
@@ -1325,11 +1330,11 @@ See also `lazy-config-save'."
      ;; find section to save under in single el file
      ((or (and (stringp lazy-config-save-location)
                (or (file-exists-p (expand-file-name lazy-config-save-location))
-                   (write-region "" nil (expand-file-name lazy-config-save-location))
+                   (lazy-silent (write-region "" nil (expand-file-name lazy-config-save-location)))
                    t)
                (setq save-location lazy-config-save-location))
           (and (or (file-exists-p (expand-file-name "projects.el" (file-name-as-directory (expand-file-name lazy-global-cache-root))))
-                   (write-region "" nil (expand-file-name "projects.el" (file-name-as-directory (expand-file-name lazy-global-cache-root))))
+                   (lazy-silent (write-region "" nil (expand-file-name "projects.el" (file-name-as-directory (expand-file-name lazy-global-cache-root)))))
                    t)
                (setq save-location (expand-file-name "projects.el" (file-name-as-directory (expand-file-name lazy-global-cache-root))))))
       (with-current-buffer (find-file-noselect (expand-file-name save-location))
@@ -1433,7 +1438,7 @@ See also `lazy-config-insert', `lazy-find-save-location-marker'"
                                (lazy-config-insert proj-name config-alist)
                                (call-interactively 'eval-defun)
                                ))
-                        (save-buffer)
+                        (lazy-silent (save-buffer))
                         (set-buffer-modified-p mod)))))
 
 (cl-defun lazy-config-buffer (&optional (state :create) proj-name config-alist)
@@ -1499,7 +1504,7 @@ See also `lazy-define-backend'."
                                                                   (eval-region (car-safe bounds) (cdr bounds)))))
                          (error 'error))
                        'error)
-             (save-buffer)
+             (lazy-silent (save-buffer))
              (kill-buffer)
              (when (and (not (condition-case nil (lazy-assert-proj) (error t)))
                         (string-equal (cadr (assoc 'name edited-alist)) proj-name))
@@ -2062,10 +2067,11 @@ or PROJ-NAME."
             (insert f "\n"))))
       (if (file-writable-p (lazy-get-config-val 'open-files-cache))
           (progn
-            (write-region (point-min)
-                          (point-max)
-                          (lazy-get-config-val 'open-files-cache))
-            (message "Wrote open files to %s" (lazy-get-config-val 'open-files-cache)))
+            (lazy-silent (write-region (point-min)
+                                       (point-max)
+                                       (lazy-get-config-val 'open-files-cache)))
+            ;;(message "Wrote open files to %s" (lazy-get-config-val 'open-files-cache))
+            )
         (message "Cannot write to %s" (lazy-get-config-val 'open-files-cache))))))
 
 (defun lazy-visit-saved-open-files ()
@@ -4018,7 +4024,7 @@ The compile command history search is implemented in `lazy-compile-read-command'
       (call-interactively 'compile)
     (lazy-assert-proj nil)
     (with-current-buffer (get-buffer (lazy-fib-name))
-      (save-buffer))
+      (lazy-silent (save-buffer)))
     (let* ((cmd (lazy-get-config-val 'compile-cmd))
            (buf (current-buffer))
            friend)
@@ -4116,12 +4122,13 @@ The compile command history search is implemented in `lazy-compile-read-command'
     (lazy-assert-proj)
     (setq proj-name lazy-name))
   (let ((new-files '()))
-    (cond ((string= event "finished\n")
+    (cond ((and (not (get-buffer-window (get-buffer "*helm lazy*") 'visible))
+                (string= event "finished\n"))
            (let ((zeitgeist-prevent-send t)
                  (recentf-hash (make-hash-table :test 'equal)))
              (with-current-buffer (get-buffer (lazy-fib-name proj-name proj-alist))
                (when (lazy-get-config-val 'file-list-cache proj-name t proj-alist)
-                 (write-file (lazy-get-config-val 'file-list-cache proj-name t proj-alist)))
+                 (lazy-silent (write-file (lazy-get-config-val 'file-list-cache proj-name t proj-alist))))
                (rename-buffer (lazy-fib-name proj-name proj-alist))
                (set-buffer-modified-p nil)
                (setq buffer-read-only t))
@@ -4196,81 +4203,82 @@ The compile command history search is implemented in `lazy-compile-read-command'
 (cl-defun lazy-index (&optional proj-name proj-alist (async t) (do-friends t) (quiet nil) (terminator nil) (parent nil) (old-files (make-hash-table :test 'equal)))
   "Regenerate the *file-index* buffer."
   (interactive)
-  (setq proj-alist (or proj-alist
-                       (lazy-find-alist proj-name)
-                       (lazy-find-alist lazy-name)
-                       (lazy-guess-alist)
-                       ))
-  (setq proj-name (cadr (assoc 'name proj-alist)))
-  (unless (and proj-name proj-alist)
-    (lazy-assert-proj)
-    (setq proj-name lazy-name))
-  (unless do-friends
-    (setq do-friends (and (string-equal proj-name lazy-name)
-                          (lazy-has-univ-arg))))
-  (let* ((process)
-         (friends (if (listp do-friends)
-                      do-friends
-                    (lazy-get-config-val 'friends proj-name nil proj-alist)))
-         (default-directory (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist)))
-         (start-dir (if lazy-file-index-relative-paths
-                        "."
-                      (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist))))
-         (find-exe (or (and (eq system-type 'windows-nt)
-                            (or (executable-find "c:/Program Files/Git/usr/bin/find")
-                                (executable-find "gfind")))
-                       (and (not (eq system-type 'windows-nt))
-                            (executable-find "find"))))
-         (find-cmd (concat "\"" find-exe "\" \"" start-dir "\" -type f "
-                           (lazy-find-cmd-src-args (lazy-get-config-val 'src-patterns proj-name t proj-alist) proj-name proj-alist)
-                           (lazy-find-cmd-ignore-args (lazy-get-config-val 'ignore-patterns proj-name t proj-alist) proj-name proj-alist)))
-         (proc-name (concat "index-process-" proj-name)))
-    (when (lazy-get-config-val 'file-list-cache proj-name t proj-alist)
-      (lazy-fib-clear proj-name proj-alist)
-      (when (lazy-get-vcs-path proj-name)
-        (setq find-cmd (concat find-cmd " -not -path " (concat "'*/" (lazy-get-vcs-path proj-name) "/*'"))))
-      ;; - had a problem under windows where gfind could not read some file and then always exit with error, this hack
-      ;; works around that and makes the command always exit with 0, may be neccessary on linux at some point too
-      (when (eq system-type 'windows-nt)
-        (setq find-cmd (concat find-cmd  " 2> nul & exit /b 0")))
-      (with-current-buffer (get-buffer-create (lazy-fib-name proj-name proj-alist))
-        (buffer-disable-undo) ;; this is a large change we don't need to undo
-        (setq buffer-read-only nil))
-      (unless quiet
-        (message "lazy-index cmd: \"%s\"" find-cmd)
-        (message "Refreshing %s buffer..." (lazy-fib-name proj-name proj-alist)))
-      (setq process (start-process-shell-command proc-name (lazy-fib-name proj-name proj-alist) find-cmd))
-      (if parent
-          (push process (cadr (gethash parent lazy-index-processes)))
-        (puthash process (list (length friends) nil) lazy-index-processes)
-        (setq parent process))
-      (set-process-sentinel (get-process proc-name) `(lambda (p e)
-                                                       (let ((new-files (lazy-fib-cb p e ,proj-name (quote ,proj-alist) ,quiet (quote ,old-files)))
-                                                             (tuple (gethash ,parent lazy-index-processes)))
-                                                         (when (and tuple (quote ,terminator))
-                                                           (let ((friends-num (nth 0 tuple))
-                                                                 (friends-list (nth 1 tuple)))
-                                                             (when (and (eq (process-status ,parent) 'exit)
-                                                                        (or (not (quote ,do-friends))
-                                                                            (and (= friends-num (length friends-list))
-                                                                                 (cl-every (lambda (o) (eq (process-status o) 'exit)) friends-list))))
-                                                               (remhash ,parent lazy-index-processes)
-                                                               (funcall (quote ,terminator) ,proj-name (quote ,proj-alist) nil)))))))
-      (unless async
-        (while (or (string-equal (process-status process) "run")
-                   (equal (process-status process) 'run))
-          (sleep-for 0 4)))
-      (when do-friends
-        (dolist (friend friends)
-          (let* ((friend-alist (cond ((file-directory-p friend)
-                                      (lazy-make-temporary-friend-alist friend proj-name proj-alist))
-                                     ((file-exists-p friend)
-                                      nil)
-                                     (t
-                                      (lazy-find-alist friend))))
-                 (friend-name (or (cadr (assoc 'name friend-alist)) friend)))
-            (when friend-alist
-              (lazy-index friend-name friend-alist async nil quiet nil parent old-files))))))))
+  (unless (get-buffer-window (get-buffer "*helm lazy*") 'visible)
+    (setq proj-alist (or proj-alist
+                         (lazy-find-alist proj-name)
+                         (lazy-find-alist lazy-name)
+                         (lazy-guess-alist)
+                         ))
+    (setq proj-name (cadr (assoc 'name proj-alist)))
+    (unless (and proj-name proj-alist)
+      (lazy-assert-proj)
+      (setq proj-name lazy-name))
+    (unless do-friends
+      (setq do-friends (and (string-equal proj-name lazy-name)
+                            (lazy-has-univ-arg))))
+    (let* ((process)
+           (friends (if (listp do-friends)
+                        do-friends
+                      (lazy-get-config-val 'friends proj-name nil proj-alist)))
+           (default-directory (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist)))
+           (start-dir (if lazy-file-index-relative-paths
+                          "."
+                        (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist))))
+           (find-exe (or (and (eq system-type 'windows-nt)
+                              (or (executable-find "c:/Program Files/Git/usr/bin/find")
+                                  (executable-find "gfind")))
+                         (and (not (eq system-type 'windows-nt))
+                              (executable-find "find"))))
+           (find-cmd (concat "\"" find-exe "\" \"" start-dir "\" -type f "
+                             (lazy-find-cmd-src-args (lazy-get-config-val 'src-patterns proj-name t proj-alist) proj-name proj-alist)
+                             (lazy-find-cmd-ignore-args (lazy-get-config-val 'ignore-patterns proj-name t proj-alist) proj-name proj-alist)))
+           (proc-name (concat "index-process-" proj-name)))
+      (when (lazy-get-config-val 'file-list-cache proj-name t proj-alist)
+        (lazy-fib-clear proj-name proj-alist)
+        (when (lazy-get-vcs-path proj-name)
+          (setq find-cmd (concat find-cmd " -not -path " (concat "'*/" (lazy-get-vcs-path proj-name) "/*'"))))
+        ;; - had a problem under windows where gfind could not read some file and then always exit with error, this hack
+        ;; works around that and makes the command always exit with 0, may be neccessary on linux at some point too
+        (when (eq system-type 'windows-nt)
+          (setq find-cmd (concat find-cmd  " 2> nul & exit /b 0")))
+        (with-current-buffer (get-buffer-create (lazy-fib-name proj-name proj-alist))
+          (buffer-disable-undo) ;; this is a large change we don't need to undo
+          (setq buffer-read-only nil))
+        (unless quiet
+          (message "lazy-index cmd: \"%s\"" find-cmd)
+          (message "Refreshing %s buffer..." (lazy-fib-name proj-name proj-alist)))
+        (setq process (start-process-shell-command proc-name (lazy-fib-name proj-name proj-alist) find-cmd))
+        (if parent
+            (push process (cadr (gethash parent lazy-index-processes)))
+          (puthash process (list (length friends) nil) lazy-index-processes)
+          (setq parent process))
+        (set-process-sentinel (get-process proc-name) `(lambda (p e)
+                                                         (let ((new-files (lazy-fib-cb p e ,proj-name (quote ,proj-alist) ,quiet (quote ,old-files)))
+                                                               (tuple (gethash ,parent lazy-index-processes)))
+                                                           (when (and tuple (quote ,terminator))
+                                                             (let ((friends-num (nth 0 tuple))
+                                                                   (friends-list (nth 1 tuple)))
+                                                               (when (and (eq (process-status ,parent) 'exit)
+                                                                          (or (not (quote ,do-friends))
+                                                                              (and (= friends-num (length friends-list))
+                                                                                   (cl-every (lambda (o) (eq (process-status o) 'exit)) friends-list))))
+                                                                 (remhash ,parent lazy-index-processes)
+                                                                 (funcall (quote ,terminator) ,proj-name (quote ,proj-alist) nil)))))))
+        (unless async
+          (while (or (string-equal (process-status process) "run")
+                     (equal (process-status process) 'run))
+            (sleep-for 0 4)))
+        (when do-friends
+          (dolist (friend friends)
+            (let* ((friend-alist (cond ((file-directory-p friend)
+                                        (lazy-make-temporary-friend-alist friend proj-name proj-alist))
+                                       ((file-exists-p friend)
+                                        nil)
+                                       (t
+                                        (lazy-find-alist friend))))
+                   (friend-name (or (cadr (assoc 'name friend-alist)) friend)))
+              (when friend-alist
+                (lazy-index friend-name friend-alist async nil quiet nil parent old-files)))))))))
 
 (defun lazy-fib-matches (&optional regex proj-name proj-alist)
   "Return list of files in *file-index* matching regex.
@@ -4435,10 +4443,10 @@ See also `lazy-buffer-p'."
             (unless (string-equal (lazy-get-config-val 'etags-file) f)
               (insert f "\n"))))
         (if (file-writable-p (lazy-get-config-val 'open-friends-cache))
-            (write-region (point-min)
-                          (point-max)
-                          (lazy-get-config-val 'open-friends-cache))
-          (message "Wrote open friends to %s" (lazy-get-config-val 'open-friends-cache))
+            (lazy-silent (write-region (point-min)
+                                       (point-max)
+                                       (lazy-get-config-val 'open-friends-cache)))
+          ;;(message "Wrote open friends to %s" (lazy-get-config-val 'open-friends-cache))
           (message "Cannot write to %s" (lazy-get-config-val 'open-friends-cache)))))))
 
 (defun lazy-visit-saved-open-friends ()
