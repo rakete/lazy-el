@@ -2809,7 +2809,7 @@ See also `lazy-select-jumps' and `lazy-jump-definition'."
           ;; - increase score for systems that I want to rank higher, imenu because the score
           ;; cant be increased by filename scoring I think, godef because it works so well
           (when (eq system 'godef)
-            (setq score (+ score inc)))
+            (setq score (+ score (* 2 inc))))
           (when (eq system 'imenu)
             (setq score (+ score inc)))
 
