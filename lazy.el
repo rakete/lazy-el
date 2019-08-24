@@ -1425,11 +1425,12 @@ See also `lazy-config-insert', `lazy-find-save-location-marker'"
                                              (while (re-search-forward "\n" (+ (point) 1) t))
                                              (point)))
                                       (old-alist (eval (nth 2 (read (buffer-substring begin end)))))
-                                      (new-alist (lazy-alist-union old-alist config-alist)))
+                                      (new-alist (lazy-alist-union old-alist config-alist))
+                                      (minibuffer-message-timeout 0))
                                  (kill-region begin end)
                                  (lazy-config-insert proj-name new-alist)
-                                 (call-interactively 'eval-defun)
-                                 ))
+                                 (elisp--eval-defun)
+                                 (message nil)))
                               (t
                                (goto-char (point-max))
                                (unless (split-string (buffer-string) "\n" t)
@@ -2268,7 +2269,7 @@ statements in there. You need to manually copy, paste and modify those yourself.
                 (t
                  executable))))))
 
-(defun* lazy-update-tags (&optional proj-name proj-alist files (debug nil))
+(defun* lazy-update-tags (&optional proj-name proj-alist files (debug t))
   "Create or update the projects tags database. The current implementation uses gtags together with
 universal-ctags, exuberant-ctags and pygments to generate a tags database. It tries to use those in projects
 consisting of multiple languages to generate a tags database that contains all symbols from all languages.
