@@ -188,10 +188,12 @@
     (when lazy-name
       (if (and arg helm-ag--default-target (or (lazy-buffer-p (current-buffer)) (lazy-friendly-buffer-p (current-buffer))))
           (puthash lazy-name (cons helm-ag--default-target helm-do-ag--extensions) lazy-helm-do-ag-per-project-settings)
-        (setq helm-ag--default-target (if (lazy-friendly-buffer-p (current-buffer))
-                                          (list (directory-file-name (lazy-get-config-val 'basedir nil t (lazy-guess-alist nil nil))))
-                                      (if (lazy-get-config-val 'basedir lazy-name t)
-                                          (list (directory-file-name (lazy-get-config-val 'basedir lazy-name t))))))))
+        (setq helm-ag--default-target (cond ((and (not arg) (lazy-friendly-buffer-p (current-buffer)))
+                                             (list (directory-file-name (lazy-get-config-val 'basedir nil t (lazy-guess-alist nil nil)))))
+                                            ((and (not arg) (lazy-get-config-val 'basedir lazy-name t))
+                                             (list (directory-file-name (lazy-get-config-val 'basedir lazy-name t))))
+                                            (arg
+                                             helm-ag--default-target)))))
     (setq helm-ag--default-directory (car-safe helm-ag--default-target))
     (helm-ag--set-do-ag-option)
     (helm-ag--set-command-features)
