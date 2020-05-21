@@ -4396,12 +4396,11 @@ See also `lazy-buffer-p'."
       (cl-block "find-match-loop"
         (dolist (friend (lazy-get-config-val 'friends proj-name t))
           (let* ((friend-alist (lazy-find-alist friend)))
-            (cond (friend-alist
-                   (when (and (lazy-path-equal (lazy-dirname buf-file-name) (lazy-get-config-val 'basedir nil t friend-alist))
-                              (cl-some (lambda (re) (string-match re buf-file-name)) (lazy-get-config-val 'src-patterns nil t friend-alist)))
+            (cond ((and (listp friend-alist) (> (length friend-alist) 0))
+                   (when (lazy-path-equal (lazy-dirname buf-file-name) (lazy-get-config-val 'basedir nil t friend-alist))
                      (cl-return-from "find-match-loop" friend)))
                   ((file-directory-p friend)
-                   (when (lazy-path-equal (lazy-dirname buf-file-name) friend)
+                   (when (lazy-path-equal (lazy-dirname buf-file-name) (file-truename friend))
                      (cl-return-from "find-match-loop" friend))))))))))
 
 (defun lazy-friendly-file-buffer-p (buf &optional proj-name)
