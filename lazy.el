@@ -4505,7 +4505,7 @@ that only one is scheduled at the same time.
 
 See also `lazy-update'.")
 
-(defvar lazy-after-save-update-idle-time 10
+(defvar lazy-after-save-update-idle-time 60
   "Can be used to customize the amount of idle time needed to run a pending
 `lazy-after-save-update' operation.
 
