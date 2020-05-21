@@ -3517,14 +3517,15 @@ See also `lazy-jump-list-mode', `lazy-merge-obarray-jumps' and `lazy-jump-regexp
                             (ido-case-fold nil)
                             (symbol (thing-at-point lazy-thing-selector))
                             (completions (lazy-completions))
-                            (default (cl-find symbol completions :test 'string-equal)))
+                            (completion (cl-find symbol completions :test 'string-equal))
+                            (default (or (unless (and (or (eq major-mode 'emacs-lisp-mode)
+                                                          (eq major-mode 'lisp-interaction-mode))
+                                                      (string-equal completion "nil"))
+                                           completion)
+                                         (thing-at-point 'symbol))))
                        (substring-no-properties (ido-completing-read "Symbol: "
                                                                      completions nil nil
-                                                                     (or (unless (and (or (eq major-mode 'emacs-lisp-mode)
-                                                                                          (eq major-mode 'lisp-interaction-mode))
-                                                                                      (string-equal default "nil"))
-                                                                           default)
-                                                                         (thing-at-point 'symbol))
+                                                                     (if (string-equal default "nil") "" default)
                                                                      nil
                                                                      nil)))))
   (let* ((guessed-alist (lazy-guess-alist))
