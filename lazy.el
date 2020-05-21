@@ -4313,6 +4313,17 @@ Returned file paths are relative to the project's basedir."
                                   (cl-some (lambda (re) (string-match re current-filename)) regex)))
                       collect current-filename)))))
 
+(defun lazy-sort-files-recentf (files)
+  (let ((recentf-map (make-hash-table :test 'equal))
+        (i 0))
+    (dolist (recentf-file recentf-list)
+      (puthash recentf-file i recentf-map)
+      (setq i (+ i 1)))
+    (sort files (lambda (a b)
+                  (let ((as (gethash a recentf-map (length recentf-list)))
+                        (bs (gethash b recentf-map (length recentf-list))))
+                    (< as bs))))))
+
 (defun lazy-files (&optional proj-name proj-alist truenames)
   (setq proj-alist (or proj-alist
                        (lazy-find-alist proj-name)

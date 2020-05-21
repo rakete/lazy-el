@@ -61,7 +61,7 @@
 
 (defun lazy-helm-build-files-source (&optional cached)
   (helm-build-sync-source "Lazy files"
-    :candidates (if cached (lazy-files) #'lazy-files)
+    :candidates (if cached (lazy-sort-files-recentf (lazy-files)) #'lazy-files)
     :keymap helm-find-files-map
     :action helm-find-files-actions
     :mode-line (list "File(s)" helm-mode-line-string)))
@@ -73,7 +73,7 @@
 
 (defun lazy-helm-build-friendly-files-source (&optional cached)
   (helm-build-sync-source "Lazy friendly files"
-    :candidates (if cached (lazy-friendly-files) #'lazy-friendly-files)
+    :candidates (if cached (lazy-sort-files-recentf (lazy-friendly-files)) #'lazy-friendly-files)
     :keymap helm-find-files-map
     :action helm-type-file-actions
     :mode-line (list "File(s)" helm-mode-line-string)))
