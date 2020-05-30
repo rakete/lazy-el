@@ -2444,7 +2444,7 @@ See also `lazy-language-tag-systems', `lazy-setup-tags', `lazy-jump-definition' 
              (inputs (cl-loop for sys in ordering
                               if (gethash sys gtags-commands)
                               collect (concat (mapconcat #'identity (gethash sys sys-files) "\n") "\n"))))
-        (lazy-process-group "gtags" commands inputs 'lazy-update-symbols (list proj-name) debug)
+        (lazy-process-group "gtags" commands inputs nil (list proj-name) debug)
         ))
     ;; - if I'd ever implement rtags, or any other system really, then this would become another section
     (when (gethash 'rtags sys-files)
