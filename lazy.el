@@ -3283,6 +3283,7 @@ See also `lazy-jump-definition'."
   "Update the completions-cache for PROJ-NAME or the current project.
 
 See also `lazy-project-symbols'."
+  (interactive)
   (let* ((guessed-alist (lazy-guess-alist))
          (guessed-name (cadr (assoc 'name guessed-alist)))
          (proj-alist (lazy-find-alist proj-name)))
