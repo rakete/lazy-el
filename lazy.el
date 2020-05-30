@@ -3304,7 +3304,7 @@ See also `lazy-project-symbols'."
     (let* ((proj-symbols (make-hash-table :test 'equal :size 100000))
            (default-directory (or (lazy-get-config-val 'basedir proj-name) default-directory)))
       (when (lazy-setup-tags proj-name)
-        (let* ((cmd "global -c")
+        (let* ((cmd "global -c | awk '{ if (length($0) > 2 ) print }' | sed '/^[\\$%:{\\^\\[]/d' | sed '/^[0-9]*$/d'")
                (global-output (split-string (condition-case nil (shell-command-to-string cmd) (error "")) "\n" t))
                (ignore-symbols (lazy-get-config-val 'ignore-symbols proj-name)))
           (when global-output
