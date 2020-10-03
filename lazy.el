@@ -3523,7 +3523,7 @@ See also `lazy-jump-list-mode', `lazy-merge-obarray-jumps' and `lazy-jump-regexp
                             (case-fold-search nil)
                             (ido-case-fold nil)
                             (symbol (thing-at-point lazy-thing-selector))
-                            (completions (lazy-completions))
+                            (completions (lazy-completions lazy-name))
                             (completion (cl-find symbol completions :test 'string-equal))
                             (default (or (unless (and (or (eq major-mode 'emacs-lisp-mode)
                                                           (eq major-mode 'lisp-interaction-mode))
@@ -3531,7 +3531,7 @@ See also `lazy-jump-list-mode', `lazy-merge-obarray-jumps' and `lazy-jump-regexp
                                            completion)
                                          (thing-at-point 'symbol))))
                        (substring-no-properties (ido-completing-read "Symbol: "
-                                                                     completions nil nil
+                                                                     (when completion completions) nil nil
                                                                      (if (string-equal default "nil") "" default)
                                                                      nil
                                                                      nil)))))
