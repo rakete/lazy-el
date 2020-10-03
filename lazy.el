@@ -3465,35 +3465,24 @@ lisp this function is used. The other way around, when I am in a buffer
 that is not an emacs lisp buffer and try to jump to a definition, this
 function does nothing.
 
+
+
 See also `lazy-find-symbol'."
   (if obarray-jumps
       (let ((obarray-map (make-hash-table :test 'equal :size 100000))
             (merged-jumps nil))
-        (dolist (jump obarray-jumps)
-          (puthash (plist-get jump :word) jump obarray-map))
+        (when (or (cl-position 'elisp (lazy-src-pattern-languages (list (buffer-file-name))))
+                  (cl-position 'elisp (lazy-get-config-val 'languages)))
+          (dolist (jump obarray-jumps)
+            (puthash (plist-get jump :word) jump obarray-map))
+          (maphash (lambda (k v)
+                     (push v merged-jumps))
+                   obarray-map))
         (dolist (jump (apply #'append rest))
           (let* ((keyword (plist-get jump :word))
                  (obarray-jump (gethash keyword obarray-map)))
-            (if (not obarray-jump)
-                (push jump merged-jumps)
-              (let ((jump-path (plist-get jump :file-path))
-                    (jump-line-number (plist-get jump :line-number))
-                    (jump-docstring (plist-get jump :docstring))
-                    (jump-definition (plist-get jump :definition))
-                    (new-jump obarray-jump))
-                (when (cl-position 'elisp (lazy-src-pattern-languages (list jump-path)))
-                  (plist-put new-jump :file-path jump-path)
-                  (plist-put new-jump :line-number jump-line-number)
-                  (when (and (= (length (plist-get obarray-jump :docstring)) 0)
-                             (> (length jump-docstring) 0))
-                    (plist-put new-jump :docstring jump-docstring))
-                  (when (and (= (length (plist-get obarray-jump :definition)) 0)
-                             (> (length jump-definition) 0))
-                    (plist-put new-jump :definition jump-definition))
-                  (puthash keyword new-jump obarray-map))))))
-        (maphash (lambda (k v)
-                   (push v merged-jumps))
-                 obarray-map)
+            (when (not obarray-jump)
+                (push jump merged-jumps))))
         merged-jumps)
     (apply #'append rest)))
 
