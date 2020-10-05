@@ -3486,6 +3486,29 @@ See also `lazy-find-symbol'."
         merged-jumps)
     (apply #'append rest)))
 
+(defun lazy-merge-jumps (jumps &rest rest)
+  "Merges jumps together so that there are no duplicates.
+
+See also `lazy-find-symbol' and `lazy-merge-obarray-jumps'."
+  (if jumps
+      (let ((obarray-map (make-hash-table :test 'equal :size 100000))
+            (merged-jumps nil))
+        (when (or (cl-position 'elisp (lazy-src-pattern-languages (list (buffer-file-name))))
+                  (cl-position 'elisp (lazy-get-config-val 'languages)))
+          (dolist (jump jumps)
+            (puthash (concat (plist-get jump :word) (format "%s" (plist-get jump :line-number))) jump obarray-map))
+          (maphash (lambda (k v)
+                     (push v merged-jumps))
+                   obarray-map))
+        (dolist (jump (apply #'append rest))
+          (let* ((keyword (concat (plist-get jump :word) (format "%s" (plist-get jump :line-number))))
+                 (obarray-jump (gethash keyword obarray-map)))
+            (when (not obarray-jump)
+                (push jump merged-jumps))))
+        merged-jumps)
+    (apply #'append rest)))
+
+
 (defun lazy-jump-definition (word &optional proj-name proj-alist)
   "Jump to the definition of a symbol.
 
@@ -3507,7 +3530,7 @@ The WORD argument is a string specifying the symbol name to jump to. Optionally
 PROJ-NAME and PROJ-ALIST can specify the project which is searched for the
 definition of the symbol.
 
-See also `lazy-jump-list-mode', `lazy-merge-obarray-jumps' and `lazy-jump-regexp'."
+See also `lazy-jump-list-mode', `lazy-merge-jumps' and `lazy-jump-regexp'."
   (interactive (list (let* ((ido-enable-flex-matching t)
                             (case-fold-search nil)
                             (ido-case-fold nil)
@@ -3542,13 +3565,13 @@ See also `lazy-jump-list-mode', `lazy-merge-obarray-jumps' and `lazy-jump-regexp
     (unless (and proj-name proj-alist (string-equal proj-name (cadr (assoc 'name proj-alist))))
       (lazy-assert-proj))
     (let ((jumps (lazy-merge-obarray-jumps (lazy-find-symbol proj-name proj-alist 'obarray (concat "^" word "$"))
-                                           (lazy-find-symbol proj-name proj-alist 'imenu (concat "^" word "$"))
-                                           (or (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -d " (prin1-to-string word)))
-                                               (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -s " (prin1-to-string word)))
-                                               (lazy-find-symbol proj-name proj-alist 'dumb word (current-buffer) (point)))
-                                           ;; (and (cl-find 'go (lazy-src-pattern-languages (cadr (assoc 'src-patterns proj-alist))))
-                                           ;;      (lazy-find-symbol proj-name proj-alist 'godef word (current-buffer) (point)))
-                                           )))
+                                           (lazy-merge-jumps (lazy-find-symbol proj-name proj-alist 'imenu (concat "^" word "$"))
+                                                             (or (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -d " (prin1-to-string word)))
+                                                                 (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -s " (prin1-to-string word))))
+                                                             (lazy-find-symbol proj-name proj-alist 'dumb word (current-buffer) (point))
+                                                             ;; (and (cl-find 'go (lazy-src-pattern-languages (cadr (assoc 'src-patterns proj-alist))))
+                                                             ;;      (lazy-find-symbol proj-name proj-alist 'godef word (current-buffer) (point)))
+                                                             ))))
       (if (eq (length jumps) 1)
           (message "found by %s" (plist-get (nth 0 jumps) :system)))
       (lazy-select-jumps (lazy-score-jumps jumps (regexp-quote word) (current-buffer))))))
