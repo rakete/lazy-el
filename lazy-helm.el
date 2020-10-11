@@ -184,7 +184,8 @@
                                        (cdr cached-settings)
                                      (helm-ag--do-ag-searched-extensions))))
          (helm-ag--default-directory nil)
-         (helm-ag-ignore-patterns nil))
+         (helm-ag-ignore-patterns nil)
+         (helm-ag-command-option "--all-types"))
     (when lazy-name
       (if (and arg helm-ag--default-target (or (lazy-buffer-p (current-buffer)) (lazy-friendly-buffer-p (current-buffer))))
           (puthash lazy-name (cons helm-ag--default-target helm-do-ag--extensions) lazy-helm-do-ag-per-project-settings)
