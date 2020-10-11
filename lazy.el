@@ -2614,15 +2614,21 @@ See also `lazy-jump-list-mode'."
     (cond ((eq 'gtags system)
            (let ((cmd (nth 0 args)))
              (lazy-setup-tags proj-name)
-             (mapcar (lambda (line)
-                       (let ((tokens (split-string line " " t)))
-                         (list :word (nth 0 tokens)
-                               :line-number (read (or (nth 1 tokens) "-1"))
-                               :file-path (or (when (nth 2 tokens) (expand-file-name (nth 2 tokens))) "")
-                               :definition (mapconcat 'identity (nthcdr 3 tokens) " ")
-                               :system system
-                               :regexp regexp)))
-                     (split-string (condition-case nil (shell-command-to-string (concat "cd " default-directory cmd-sep cmd)) (error "")) "\n" t))))
+             (let ((shell-output (condition-case nil (shell-command-to-string (concat "cd " default-directory cmd-sep cmd)) (error ""))))
+               (cond ((string-match ".*corrupted.*" shell-output)
+                      (progn (message "Gtags files corrupted!")
+                             (when (> (length proj-name) 0)
+                               (shell-command (concat "rm " (lazy-get-cache-dir nil proj-name) "G*"))
+                               (lazy-update-tags proj-name))))
+                     (t (mapcar (lambda (line)
+                         (let ((tokens (split-string line " " t)))
+                           (list :word (nth 0 tokens)
+                                 :line-number (read (or (nth 1 tokens) "-1"))
+                                 :file-path (or (when (nth 2 tokens) (expand-file-name (nth 2 tokens))) "")
+                                 :definition (mapconcat 'identity (nthcdr 3 tokens) " ")
+                                 :system system
+                                 :regexp regexp)))
+                                (split-string shell-output "\n" t)))))))
           ((eq 'rtags system)
            (message "rtags not implemented yet"))
           ((eq 'cscope system)
@@ -3459,37 +3465,49 @@ lisp this function is used. The other way around, when I am in a buffer
 that is not an emacs lisp buffer and try to jump to a definition, this
 function does nothing.
 
+
+
 See also `lazy-find-symbol'."
   (if obarray-jumps
       (let ((obarray-map (make-hash-table :test 'equal :size 100000))
             (merged-jumps nil))
-        (dolist (jump obarray-jumps)
-          (puthash (plist-get jump :word) jump obarray-map))
+        (when (or (cl-position 'elisp (lazy-src-pattern-languages (list (buffer-file-name))))
+                  (cl-position 'elisp (lazy-get-config-val 'languages)))
+          (dolist (jump obarray-jumps)
+            (puthash (plist-get jump :word) jump obarray-map))
+          (maphash (lambda (k v)
+                     (push v merged-jumps))
+                   obarray-map))
         (dolist (jump (apply #'append rest))
           (let* ((keyword (plist-get jump :word))
                  (obarray-jump (gethash keyword obarray-map)))
-            (if (not obarray-jump)
-                (push jump merged-jumps)
-              (let ((jump-path (plist-get jump :file-path))
-                    (jump-line-number (plist-get jump :line-number))
-                    (jump-docstring (plist-get jump :docstring))
-                    (jump-definition (plist-get jump :definition))
-                    (new-jump obarray-jump))
-                (when (cl-position 'elisp (lazy-src-pattern-languages (list jump-path)))
-                  (plist-put new-jump :file-path jump-path)
-                  (plist-put new-jump :line-number jump-line-number)
-                  (when (and (= (length (plist-get obarray-jump :docstring)) 0)
-                             (> (length jump-docstring) 0))
-                    (plist-put new-jump :docstring jump-docstring))
-                  (when (and (= (length (plist-get obarray-jump :definition)) 0)
-                             (> (length jump-definition) 0))
-                    (plist-put new-jump :definition jump-definition))
-                  (puthash keyword new-jump obarray-map))))))
-        (maphash (lambda (k v)
-                   (push v merged-jumps))
-                 obarray-map)
+            (when (not obarray-jump)
+                (push jump merged-jumps))))
         merged-jumps)
     (apply #'append rest)))
+
+(defun lazy-merge-jumps (jumps &rest rest)
+  "Merges jumps together so that there are no duplicates.
+
+See also `lazy-find-symbol' and `lazy-merge-obarray-jumps'."
+  (if jumps
+      (let ((obarray-map (make-hash-table :test 'equal :size 100000))
+            (merged-jumps nil))
+        (when (or (cl-position 'elisp (lazy-src-pattern-languages (list (buffer-file-name))))
+                  (cl-position 'elisp (lazy-get-config-val 'languages)))
+          (dolist (jump jumps)
+            (puthash (concat (plist-get jump :word) (format "%s" (plist-get jump :line-number))) jump obarray-map))
+          (maphash (lambda (k v)
+                     (push v merged-jumps))
+                   obarray-map))
+        (dolist (jump (apply #'append rest))
+          (let* ((keyword (concat (plist-get jump :word) (format "%s" (plist-get jump :line-number))))
+                 (obarray-jump (gethash keyword obarray-map)))
+            (when (not obarray-jump)
+                (push jump merged-jumps))))
+        merged-jumps)
+    (apply #'append rest)))
+
 
 (defun lazy-jump-definition (word &optional proj-name proj-alist)
   "Jump to the definition of a symbol.
@@ -3512,12 +3530,12 @@ The WORD argument is a string specifying the symbol name to jump to. Optionally
 PROJ-NAME and PROJ-ALIST can specify the project which is searched for the
 definition of the symbol.
 
-See also `lazy-jump-list-mode', `lazy-merge-obarray-jumps' and `lazy-jump-regexp'."
+See also `lazy-jump-list-mode', `lazy-merge-jumps' and `lazy-jump-regexp'."
   (interactive (list (let* ((ido-enable-flex-matching t)
                             (case-fold-search nil)
                             (ido-case-fold nil)
                             (symbol (thing-at-point lazy-thing-selector))
-                            (completions (lazy-completions))
+                            (completions (lazy-completions lazy-name))
                             (completion (cl-find symbol completions :test 'string-equal))
                             (default (or (unless (and (or (eq major-mode 'emacs-lisp-mode)
                                                           (eq major-mode 'lisp-interaction-mode))
@@ -3525,7 +3543,7 @@ See also `lazy-jump-list-mode', `lazy-merge-obarray-jumps' and `lazy-jump-regexp
                                            completion)
                                          (thing-at-point 'symbol))))
                        (substring-no-properties (ido-completing-read "Symbol: "
-                                                                     completions nil nil
+                                                                     (when completion completions) nil nil
                                                                      (if (string-equal default "nil") "" default)
                                                                      nil
                                                                      nil)))))
@@ -3547,13 +3565,15 @@ See also `lazy-jump-list-mode', `lazy-merge-obarray-jumps' and `lazy-jump-regexp
     (unless (and proj-name proj-alist (string-equal proj-name (cadr (assoc 'name proj-alist))))
       (lazy-assert-proj))
     (let ((jumps (lazy-merge-obarray-jumps (lazy-find-symbol proj-name proj-alist 'obarray (concat "^" word "$"))
-                                           (and (cl-find 'go (lazy-src-pattern-languages (cadr (assoc 'src-patterns proj-alist))))
-                                                (lazy-find-symbol proj-name proj-alist 'godef word (current-buffer) (point)))
-                                           (or (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -d " (prin1-to-string word)))
-                                               (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -s " (prin1-to-string word)))
-                                               (lazy-find-symbol proj-name proj-alist 'dumb word (current-buffer) (point)))
-                                           (lazy-find-symbol proj-name proj-alist 'imenu (concat "^" word "$"))
-                                           )))
+                                           (lazy-merge-jumps (lazy-find-symbol proj-name proj-alist 'imenu (concat "^" word "$"))
+                                                             (or (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -d " (prin1-to-string word)))
+                                                                 (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -s " (prin1-to-string word))))
+                                                             (lazy-find-symbol proj-name proj-alist 'dumb word (current-buffer) (point))
+                                                             ;; (and (cl-find 'go (lazy-src-pattern-languages (cadr (assoc 'src-patterns proj-alist))))
+                                                             ;;      (lazy-find-symbol proj-name proj-alist 'godef word (current-buffer) (point)))
+                                                             ))))
+      (if (eq (length jumps) 1)
+          (message "found by %s" (plist-get (nth 0 jumps) :system)))
       (lazy-select-jumps (lazy-score-jumps jumps (regexp-quote word) (current-buffer))))))
 
 (defun lazy-jump-regexp (regexp &optional proj-name proj-alist)
