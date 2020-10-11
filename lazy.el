@@ -4295,7 +4295,7 @@ Returned file paths are relative to the project's basedir."
                        (lazy-find-alist lazy-name)
                        (lazy-guess-alist)))
   (setq proj-name (cadr (assoc 'name proj-alist)))
-  (unless (get-buffer (lazy-fib-name proj-name proj-alist))
+  (unless (get-buffer-create (lazy-fib-name proj-name proj-alist))
     (lazy-fib-init proj-name proj-alist))
   (when (or proj-alist (gethash proj-name lazy-project-list nil))
     (with-current-buffer (lazy-fib-name proj-name proj-alist)
