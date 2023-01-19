@@ -24,7 +24,7 @@
 
 (require 'thingatpt)
 (require 'cl-lib)
-(require 'etags-table)
+;;(require 'etags-table)
 (require 'compile)
 (require 'color)
 (require 'imenu)
@@ -100,6 +100,7 @@ See also `lazy-optional-vars' and `lazy-var-before-get-functions'.")
                              (languages . (listp))
                              (src-patterns . (listp))
                              (ignore-patterns . (listp))
+                             (ignore-ag . (listp))
                              (ignore-symbols . (listp))
                              (ignore-gtags . (listp))
                              (vcs . (symbolp))
@@ -2135,7 +2136,7 @@ or PROJ-NAME."
 (defadvice y-or-n-p (around lazy-y-or-n-p)
   (let ((prompt (ad-get-arg 0))
         (suppress nil))
-    (loop for pattern in lazy-suppress-y-or-n-p-patterns
+    (cl-loop for pattern in lazy-suppress-y-or-n-p-patterns
           until (setq suppress (string-match pattern prompt)))
     (setq ad-return-value (or (and suppress t) ad-do-it))))
 (ad-activate 'y-or-n-p)
@@ -2267,7 +2268,7 @@ statements in there. You need to manually copy, paste and modify those yourself.
                 (t
                  executable))))))
 
-(defun* lazy-update-tags (&optional proj-name proj-alist files (debug t))
+(cl-defun lazy-update-tags (&optional proj-name proj-alist files (debug t))
   "Create or update the projects tags database. The current implementation uses gtags together with
 universal-ctags, exuberant-ctags and pygments to generate a tags database. It tries to use those in projects
 consisting of multiple languages to generate a tags database that contains all symbols from all languages.
@@ -4145,8 +4146,7 @@ The compile command history search is implemented in `lazy-compile-read-command'
     (lazy-assert-proj)
     (setq proj-name lazy-name))
   (let ((new-files '()))
-    (cond ((and (not (get-buffer-window (get-buffer "*helm lazy*") 'visible))
-                (string= event "finished\n"))
+    (cond ((string= event "finished\n")
            (let ((zeitgeist-prevent-send t)
                  (recentf-hash (make-hash-table :test 'equal)))
              (with-current-buffer (get-buffer (lazy-fib-name proj-name proj-alist))
@@ -4165,7 +4165,6 @@ The compile command history search is implemented in `lazy-compile-read-command'
            (unless quiet
              (message "Refreshing %s buffer...done" (lazy-fib-name proj-name proj-alist))))
           (t
-           (lazy-fib-clear proj-name proj-alist)
            (unless quiet
              (message "Failed to generate the %s buffer!" (lazy-fib-name proj-name proj-alist)))))
     new-files))
@@ -4213,12 +4212,14 @@ The compile command history search is implemented in `lazy-compile-read-command'
          (friend-languages (lazy-get-config-val 'languages proj-name t proj-alist))
          (friend-src-patterns (lazy-get-config-val 'src-patterns proj-name t proj-alist))
          (friend-ignore-patterns (lazy-get-config-val 'ignore-patterns proj-name t proj-alist))
+         (friend-ignore-ag (lazy-get-config-val 'ignore-ag proj-name t proj-alist))
          (friend-patterns-are-regex (lazy-get-config-val 'patterns-are-regex proj-name t proj-alist)))
     (list (list 'name friend-name)
           (list 'basedir friend-basedir)
           (list 'languages friend-languages)
           (list 'src-patterns friend-src-patterns)
           (list 'ignore-patterns friend-ignore-patterns)
+          (list 'ignore-ag friend-ignore-ag)
           (list 'patterns-are-regex friend-patterns-are-regex))))
 
 (defvar lazy-index-processes (make-hash-table))
@@ -4226,82 +4227,82 @@ The compile command history search is implemented in `lazy-compile-read-command'
 (cl-defun lazy-index (&optional proj-name proj-alist (async t) (do-friends t) (quiet nil) (terminator nil) (parent nil) (old-files (make-hash-table :test 'equal)))
   "Regenerate the *file-index* buffer."
   (interactive)
-  (unless (get-buffer-window (get-buffer "*helm lazy*") 'visible)
-    (setq proj-alist (or proj-alist
-                         (lazy-find-alist proj-name)
-                         (lazy-find-alist lazy-name)
-                         (lazy-guess-alist)
-                         ))
-    (setq proj-name (cadr (assoc 'name proj-alist)))
-    (unless (and proj-name proj-alist)
-      (lazy-assert-proj)
-      (setq proj-name lazy-name))
-    (unless do-friends
-      (setq do-friends (and (string-equal proj-name lazy-name)
-                            (lazy-has-univ-arg))))
-    (let* ((process)
-           (friends (if (listp do-friends)
-                        do-friends
-                      (lazy-get-config-val 'friends proj-name nil proj-alist)))
-           (default-directory (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist)))
-           (start-dir (if lazy-file-index-relative-paths
-                          "."
-                        (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist))))
-           (find-exe (or (and (eq system-type 'windows-nt)
-                              (or (executable-find "c:/Program Files/Git/usr/bin/find")
-                                  (executable-find "gfind")))
-                         (and (not (eq system-type 'windows-nt))
-                              (executable-find "find"))))
-           (find-cmd (concat "\"" find-exe "\" \"" start-dir "\" -type f "
-                             (lazy-find-cmd-src-args (lazy-get-config-val 'src-patterns proj-name t proj-alist) proj-name proj-alist)
-                             (lazy-find-cmd-ignore-args (lazy-get-config-val 'ignore-patterns proj-name t proj-alist) proj-name proj-alist)))
-           (proc-name (concat "index-process-" proj-name)))
-      (when (lazy-get-config-val 'file-list-cache proj-name t proj-alist)
-        (lazy-fib-clear proj-name proj-alist)
-        (when (lazy-get-vcs-path proj-name)
-          (setq find-cmd (concat find-cmd " -not -path " (concat "'*/" (lazy-get-vcs-path proj-name) "/*'"))))
-        ;; - had a problem under windows where gfind could not read some file and then always exit with error, this hack
-        ;; works around that and makes the command always exit with 0, may be neccessary on linux at some point too
-        (when (eq system-type 'windows-nt)
-          (setq find-cmd (concat find-cmd  " 2> nul & exit /b 0")))
-        (with-current-buffer (get-buffer-create (lazy-fib-name proj-name proj-alist))
-          (buffer-disable-undo) ;; this is a large change we don't need to undo
-          (setq buffer-read-only nil))
-        (unless quiet
-          (message "lazy-index cmd: \"%s\"" find-cmd)
-          (message "Refreshing %s buffer..." (lazy-fib-name proj-name proj-alist)))
-        (setq process (start-process-shell-command proc-name (lazy-fib-name proj-name proj-alist) find-cmd))
-        (if parent
-            (push process (cadr (gethash parent lazy-index-processes)))
-          (puthash process (list (length friends) nil) lazy-index-processes)
-          (setq parent process))
-        (set-process-sentinel (get-process proc-name) `(lambda (p e)
-                                                         (let ((new-files (lazy-fib-cb p e ,proj-name (quote ,proj-alist) ,quiet (quote ,old-files)))
-                                                               (tuple (gethash ,parent lazy-index-processes)))
-                                                           (when (and tuple (quote ,terminator))
-                                                             (let ((friends-num (nth 0 tuple))
-                                                                   (friends-list (nth 1 tuple)))
-                                                               (when (and (eq (process-status ,parent) 'exit)
-                                                                          (or (not (quote ,do-friends))
-                                                                              (and (= friends-num (length friends-list))
-                                                                                   (cl-every (lambda (o) (eq (process-status o) 'exit)) friends-list))))
-                                                                 (remhash ,parent lazy-index-processes)
-                                                                 (funcall (quote ,terminator) ,proj-name (quote ,proj-alist) nil)))))))
-        (unless async
-          (while (or (string-equal (process-status process) "run")
-                     (equal (process-status process) 'run))
-            (sleep-for 0 4)))
-        (when do-friends
-          (dolist (friend friends)
-            (let* ((friend-alist (cond ((file-directory-p friend)
-                                        (lazy-make-temporary-friend-alist friend proj-name proj-alist))
-                                       ((file-exists-p friend)
-                                        nil)
-                                       (t
-                                        (lazy-find-alist friend))))
-                   (friend-name (or (cadr (assoc 'name friend-alist)) friend)))
-              (when friend-alist
-                (lazy-index friend-name friend-alist async nil quiet nil parent old-files)))))))))
+  (setq proj-alist (or proj-alist
+                       (lazy-find-alist proj-name)
+                       (lazy-find-alist lazy-name)
+                       (lazy-guess-alist)
+                       ))
+  (setq proj-name (cadr (assoc 'name proj-alist)))
+  (unless (and proj-name proj-alist)
+    (lazy-assert-proj)
+    (setq proj-name lazy-name))
+  (unless do-friends
+    (setq do-friends (and (string-equal proj-name lazy-name)
+                          (lazy-has-univ-arg))))
+
+  (let* ((process)
+         (friends (if (listp do-friends)
+                      do-friends
+                    (lazy-get-config-val 'friends proj-name nil proj-alist)))
+         (default-directory (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist)))
+         (start-dir (if lazy-file-index-relative-paths
+                        "."
+                      (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist))))
+         (find-exe (or (and (eq system-type 'windows-nt)
+                            (or (executable-find "c:/Program Files/Git/usr/bin/find")
+                                (executable-find "gfind")))
+                       (and (not (eq system-type 'windows-nt))
+                            (executable-find "find"))))
+         (find-cmd (concat "\"" find-exe "\" \"" start-dir "\" -type f "
+                           (lazy-find-cmd-src-args (lazy-get-config-val 'src-patterns proj-name t proj-alist) proj-name proj-alist)
+                           (lazy-find-cmd-ignore-args (lazy-get-config-val 'ignore-patterns proj-name t proj-alist) proj-name proj-alist)))
+         (proc-name (concat "index-process-" proj-name)))
+    (when (lazy-get-config-val 'file-list-cache proj-name t proj-alist)
+      (lazy-fib-clear proj-name proj-alist)
+      (when (lazy-get-vcs-path proj-name)
+        (setq find-cmd (concat find-cmd " -not -path " (concat "'*/" (lazy-get-vcs-path proj-name) "/*'"))))
+      ;; - had a problem under windows where gfind could not read some file and then always exit with error, this hack
+      ;; works around that and makes the command always exit with 0, may be neccessary on linux at some point too
+      (when (eq system-type 'windows-nt)
+        (setq find-cmd (concat find-cmd  " 2> nul & exit /b 0")))
+      (with-current-buffer (get-buffer-create (lazy-fib-name proj-name proj-alist))
+        (buffer-disable-undo) ;; this is a large change we don't need to undo
+        (setq buffer-read-only nil))
+      (unless quiet
+        (message "lazy-index cmd: \"%s\"" find-cmd)
+        (message "Refreshing %s buffer..." (lazy-fib-name proj-name proj-alist)))
+      (setq process (start-process-shell-command proc-name (lazy-fib-name proj-name proj-alist) find-cmd))
+      (if parent
+          (push process (cadr (gethash parent lazy-index-processes)))
+        (puthash process (list (length friends) nil) lazy-index-processes)
+        (setq parent process))
+      (set-process-sentinel (get-process proc-name) `(lambda (p e)
+                                                       (let ((new-files (lazy-fib-cb p e ,proj-name (quote ,proj-alist) ,quiet (quote ,old-files)))
+                                                             (tuple (gethash ,parent lazy-index-processes)))
+                                                         (when (and tuple (quote ,terminator))
+                                                           (let ((friends-num (nth 0 tuple))
+                                                                 (friends-list (nth 1 tuple)))
+                                                             (when (and (eq (process-status ,parent) 'exit)
+                                                                        (or (not (quote ,do-friends))
+                                                                            (and (= friends-num (length friends-list))
+                                                                                 (cl-every (lambda (o) (eq (process-status o) 'exit)) friends-list))))
+                                                               (remhash ,parent lazy-index-processes)
+                                                               (funcall (quote ,terminator) ,proj-name (quote ,proj-alist) nil)))))))
+      (unless async
+        (while (or (string-equal (process-status process) "run")
+                   (equal (process-status process) 'run))
+          (sleep-for 0 4)))
+      (when do-friends
+        (dolist (friend friends)
+          (let* ((friend-alist (cond ((file-directory-p friend)
+                                      (lazy-make-temporary-friend-alist friend proj-name proj-alist))
+                                     ((file-exists-p friend)
+                                      nil)
+                                     (t
+                                      (lazy-find-alist friend))))
+                 (friend-name (or (cadr (assoc 'name friend-alist)) friend)))
+            (when friend-alist
+              (lazy-index friend-name friend-alist async nil quiet nil parent old-files))))))))
 
 (defun lazy-fib-matches (&optional regex proj-name proj-alist)
   "Return list of files in *file-index* matching regex.
@@ -4910,7 +4911,7 @@ of them anyways.
 See also `lazy-guess-alist', `lazy-buildsystem-patterns' and `lazy-guess-basedir-from-vcs'."
   (let ((path (lazy-find-common-path-of-buffers (lazy-guess-buffers buffer lazy-incubator-paths))))
     (when path
-      (let ((found-paths (sort (loop for re in (lazy-buildsystem-patterns)
+      (let ((found-paths (sort (cl-loop for re in (lazy-buildsystem-patterns)
                                      collect (lazy-search-path re path lazy-incubator-paths lazy-common-project-subdir-names))
                                ;; - by using sort and sorting by length I get the longest path first, meaning the buildsystem
                                ;; highest in the hierachy
@@ -4925,7 +4926,7 @@ patterns defined in `lazy-vcs-path'.
 See also `lazy-guess-alist' and `lazy-guess-basedir-from-buildsystem'."
   (let* ((filename (buffer-file-name buffer))
          (found-paths (when filename
-                        (sort (loop for re in (mapcar 'regexp-quote (mapcar 'cdr lazy-vcs-path))
+                        (sort (cl-loop for re in (mapcar 'regexp-quote (mapcar 'cdr lazy-vcs-path))
                                     collect (lazy-search-path re (file-name-directory (expand-file-name filename)) lazy-incubator-paths lazy-common-project-subdir-names))
                               (lambda (a b) (> (length a) (length b)))))))
     (when (car found-paths)
@@ -4991,7 +4992,7 @@ See also `lazy-src-pattern-languages' and `lazy-src-pattern-table'"
          ;; guess buffers, collect files and set all-incubator, files from incubator
          ;; roots are ignored except the current buffers file, if all relevant files
          ;; we found are from incubator roots all-incubator will be true
-         (files (loop for buf in (lazy-guess-buffers (current-buffer) nil mode)
+         (files (cl-loop for buf in (lazy-guess-buffers (current-buffer) nil mode)
                       do (cond ((and (cl-some (lambda (ig)
                                                 (let ((file-name (buffer-file-name buf)))
                                                   (when file-name
@@ -5013,7 +5014,7 @@ See also `lazy-src-pattern-languages' and `lazy-src-pattern-table'"
     ;; get unique file endings from filenames and make regexp patterns
     (unless (and (= (length files) 1)
                  all-incubator)
-      (loop for f in files
+      (cl-loop for f in files
             if (let ((splits (split-string f "\\." t)))
                  (and (last splits)
                       (> (length splits) 1)))
@@ -5034,9 +5035,9 @@ See also `lazy-src-pattern-languages' and `lazy-src-pattern-table'"
   "Guess current compile command by looking for files in BASEDIR that match patterns
 defined in `lazy-buildsystems'."
   (let ((bsystem))
-    (loop for filename in (directory-files basedir)
+    (cl-loop for filename in (directory-files basedir)
           until (let ((r nil))
-                  (loop for bs in lazy-buildsystems
+                  (cl-loop for bs in lazy-buildsystems
                         until (setq r (when (assoc 'files (cadr bs))
                                         (cl-some (lambda (re) (string-match re filename)) (cadr (assoc 'files (cadr bs))))))
                         finally return (when r
@@ -5084,7 +5085,7 @@ defined in `lazy-buildsystems'."
                                                `(10 . ,name-from-buffer)))))
                                         ((basedir)
                                          (let ((name-from-basedir (car (reverse (split-string basedir "/" t)))))
-                                           (when (loop for ig in lazy-incubator-paths
+                                           (when (cl-loop for ig in lazy-incubator-paths
                                                        if (lazy-path-equal ig basedir)
                                                        return nil
                                                        finally return t)
@@ -5112,14 +5113,14 @@ defined in `lazy-buildsystems'."
                                                ))
                                (vcs . (((basedir)
                                         (let ((r nil))
-                                          (loop for f in (directory-files basedir)
+                                          (cl-loop for f in (directory-files basedir)
                                                 if (cl-some (lambda (y)
                                                               (string-equal (cdr y) f))
                                                             lazy-vcs-path)
                                                 return `(10 . ,(car (rassoc f lazy-vcs-path))))))))
                                ))
 
-(defun* lazy-guess-alist (&optional ask-basedir ask-name)
+(cl-defun lazy-guess-alist (&optional ask-basedir ask-name)
   ;; go through lazy-guess-functions and collect all symbols that are used
   ;; as arguments, we'll bind those in a closure around the execution
   ;; of the function bodies

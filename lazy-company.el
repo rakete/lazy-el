@@ -29,7 +29,7 @@
                               (nthcdr 3 imenu-alist))))
     (let ((case-fold-search nil))
       (cl-remove-duplicates
-       (loop for tuple in marker-list
+       (cl-loop for tuple in marker-list
              if (or (string-match (concat "[^ (]* \\(" prefix "[^ ]*\\)[ ]*(" ) (car tuple))
                     (string-match (concat "^\\(" prefix "[^ ]*\\)") (car tuple)))
              collect (match-string 1 (car tuple)))

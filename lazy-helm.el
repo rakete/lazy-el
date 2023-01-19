@@ -17,10 +17,11 @@
 ;; Free Software Foundation, Inc., 59 Temple Place - Suite 330,
 ;; Boston, MA 02111-1307, USA.
 
+(require 'cl-lib)
 (require 'lazy)
 
 (require 'helm-mode)
-(require 'helm-config)
+;;(require 'helm-config)
 (require 'helm-locate)
 (require 'helm-buffers)
 (require 'helm-files)
@@ -184,7 +185,7 @@
                                        (cdr cached-settings)
                                      (helm-ag--do-ag-searched-extensions))))
          (helm-ag--default-directory nil)
-         (helm-ag-ignore-patterns nil)
+         (helm-ag-ignore-patterns (lazy-get-config-val 'ignore-ag))
          (helm-ag-command-option "--all-types"))
     (when lazy-name
       (if (and arg helm-ag--default-target (or (lazy-buffer-p (current-buffer)) (lazy-friendly-buffer-p (current-buffer))))
@@ -196,11 +197,12 @@
                                             (arg
                                              helm-ag--default-target)))))
     (setq helm-ag--default-directory (car-safe helm-ag--default-target))
+    (helm-ag--init-state)
     (helm-ag--set-do-ag-option)
     (helm-ag--set-command-features)
     (helm-ag--save-current-context)
-    (helm-attrset 'name (helm-ag--helm-header helm-ag--default-directory)
-                  lazy-helm-source-do-ag)
+    (helm-set-attr 'name (helm-ag--helm-header helm-ag--default-directory)
+                   lazy-helm-source-do-ag)
     (helm :sources '(lazy-helm-source-do-ag)
           :input (helm-ag--insert-thing-at-point helm-ag-insert-at-point)
           :keymap helm-do-ag-map

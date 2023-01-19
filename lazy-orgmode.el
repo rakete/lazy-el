@@ -257,7 +257,7 @@ than the current one."
 (defvar lazy-org-map-parent-level nil)
 (defvar lazy-org-map-parent-point nil)
 (defvar lazy-org-map-project-recursion nil)
-(defun* lazy-org-map-entries (&key function
+(cl-defun lazy-org-map-entries (&key function
                                    (file nil)
                                    (match nil)
                                    (scope 'project-tree)
@@ -1137,7 +1137,7 @@ See also `lazy-org-entry-nearest-active'.
 ;; (lazy-org-find-save-location-marker "sauerbraten")
 ;;(cadr (assoc 'name (lazy-find-alist "cl-horde3d" t)))
 
-(defun* lazy-org-config-buffer (&optional (state :create) proj-name config-alist)
+(cl-defun lazy-org-config-buffer (&optional (state :create) proj-name config-alist)
   "The `lazy-config-buffer' function for opening a org-mode buffer for creating
 or editing a lazy project.
 
