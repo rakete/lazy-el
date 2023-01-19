@@ -131,7 +131,6 @@
     (setq word (substring-no-properties (or (thing-at-point lazy-thing-selector) ""))))
   (unless (gethash proj-name lazy-project-symbols)
     (lazy-update-symbols proj-name))
-  (gethash proj-name lazy-project-symbols)
   (let ((project-symbols )
         (sources '())
         (one-symbol-match nil))
