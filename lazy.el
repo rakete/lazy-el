@@ -976,7 +976,7 @@ all others filtered."
   "Apply CONDP to all elements of LST, return nil as soon as
 CONDP yields nil."
   (let ((b t))
-    (dolist (x lst b)
+    (cl-dolist (x lst b)
       (unless b
         (cl-return-from "lazy-all" nil))
        (setq b (funcall condp x)))))
@@ -1228,7 +1228,7 @@ to verify the evaluated configuration.
 See also `lazy-def'."
   (interactive)
   (let* ((evaluated-config-alist `((name ,proj-name)))
-         (result-alist (dolist (cv config-alist evaluated-config-alist)
+         (result-alist (cl-dolist (cv config-alist evaluated-config-alist)
                          (let* ((key (car cv))
                                 ;; super behaves like a keyword that can be used within a configuration
                                 ;; to refer to the parents value
@@ -1716,7 +1716,7 @@ using the functions defined in `lazy-required-vars'.
 See also `lazy-check-optional-vars'"
   (unless proj-alist
     (setq proj-alist (lazy-find-alist proj-name)))
-  (dolist (v lazy-required-vars)
+  (cl-dolist (v lazy-required-vars)
     (let* ((config-symbol (car v))
            (config-value (cadr (assoc config-symbol proj-alist)))
            (config-checks (cdr v)))
@@ -1730,7 +1730,7 @@ See also `lazy-check-optional-vars'"
 using the functions defined in `lazy-optional-vars'.
 
 See also `lazy-check-required-vars'"
-  (dolist (v lazy-optional-vars)
+  (cl-dolist (v lazy-optional-vars)
     (let* ((config-symbol (car v))
            (config-value (cadr (assoc config-symbol proj-alist)))
            (config-checks (cdr v)))
@@ -1940,7 +1940,7 @@ See also `lazy-close-files', `lazy-close-friends', `lazy-project-history'
         (dirty nil)
         (zeitgeist-prevent-send t)
         (continue-prevent-save t))
-    (dolist (b (append (lazy-file-buffers) (lazy-dired-buffers)))
+    (cl-dolist (b (append (lazy-file-buffers) (lazy-dired-buffers)))
       (cond
        ((string-equal (buffer-name b) "*scratch*")
         nil)
@@ -2004,7 +2004,7 @@ See also `lazy-friendly-buffer-p'."
     (lazy-assert-proj)
     (setq proj-name lazy-name))
   (let ((buffers nil))
-    (dolist (b (buffer-list))
+    (cl-dolist (b (buffer-list))
       (when (lazy-buffer-p b proj-name) (push b buffers)))
     buffers))
 
@@ -2046,7 +2046,7 @@ or PROJ-NAME."
   (let ((b (get-buffer-create "*lazy: status*")))
     (with-current-buffer b
       (kill-region (point-min) (point-max))
-      (dolist (v (append lazy-required-vars lazy-optional-vars))
+      (cl-dolist (v (append lazy-required-vars lazy-optional-vars))
         (insert (format "%-32s = %s\n" (symbol-name (car v)) (lazy-get-config-val (car v) proj-name t)))))
     (when (not (eq b (current-buffer)))
       (display-buffer b)))
@@ -2061,7 +2061,7 @@ or PROJ-NAME."
   "Write the list of `files' to a file"
   (when (lazy-get-config-val 'open-files-cache)
     (with-temp-buffer
-      (dolist (f (cl-remove-duplicates (mapcar (lambda (b) (lazy-buffer-name b)) (lazy-buffers)) :test 'string-equal))
+      (cl-dolist (f (cl-remove-duplicates (mapcar (lambda (b) (lazy-buffer-name b)) (lazy-buffers)) :test 'string-equal))
         (when f
           (unless (string-equal (lazy-get-config-val 'etags-file) f)
             (insert f "\n"))))
@@ -2185,11 +2185,11 @@ statements in there. You need to manually copy, paste and modify those yourself.
       ;; - go throuhg gtags-conf line by line and look at each line if it is either a new parser, or a langmap definition,
       ;; a parser means we just change activeparser to that new parser, a langmap means we parse what language and what
       ;; extensions it defines and put those in parserbins, in the currently active parser hashmap
-      (dolist (line (split-string (buffer-string) "\n" t))
+      (cl-dolist (line (split-string (buffer-string) "\n" t))
         (unless (string-equal (substring line 0 1) "#")
           (cond ((string-match "[\t ]+:langmap=\\(.*\\)" line)
                  (let ((langmap (match-string 1 line)))
-                   (dolist (definition (split-string langmap "," t))
+                   (cl-dolist (definition (split-string langmap "," t))
                      (let* ((langext (split-string definition ":" t))
                             (lang (replace-regexp-in-string "\\\\" "" (downcase (first langext))))
                             (ext (second langext))
@@ -2222,7 +2222,7 @@ statements in there. You need to manually copy, paste and modify those yourself.
                                                      (replace-regexp-in-string "#" "sharp" raw-lang)))))
                 (puthash lang (sort (cl-remove-duplicates (append (gethash lang lang-systems) systems))
                                     (lambda (a b) (<= (cl-position b ordering) (cl-position a ordering)))) lang-systems)
-                (dolist (ext ext-list)
+                (cl-dolist (ext ext-list)
                   (let* ((lang-ext (concat lang "-" ext))
                          (ext-regexes (mapcar (lambda (e) (concat ".*" (regexp-quote (concat "." e)))) ext-list))
                          (new-regexes (cl-remove-duplicates (append (cddr (gethash lang-ext src-patterns)) ext-regexes) :test 'equal))
@@ -2310,11 +2310,11 @@ See also `lazy-language-tag-systems', `lazy-setup-tags', `lazy-jump-definition' 
     ;; and put the file in tagging system bins (the sys-files hashmap)
     ;; - the nested loops look like the could be switched, but the language of a file needs to detected
     ;; first, so that we can then decide which tagging systems to use for that language
-    (dolist (f files)
+    (cl-dolist (f files)
       (unless (cl-some (lambda (regexp) (string-match regexp f)) (lazy-get-config-val 'ignore-gtags proj-name proj-alist))
         (let ((lang (car-safe (lazy-src-pattern-languages (list f)))))
           (push lang languages)
-          (dolist (sys (cdr (assoc lang lazy-language-tag-systems)))
+          (cl-dolist (sys (cdr (assoc lang lazy-language-tag-systems)))
             (cond ((and (or (eq sys 'gtags+rtags))
                         gtags-executable
                         global-executable
@@ -2491,8 +2491,8 @@ I implemented it mainly to execute multiple gtags calls in the background, each 
 (defun lazy-src-pattern-tag-systems (src-patterns)
   "Takes a list of src patterns (like \"*.cpp\") and returns tag systems that can parse those."
   (let ((systems '()))
-    (dolist (lang (lazy-src-pattern-languages src-patterns))
-      (dolist (sys (cdr (assoc lang lazy-language-tag-systems)))
+    (cl-dolist (lang (lazy-src-pattern-languages src-patterns))
+      (cl-dolist (sys (cdr (assoc lang lazy-language-tag-systems)))
         (add-to-list 'systems sys)))
     systems))
 
@@ -2776,7 +2776,7 @@ See also `lazy-select-jumps' and `lazy-jump-definition'."
         (buffer-position-cache (make-hash-table :test 'equal :size 10))
         (obarray-counter 0)
         (case-fold-search nil))
-    (dolist (jump jumps)
+    (cl-dolist (jump jumps)
       (let* ((jump-word (plist-get jump :word))
              (locator (plist-get jump :locator))
              (jump-path (when (stringp (plist-get jump :file-path))
@@ -2856,7 +2856,7 @@ See also `lazy-select-jumps' and `lazy-jump-definition'."
           ;; - buffer with same language? more score
           (when (and jump-path
                      buffer-languages)
-            (dolist (lang buffer-languages)
+            (cl-dolist (lang buffer-languages)
               (when (cl-find lang (lazy-src-pattern-languages (list jump-path)))
                 (setq score (+ score inc)))))
 
@@ -2970,7 +2970,7 @@ and `lazy-jump-definition'."
           (lazy-jump-list-mode)
           (setq tabulated-list-entries nil)
           (let ((id 0))
-            (dolist (jump (lazy-sort-jumps jump-list))
+            (cl-dolist (jump (lazy-sort-jumps jump-list))
               (let ((locator (plist-get jump :locator))
                     (file-path (plist-get jump :file-path))
                     (line-number (plist-get jump :line-number))
@@ -3474,12 +3474,12 @@ See also `lazy-find-symbol'."
             (merged-jumps nil))
         (when (or (cl-position 'elisp (lazy-src-pattern-languages (list (buffer-file-name))))
                   (cl-position 'elisp (lazy-get-config-val 'languages)))
-          (dolist (jump obarray-jumps)
+          (cl-dolist (jump obarray-jumps)
             (puthash (plist-get jump :word) jump obarray-map))
           (maphash (lambda (k v)
                      (push v merged-jumps))
                    obarray-map))
-        (dolist (jump (apply #'append rest))
+        (cl-dolist (jump (apply #'append rest))
           (let* ((keyword (plist-get jump :word))
                  (obarray-jump (gethash keyword obarray-map)))
             (when (not obarray-jump)
@@ -3496,12 +3496,12 @@ See also `lazy-find-symbol' and `lazy-merge-obarray-jumps'."
             (merged-jumps nil))
         (when (or (cl-position 'elisp (lazy-src-pattern-languages (list (buffer-file-name))))
                   (cl-position 'elisp (lazy-get-config-val 'languages)))
-          (dolist (jump jumps)
+          (cl-dolist (jump jumps)
             (puthash (concat (plist-get jump :word) (format "%s" (plist-get jump :line-number))) jump obarray-map))
           (maphash (lambda (k v)
                      (push v merged-jumps))
                    obarray-map))
-        (dolist (jump (apply #'append rest))
+        (cl-dolist (jump (apply #'append rest))
           (let* ((keyword (concat (plist-get jump :word) (format "%s" (plist-get jump :line-number))))
                  (obarray-jump (gethash keyword obarray-map)))
             (when (not obarray-jump)
@@ -4155,9 +4155,9 @@ The compile command history search is implemented in `lazy-compile-read-command'
                (rename-buffer (lazy-fib-name proj-name proj-alist))
                (set-buffer-modified-p nil)
                (setq buffer-read-only t))
-             (dolist (recent-file recentf-list)
+             (cl-dolist (recent-file recentf-list)
                (puthash recent-file t recentf-hash))
-             (dolist (file (hash-table-keys (lazy-unique-files proj-name)))
+             (cl-dolist (file (hash-table-keys (lazy-unique-files proj-name)))
                (when (or (not (hash-table-p old-files))
                          (not (gethash file old-files))
                          (gethash file recentf-hash))
@@ -4184,7 +4184,7 @@ The compile command history search is implemented in `lazy-compile-read-command'
             (regex-or-name-arg (if (lazy-get-config-val 'patterns-are-regex proj-name t proj-alist)
                                    "-regex"
                                  "-name")))
-        (dolist (pat src-patterns)
+        (cl-dolist (pat src-patterns)
           (setq name-expr (concat name-expr " " regex-or-name-arg " \"" pat "\" -o ")))
         (concat (if (string-match "-o $"  name-expr)
                     (replace-match "" t t name-expr)
@@ -4293,7 +4293,7 @@ The compile command history search is implemented in `lazy-compile-read-command'
                    (equal (process-status process) 'run))
           (sleep-for 0 4)))
       (when do-friends
-        (dolist (friend friends)
+        (cl-dolist (friend friends)
           (let* ((friend-alist (cond ((file-directory-p friend)
                                       (lazy-make-temporary-friend-alist friend proj-name proj-alist))
                                      ((file-exists-p friend)
@@ -4338,7 +4338,7 @@ Returned file paths are relative to the project's basedir."
 (defun lazy-sort-files-recentf (files)
   (let ((recentf-map (make-hash-table :test 'equal))
         (i 0))
-    (dolist (recentf-file recentf-list)
+    (cl-dolist (recentf-file recentf-list)
       (puthash recentf-file i recentf-map)
       (setq i (+ i 1)))
     (sort files (lambda (a b)
@@ -4367,7 +4367,7 @@ Returned file paths are relative to the project's basedir."
   (let ((proj-files (lazy-files proj-name nil t))
         (friendly-files (lazy-friendly-files proj-name nil t))
         (unique-files (make-hash-table :test 'equal)))
-    (dolist (file (append proj-files friendly-files))
+    (cl-dolist (file (append proj-files friendly-files))
       (puthash file t unique-files))
     unique-files))
 
@@ -4426,7 +4426,7 @@ See also `lazy-buffer-p'."
               (not (buffer-file-name buf)))
     (let ((buf-file-name (lazy-buffer-name buf)))
       (cl-block "find-match-loop"
-        (dolist (friend (lazy-get-config-val 'friends proj-name t))
+        (cl-dolist (friend (lazy-get-config-val 'friends proj-name t))
           (let* ((friend-alist (lazy-find-alist friend)))
             (cond ((and (listp friend-alist) (> (length friend-alist) 0))
                    (when (lazy-path-equal (lazy-dirname buf-file-name) (lazy-get-config-val 'basedir nil t friend-alist))
@@ -4450,7 +4450,7 @@ See also `lazy-buffer-p'."
     (lazy-assert-proj)
     (setq proj-name lazy-name))
   (let ((buffers nil))
-    (dolist (b (buffer-list))
+    (cl-dolist (b (buffer-list))
       (when (lazy-friendly-buffer-p b proj-name)
         (push b buffers)))
     buffers))
@@ -4471,7 +4471,7 @@ See also `lazy-buffer-p'."
   (when (lazy-get-config-val 'open-friends-cache)
     (let ((zeitgeist-prevent-send t))
       (with-temp-buffer
-        (dolist (f (cl-remove-duplicates (mapcar (lambda (b) (lazy-buffer-name b)) (lazy-friendly-buffers)) :test #'string-equal))
+        (cl-dolist (f (cl-remove-duplicates (mapcar (lambda (b) (lazy-buffer-name b)) (lazy-friendly-buffers)) :test #'string-equal))
           (when f
             (unless (string-equal (lazy-get-config-val 'etags-file) f)
               (insert f "\n"))))
@@ -4510,7 +4510,7 @@ See also `lazy-buffer-p'."
         (dirty nil)
         (zeitgeist-prevent-send t)
         (continue-prevent-save t))
-    (dolist (b (append (lazy-friendly-buffers) (lazy-friendly-dired-buffers)))
+    (cl-dolist (b (append (lazy-friendly-buffers) (lazy-friendly-dired-buffers)))
       (cond
        ((buffer-modified-p b)
         (push (buffer-name) dirty))
@@ -4676,7 +4676,7 @@ See also `lazy-index' and `lazy-update-tags'."
                          (lazy-buffer-p buffer proj-name proj-alist)
                          (lazy-friendly-buffer-p buffer proj-name)))
             (let ((do-friends '()))
-              (dolist (friend (lazy-get-config-val 'friends proj-name t proj-alist))
+              (cl-dolist (friend (lazy-get-config-val 'friends proj-name t proj-alist))
                 (let* ((friend-alist (cond ((file-directory-p friend)
                                             (lazy-make-temporary-friend-alist friend proj-name proj-alist))
                                            (t
@@ -4775,7 +4775,7 @@ the last `lazy-jump' call jumped to."
 
 BUFFERS is optional, (buffer-list) is used instead when it is not specified."
   (let* ((common-path 'undefined)
-         (result (dolist (buf
+         (cl-result (cl-dolist (buf
                           (or buffers (buffer-list))
                           ;; at the end of the dolist loop over the buffers transform the of strings in common-path
                           ;; into a real path by interspersing "/" between then, then returning it as result
@@ -4936,7 +4936,7 @@ See also `lazy-guess-alist' and `lazy-guess-basedir-from-buildsystem'."
   "Examines already defined projects looking for one which has a basedir matching the path
 of BUFFER and returns that as guessed basedir."
   (let ((basedirs '()))
-    (dolist (proj-name (lazy-find-projects-owning-buffer buffer))
+    (cl-dolist (proj-name (lazy-find-projects-owning-buffer buffer))
       (let ((basedir (file-name-as-directory (lazy-get-config-val 'basedir proj-name t))))
         (unless (cl-some (apply-partially 'string-equal basedir) basedirs)
           (add-to-list 'basedirs basedir))))
@@ -5139,17 +5139,17 @@ defined in `lazy-buildsystems'."
           (start-time (current-time)))
       (cl-labels ((best-result (rs)
                                (let (bestscore bestresult)
-                                 (dolist (tuple rs bestresult)
+                                 (cl-dolist (tuple rs bestresult)
                                    (when (or (not bestscore)
                                              (> (car tuple) bestscore))
                                      (setq bestscore (car tuple)
                                            bestresult (cdr tuple))))))
                   (guess-symbol (sym)
                                 (let ((scores '()))
-                                  (dolist (flist (cdr (assoc sym lazy-guess-functions)) (best-result scores))
+                                  (cl-dolist (flist (cdr (assoc sym lazy-guess-functions)) (best-result scores))
                                     (let ((args (cl-first flist))
                                           (expr (cl-second flist)))
-                                      (dolist (arg args)
+                                      (cl-dolist (arg args)
                                         ;; check if neccessary symbols are set, this sets a symbol after guessing it so
                                         ;; we do not have to guess something twice
                                         (when (eq (symbol-value arg) 'undefined)
@@ -5160,7 +5160,7 @@ defined in `lazy-buildsystems'."
                                                         (backtrace)
                                                         (cl-return-from "lazy-guess-alist" nil)))))
                                         (when r (add-to-list 'scores r))))))))
-        (dolist (varchecks (append lazy-required-vars lazy-optional-vars))
+        (cl-dolist (varchecks (append lazy-required-vars lazy-optional-vars))
           ;; for each var check if it is already set, if not use guess-symbol to guess it
           ;; since only args from lazy-guess-functions are defined by the alet, not all
           ;; possible project symbols, we have to check if a var is bound before setting it

@@ -71,7 +71,7 @@
 (defun lazy-sourcemarker-restore-all ()
   (interactive)
   (lazy-assert-proj)
-  (dolist (buf (append (lazy-file-buffers) (lazy-friendly-file-buffers)))
+  (cl-dolist (buf (append (lazy-file-buffers) (lazy-friendly-file-buffers)))
     (with-current-buffer buf
       (lazy-sourcemarker-restore))))
 
@@ -88,7 +88,7 @@
 (defun lazy-sourcemarker-save-all ()
   (interactive)
   (let* ((results '())
-         (sorted-buffers (dolist (buf (append (lazy-buffers) (lazy-friendly-buffers))
+         (cl-sorted-buffers (cl-dolist (buf (append (lazy-buffers) (lazy-friendly-buffers))
                                       (sort results (lambda (a b) (< (car a) (car b)))))
                            (when (buffer-file-name buf)
                              (when (eq buf (current-buffer))
@@ -101,7 +101,7 @@
                                 (if timestamp
                                     (add-to-list 'results `(,timestamp . ,buf))
                                   (add-to-list 'results `(-1 . ,buf)))))))))
-    (dolist (tuple sorted-buffers)
+    (cl-dolist (tuple sorted-buffers)
       (with-current-buffer (cdr tuple)
         (lazy-sourcemarker-save)))
     (lazy-sourcemarker-write-project-db)))
@@ -110,7 +110,7 @@
   (lazy-assert-proj)
   (let* ((results '())
          (buffer (progn
-                   (dolist (buf (append (lazy-buffers)))
+                   (cl-dolist (buf (append (lazy-buffers)))
                      (when (buffer-file-name buf)
                        (lazy-sourcemarker-with-project-db
                         (let* ((filename (buffer-file-name buf))
@@ -175,8 +175,8 @@
 
      (add-hook 'lazy-before-files-load-hook (lambda ()
                                               (remove-hook 'find-file-hook 'lazy-sourcemarker-restore)
-                                              (dolist (proj-name (append (list lazy-name) (lazy-get-config-val 'friends)))
-                                                (dolist (buf (append (lazy-file-buffers proj-name)))
+                                              (cl-dolist (proj-name (append (list lazy-name) (lazy-get-config-val 'friends)))
+                                                (cl-dolist (buf (append (lazy-file-buffers proj-name)))
                                                   (when buf
                                                     (with-current-buffer buf
                                                       (lazy-sourcemarker-save)))))
