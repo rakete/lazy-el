@@ -5090,7 +5090,7 @@ defined in `lazy-buildsystems'."
                                                        return nil
                                                        finally return t)
                                              (when (lazy-find-alist name-from-basedir)
-                                               (setq name-from-basedir (mapconcat #'identity (reverse (subseq (reverse (split-string basedir "/" t)) 0 2)) "-")))
+                                               (setq name-from-basedir (mapconcat #'identity (reverse (cl-subseq (reverse (split-string basedir "/" t)) 0 2)) "-")))
                                              `(100 . ,name-from-basedir))))))
                                (src-patterns . (((basedir mode)
                                                  (lazy-guess-src-patterns-from-basedir-and-mode basedir mode))))

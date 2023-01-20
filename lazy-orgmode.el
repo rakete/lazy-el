@@ -144,7 +144,7 @@ Also tries to find org files with projects in files from `recentf-list'."
 
 ;; (defun lazy-org-find-recent-org-files ()
 ;;   (let ((lazy-files (lazy-org-files-containing-projects)))
-;;     (remove-if (lambda (recent-file)
+;;     (cl-remove-if (lambda (recent-file)
 ;;                  (or (not (string-equal (file-name-extension recent-file) "org"))
 ;;                      (cl-some (lambda (proj-file)
 ;;                              (string-equal (file-name-nondirectory recent-file)

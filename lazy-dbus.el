@@ -19,6 +19,7 @@
 
 (require 'lazy)
 
+(require 'cl-lib)
 (require 'dbus)
 
 (defvar lazy-dbus-node "LazyEl")
@@ -119,7 +120,7 @@
 (defun lazy-dbus-project-names ()
   (mapcar #'encode-umlauts (lazy-project-names)))
 
-(defun* lazy-dbus-project-load (name)
+(cl-defun lazy-dbus-project-load (name)
   (condition-case nil
       (lazy-load name)
     (error (return-from "lazy-dbus-project-load" (list :boolean nil))))
