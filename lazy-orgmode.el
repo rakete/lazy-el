@@ -104,14 +104,14 @@ Also tries to find org files with projects in files from `recentf-list'."
            (directory-table (make-hash-table :test 'equal)))
       (with-temp-buffer
         (call-process-shell-command find-cmd nil t)
-        (loop for cache in (split-string (buffer-string) "\n" t)
-              do (with-temp-buffer
-                   (insert-file-contents cache)
-                   (loop for line in (split-string (buffer-string) "\n" t)
-                         do (unless (gethash (lazy-dirname line) directory-table)
-                              (puthash (lazy-dirname line) t directory-table)
-                              (cl-dolist (org-file (condition-case nil (directory-files (lazy-dirname line) t ".*\.org$") (error nil)))
-                                (add-to-list 'org-files org-file))))))))
+        (cl-loop for cache in (split-string (buffer-string) "\n" t)
+                 do (with-temp-buffer
+                      (insert-file-contents cache)
+                      (cl-loop for line in (split-string (buffer-string) "\n" t)
+                               do (unless (gethash (lazy-dirname line) directory-table)
+                                    (puthash (lazy-dirname line) t directory-table)
+                                    (cl-dolist (org-file (condition-case nil (directory-files (lazy-dirname line) t ".*\.org$") (error nil)))
+                                      (add-to-list 'org-files org-file))))))))
     (cl-remove-if (lambda (x)
                  (or (not (file-exists-p x))
                      (eq x nil)))
@@ -311,7 +311,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
                                    (find-file-noselect project-file)
                                  (progn
                                    (message (format "lazy-org: No such file %s" project-file))
-                                   (return-from "lazy-org-map-entries" nil))))
+                                   (cl-return-from "lazy-org-map-entries" nil))))
         ;; - call set-auto-mode when buffer not in org-mode so that org-complex-heading-regexp-format
         ;; gets defined
         (unless (eq major-mode 'org-mode)
@@ -337,7 +337,7 @@ will be used internally. You can specify a MATCH to be used in that case with:
                              ((and match (listp match) (eq (car match) 're))
                               (regexp-quote (cadr match)))
                              ((and match (listp match) (eq (car match) 'property) (= (cl-list-length match) 3))
-                              (concat "^[ \t]*:" (or (second match) "[^:]+") ":[ \t]*\\(" (or (third match) ".*") "\\)"))
+                              (concat "^[ \t]*:" (or (cl-second match) "[^:]+") ":[ \t]*\\(" (or (cl-third match) ".*") "\\)"))
                              ((and match (listp match) (functionp (car match)))
                               (funcall (car match) (cadr match)))
                              ((stringp match)
@@ -358,9 +358,9 @@ will be used internally. You can specify a MATCH to be used in that case with:
                 (unless (when skip-project-functions
                           (save-excursion
                             (org-back-to-heading t)
-                            (loop for f in skip-project-functions
-                                  until (funcall f)
-                                  finally return (funcall f))))
+                            (cl-loop for f in skip-project-functions
+                                     until (funcall f)
+                                     finally return (funcall f))))
                   (let* ((lazy-org-map-entry-name (save-excursion
                                        (org-back-to-heading t)
                                        (beginning-of-line)
@@ -1085,16 +1085,16 @@ See also `lazy-org-entry-nearest-active'.
           (insert headline)
         (insert proj-name))
       (org-set-property "mkp_name" (prin1-to-string proj-name))
-      (loop for k in (append lazy-required-vars lazy-optional-vars)
-            if (not (or (eq (car k) 'name)
-                        (or (lazy-any (lambda (j) (eq (car k) j)) lazy-internal-vars)
-                            insert-internal)))
-            do (when (or insert-undefined
-                         (assoc (car k) config-alist))
-                 (let* ((prop (cdr (assoc (car k) (lazy-org-symbol-table))))
-                        (val (cadr (assoc (car k) config-alist))))
-                   (org-entry-delete (point) (upcase prop))
-                   (org-set-property prop (prin1-to-string val)))))
+      (cl-loop for k in (append lazy-required-vars lazy-optional-vars)
+               if (not (or (eq (car k) 'name)
+                           (or (lazy-any (lambda (j) (eq (car k) j)) lazy-internal-vars)
+                               insert-internal)))
+               do (when (or insert-undefined
+                            (assoc (car k) config-alist))
+                    (let* ((prop (cdr (assoc (car k) (lazy-org-symbol-table))))
+                           (val (cadr (assoc (car k) config-alist))))
+                      (org-entry-delete (point) (upcase prop))
+                      (org-set-property prop (prin1-to-string val)))))
       (point-marker))))
 
 ;; (setq lazy-org-config-save-location "~/org/projects.org")
@@ -1115,14 +1115,14 @@ See also `lazy-org-entry-nearest-active'.
                               (cond ((looking-at (format org-complex-heading-regexp-format headline))
                                      (progn
                                        (org-set-property "mkp_name" (prin1-to-string proj-name))
-                                       (loop for k in (append lazy-required-vars lazy-optional-vars)
-                                             if (not (or (eq (car k) 'name)
-                                                         (lazy-any (lambda (j) (eq (car k) j)) lazy-internal-vars)))
-                                             do (when (assoc (car k) config-alist)
-                                                  (let* ((prop (cdr (assoc (car k) (lazy-org-symbol-table))))
-                                                         (val (cadr (assoc (car k) config-alist))))
-                                                    (org-entry-delete (point) (upcase prop))
-                                                    (org-set-property prop (prin1-to-string val)))))
+                                       (cl-loop for k in (append lazy-required-vars lazy-optional-vars)
+                                                if (not (or (eq (car k) 'name)
+                                                            (lazy-any (lambda (j) (eq (car k) j)) lazy-internal-vars)))
+                                                do (when (assoc (car k) config-alist)
+                                                     (let* ((prop (cdr (assoc (car k) (lazy-org-symbol-table))))
+                                                            (val (cadr (assoc (car k) config-alist))))
+                                                       (org-entry-delete (point) (upcase prop))
+                                                       (org-set-property prop (prin1-to-string val)))))
                                        (point-marker)))
                                     ((looking-at org-complex-heading-regexp)
                                      (org-end-of-subtree)
@@ -1151,7 +1151,7 @@ See also `lazy-define-backend', `lazy-org-buffer' and `lazy-config-buffer'."
   (unless proj-name
     (lazy-assert-proj)
     (setq proj-name lazy-name))
-  (case state
+  (cl-case state
     (:create
      (when (and (boundp 'org-complex-heading-regexp)
                 (if (eq major-mode 'org-mode)

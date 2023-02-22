@@ -123,7 +123,7 @@
 (cl-defun lazy-dbus-project-load (name)
   (condition-case nil
       (lazy-load name)
-    (error (return-from "lazy-dbus-project-load" (list :boolean nil))))
+    (error (cl-return-from "lazy-dbus-project-load" (list :boolean nil))))
   (list :boolean t))
 
 (defun lazy-dbus-project-unload ()

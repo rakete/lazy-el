@@ -2191,8 +2191,8 @@ statements in there. You need to manually copy, paste and modify those yourself.
                  (let ((langmap (match-string 1 line)))
                    (cl-dolist (definition (split-string langmap "," t))
                      (let* ((langext (split-string definition ":" t))
-                            (lang (replace-regexp-in-string "\\\\" "" (downcase (first langext))))
-                            (ext (second langext))
+                            (lang (replace-regexp-in-string "\\\\" "" (downcase (cl-first langext))))
+                            (ext (cl-second langext))
                             (activebin (gethash activeparser parserbins)))
                        (when activebin
                          (puthash lang ext (gethash activeparser parserbins)))))))
