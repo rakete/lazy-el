@@ -162,12 +162,17 @@
   (helm-ag--init-state)
   (let* ((cached-settings (when lazy-name (gethash lazy-name lazy-helm-do-ag-per-project-settings)))
          (helm-ag--default-directory (or basedir default-directory))
-         (helm-ag--default-target (cond ((and lazy-name (buffer-file-name (current-buffer)) (not (or (lazy-buffer-p (current-buffer)) (lazy-friendly-buffer-p (current-buffer)))))
+         (helm-ag--default-target (cond ((and lazy-name
+                                              (buffer-file-name (current-buffer))
+                                              (not (or (lazy-buffer-p (current-buffer))
+                                                       (lazy-friendly-buffer-p (current-buffer))
+                                                       )))
                                          (list default-directory))
                                         ((and lazy-name cached-settings)
                                          (car-safe cached-settings))
                                         ((and lazy-name)
-                                         (list (condition-case nil (lazy-get-config-val 'basedir) (error default-directory))))
+                                         (list (condition-case nil (lazy-get-config-val 'basedir nil t (lazy-guess-alist))
+                                                 (error default-directory))))
                                         (targets targets)
                                         ((and (helm-ag--windows-p) basedir)
                                          (list basedir))
@@ -179,6 +184,7 @@
                                             "Search in file(s): "
                                             :default default-directory
                                             :marked-candidates t :must-match t)))))
+         (helm-ag-ignore-patterns (lazy-get-config-val 'ignore-ag))
          (helm-do-ag--extensions (when helm-ag--default-target
                                    (helm-ag--do-ag-searched-extensions)))
          (one-directory-p (helm-do-ag--target-one-directory-p
