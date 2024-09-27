@@ -74,7 +74,7 @@
 
 (defun lazy-helm-build-friendly-files-source (&optional cached)
   (helm-build-sync-source "Lazy friendly files"
-    :candidates (if cached (lazy-sort-files-recentf (lazy-friendly-files)) #'lazy-friendly-files)
+    :candidates (if cached (lazy-friendly-files) #'lazy-friendly-files)
     :keymap helm-find-files-map
     :action helm-type-file-actions
     :mode-line (list "File(s)" helm-mode-line-string)))
@@ -101,8 +101,6 @@
   (interactive)
   (helm :sources '(helm-source-lazy-files
                    helm-source-lazy-friendly-files
-                   helm-source-lazy-todos
-                   helm-source-lazy-projects
                    helm-source-buffers-list
                    )
         :buffer "*helm lazy*"
@@ -197,11 +195,9 @@
     (helm-ag--save-current-context)
     (if (or (helm-ag--windows-p) (not one-directory-p)) ;; Path argument must be specified on Windows
         (helm-do-ag--helm default-input search-this-file)
-      (print helm-ag--default-target)
       (let* ((helm-ag--default-directory
               (file-name-as-directory (car helm-ag--default-target)))
              (helm-ag--default-target nil))
-        (print helm-ag--default-directory)
         (helm-do-ag--helm default-input search-this-file)))))
 
 ;; (defun lazy-helm-do-ag (&optional arg)
