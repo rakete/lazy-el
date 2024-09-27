@@ -2941,7 +2941,7 @@ and `lazy-jump-definition'."
     (setq invoke-window (get-buffer-window (current-buffer))))
   (let ((n (length jump-list)))
     (when (> n 0)
-      (ring-insert xref--marker-ring (point-marker))
+      (xref-push-marker-stack (point-marker))
       (if (= n 1)
           (let* ((jump (car jump-list))
                  (locator (plist-get jump :locator))
@@ -3167,14 +3167,14 @@ See also `lazy-jump-overlays', `lazy-jump-list-mode' and `lazy-jump-action'."
           ;; - recentering the window on the highlighted jump location
           (with-selected-window (get-buffer-window (marker-buffer marker))
             (recenter))
-          (let ((ov (make-overlay (point-at-bol) (point-at-bol 2))))
+          (let ((ov (make-overlay (line-beginning-position) (line-beginning-position 2))))
             ;; - put 'delete-buffer property in overlay to either the buffer returned
             ;; by lazy-jump-cleanup-highlight or the current buffer
             ;; - lazy-jump-cleanup-highlight will look at this property and decide if
             ;; the saved buffer should be killed
             (when (or (not existing-buffer) delete-buffer)
               (overlay-put ov 'delete-buffer (or delete-buffer (current-buffer))))
-            (overlay-put ov 'pop-tag-marker (ring-ref xref--marker-ring 0))
+            ;;(overlay-put ov 'pop-tag-marker (ring-ref (xref-window-local-history) 0))
             (overlay-put ov 'face `((:background ,highlight-color)))
             (overlay-put ov 'jump-highlight 'view)
             (push ov lazy-jump-overlays)))))))
@@ -4696,6 +4696,7 @@ See also `lazy-index' and `lazy-update-tags'."
                                        (time-less-p (gethash proj-name lazy-project-timestamp (current-time)) (lazy-file-modtime cache-file)))
                               (lazy-unique-files proj-name)))
                           )))
+
           (setq lazy-after-save-update-in-progress nil))
       (error (progn
                (setq lazy-after-save-update-in-progress nil)
