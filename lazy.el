@@ -24,7 +24,6 @@
 
 (require 'thingatpt)
 (require 'cl-lib)
-;;(require 'etags-table)
 (require 'compile)
 (require 'color)
 (require 'imenu)
@@ -102,7 +101,6 @@ See also `lazy-optional-vars' and `lazy-var-before-get-functions'.")
                              (ignore-patterns . (listp))
                              (ignore-ag . (listp))
                              (ignore-symbols . (listp))
-                             (ignore-gtags . (listp))
                              (vcs . (symbolp))
                              (compile-cmd . ((lambda (v) (or (functionp v) (commandp v) (stringp v) (listp v)))))
                              (startup-hook . ((lambda (v) (or (functionp v) (commandp v) (stringp v) (listp v)))))
@@ -111,9 +109,7 @@ See also `lazy-optional-vars' and `lazy-var-before-get-functions'.")
                              (open-files-cache . (stringp))
                              (patterns-are-regex . (symbolp))
                              (friends . (listp))
-                             (open-friends-cache . (stringp))
-                             (gtags-config . (stringp file-exists-p))
-                             (gtags-arguments . (stringp)))
+                             (open-friends-cache . (stringp)))
   "Project config vars that are optional. Each entry is a (symbol . (functions)) tuple where the
 functions are used by `lazy-check-optional-vars' to test if a value given to symbol is valid.
 
@@ -136,8 +132,6 @@ friends           : friends are other projects that are relevant to this project
                     will be included when browsing for files, updating the tag database
                     and when completing symbols
 open-friends-cache: filesystem location for open files from friend projects
-gtags-config      : gtags config file that should be used
-gtags-arguments   : additional gtags arguments
 
 See also `lazy-required-vars' and `lazy-var-before-get-functions'")
 
@@ -664,201 +658,7 @@ file with the projects name will be created in that directory.
 
 See also `lazy-config-save'.")
 
-(defvar lazy-language-tag-systems '((c . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (yacc . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (asm . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (java . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (cpp . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (php . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (asp . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (awk . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (basic . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (beta . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (csharp . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (cobol . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (dosbatch . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (eiffel . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (erlang . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (flex . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (fortran . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (html . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (javascript . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (elisp . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (lisp . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (lua . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (make . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (matlab . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (ocaml . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (pascal . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (perl . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (python . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (rexx . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (ruby . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (scheme . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (sh . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (slang . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (sml . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (sql . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (tcl . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (tex . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (vera . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (verilog . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (vhdl . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (vim . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (ada . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (ant . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (clojure . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (coffeescript . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (css . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (ctags . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (d . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (diff . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (dts . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (elm . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (falcon . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (gdbinit . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (go . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (json . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (m4 . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (objectivec . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (perl6 . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (r . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (restructuredtext . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (rust . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (systemverilog . (gtags+universal-ctags gtags+exuberant-ctags gtags+pygments))
-                                    (windres . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (zephir . (gtags+universal-ctags gtags+exuberant-ctags))
-                                    (abap . (gtags+pygments))
-                                    (antlr . (gtags+pygments))
-                                    (actionscript3 . (gtags+pygments))
-                                    (applescript . (gtags+pygments))
-                                    (aspectj . (gtags+pygments))
-                                    (aspx-cs . (gtags+pygments))
-                                    (asymptote . (gtags+pygments))
-                                    (autoit . (gtags+pygments))
-                                    (bugs . (gtags+pygments))
-                                    (bat . (gtags+pygments))
-                                    (blitzmax . (gtags+pygments))
-                                    (boo . (gtags+pygments))
-                                    (bro . (gtags+pygments))
-                                    (cobolfree . (gtags+pygments))
-                                    (cuda . (gtags+pygments))
-                                    (ceylon . (gtags+pygments))
-                                    (cfm . (gtags+pygments))
-                                    (common-lisp . (gtags+pygments))
-                                    (coq . (gtags+pygments))
-                                    (croc . (gtags+pygments))
-                                    (csh . (gtags+pygments))
-                                    (cython . (gtags+pygments))
-                                    (dart . (gtags+pygments))
-                                    (dg . (gtags+pygments))
-                                    (duel . (gtags+pygments))
-                                    (dylan . (gtags+pygments))
-                                    (ecl . (gtags+pygments))
-                                    (ec . (gtags+pygments))
-                                    (erb . (gtags+pygments))
-                                    (elixir . (gtags+pygments))
-                                    (evoque . (gtags+pygments))
-                                    (fsharp . (gtags+pygments))
-                                    (factor . (gtags+pygments))
-                                    (fancy . (gtags+pygments))
-                                    (fantom . (gtags+pygments))
-                                    (felix . (gtags+pygments))
-                                    (gas . (gtags+pygments))
-                                    (glsl . (gtags+pygments))
-                                    (genshi . (gtags+pygments))
-                                    (gherkin . (gtags+pygments))
-                                    (gnuplot . (gtags+pygments))
-                                    (gooddata-cl . (gtags+pygments))
-                                    (gosu . (gtags+pygments))
-                                    (groovy . (gtags+pygments))
-                                    (gst . (gtags+pygments))
-                                    (haxe . (gtags+pygments))
-                                    (haml . (gtags+pygments))
-                                    (haskell . (gtags+pygments))
-                                    (hxml . (gtags+pygments))
-                                    (hybris . (gtags+pygments))
-                                    (idl . (gtags+pygments))
-                                    (io . (gtags+pygments))
-                                    (ioke . (gtags+pygments))
-                                    (jags . (gtags+pygments))
-                                    (jade . (gtags+pygments))
-                                    (jsp . (gtags+pygments))
-                                    (julia . (gtags+pygments))
-                                    (koka . (gtags+pygments))
-                                    (kotlin . (gtags+pygments))
-                                    (llvm . (gtags+pygments))
-                                    (lasso . (gtags+pygments))
-                                    (literate-haskell . (gtags+pygments))
-                                    (livescript . (gtags+pygments))
-                                    (logos . (gtags+pygments))
-                                    (logtalk . (gtags+pygments))
-                                    (moocode . (gtags+pygments))
-                                    (mxml . (gtags+pygments))
-                                    (mako . (gtags+pygments))
-                                    (mason . (gtags+pygments))
-                                    (modelica . (gtags+pygments))
-                                    (monkey . (gtags+pygments))
-                                    (moonscript . (gtags+pygments))
-                                    (mupad . (gtags+pygments))
-                                    (myghty . (gtags+pygments))
-                                    (nasm . (gtags+pygments))
-                                    (nsis . (gtags+pygments))
-                                    (nemerle . (gtags+pygments))
-                                    (newlisp . (gtags+pygments))
-                                    (newspeak . (gtags+pygments))
-                                    (nimrod . (gtags+pygments))
-                                    (objective-cpp . (gtags+pygments))
-                                    (objective-c . (gtags+pygments))
-                                    (objective-j . (gtags+pygments))
-                                    (octave . (gtags+pygments))
-                                    (ooc . (gtags+pygments))
-                                    (opa . (gtags+pygments))
-                                    (openedge . (gtags+pygments))
-                                    (postscript . (gtags+pygments))
-                                    (powershell . (gtags+pygments))
-                                    (prolog . (gtags+pygments))
-                                    (qml . (gtags+pygments))
-                                    (rebol . (gtags+pygments))
-                                    (rhtml . (gtags+pygments))
-                                    (racket . (gtags+pygments))
-                                    (ragel . (gtags+pygments))
-                                    (redcode . (gtags+pygments))
-                                    (robotframework . (gtags+pygments))
-                                    (s . (gtags+pygments))
-                                    (scala . (gtags+pygments))
-                                    (scaml . (gtags+pygments))
-                                    (scilab . (gtags+pygments))
-                                    (smalltalk . (gtags+pygments))
-                                    (smarty . (gtags+pygments))
-                                    (snobol . (gtags+pygments))
-                                    (sourcepawn . (gtags+pygments))
-                                    (spitfire . (gtags+pygments))
-                                    (ssp . (gtags+pygments))
-                                    (stan . (gtags+pygments))
-                                    (tea . (gtags+pygments))
-                                    (treetop . (gtags+pygments))
-                                    (typescript . (gtags+pygments))
-                                    (urbiscript . (gtags+pygments))
-                                    (vbnet . (gtags+pygments))
-                                    (vgl . (gtags+pygments))
-                                    (vala . (gtags+pygments))
-                                    (velocity . (gtags+pygments))
-                                    (xbase . (gtags+pygments))
-                                    (xquery . (gtags+pygments))
-                                    (xslt . (gtags+pygments))
-                                    (xtend . (gtags+pygments))
-                                    )
-  "Defines which tagging system to use for which language.
-
-Only gtags, gtags+exuberant-ctags, gtags+universal-ctags and gtags+pygments
-are implemented.
-
-See also `lazy-update-tags'.")
-
 (defvar lazy-thing-selector 'symbol)
-
-(defvar lazy-project-symbols (make-hash-table :test 'equal))
 
 (defvar lazy-project-list (make-hash-table :test 'equal))
 
@@ -1269,8 +1069,7 @@ See also `lazy-project-list', `lazy-eval-alist', `lazy-undef',
 (defun lazy-undef (&optional proj-name)
   "Opposite of `lazy-def'."
   (interactive "sProject: ")
-  (remhash proj-name lazy-project-list)
-  (remhash proj-name lazy-project-symbols))
+  (remhash proj-name lazy-project-list))
 
 
 
@@ -1808,7 +1607,7 @@ See also `lazy-get-cache-file'."
 
 (defvar lazy-prevent-after-save-update nil
   "When this is not nil `lazy-after-save-update' will not run `lazy-update' and therefore
-the projects index and tags are not going to get updated.
+the projects index is not going to get updated.
 
 This is supposed to be set only temporarily.")
 
@@ -1860,7 +1659,6 @@ See also `lazy-load', `lazy-unload', `lazy-fib-init', `lazy-visit-saved-open-fil
               ((and (listp startup-hook)
                     (symbolp (car startup-hook)))
                (progn (message "eval startup-hook...") (eval startup-hook))))))
-    (lazy-update-tags proj-name)
     (add-to-list 'lazy-project-history proj-name)
     (puthash proj-name (current-time) lazy-project-timestamp)
     (message "Loading project %s done" proj-name)))
@@ -2063,8 +1861,7 @@ or PROJ-NAME."
     (with-temp-buffer
       (cl-dolist (f (cl-remove-duplicates (mapcar (lambda (b) (lazy-buffer-name b)) (lazy-buffers)) :test 'string-equal))
         (when f
-          (unless (string-equal (lazy-get-config-val 'etags-file) f)
-            (insert f "\n"))))
+          (insert f "\n")))
       (if (file-writable-p (lazy-get-config-val 'open-files-cache))
           (progn
             (lazy-silent (write-region (point-min)
@@ -2140,416 +1937,6 @@ or PROJ-NAME."
           until (setq suppress (string-match pattern prompt)))
     (setq ad-return-value (or (and suppress t) ad-do-it))))
 (ad-activate 'y-or-n-p)
-;;(ad-unadvise 'y-or-n-p)
-
-;; ---------------------------------------------------------------------
-;; Tagging
-;; ---------------------------------------------------------------------
-
-(defvar lazy-default-gtags-config (expand-file-name "gtags.conf" (file-name-directory (or buffer-file-name load-file-name))))
-
-(defun lazy-parse-gtags-conf (&optional gtags-conf)
-  "A helper function to generate `lazy-language-tag-systems' and `lazy-src-pattern-table' by parsing
-a gtags.conf file. Can be given an specific GTAGS-CONF as argument, otherwise it just uses
-`lazy-default-gtags-config'.
-
-It will create a new buffer named lazy-parse-gtags-conf-result and insert the generated defvar
-statements in there. You need to manually copy, paste and modify those yourself."
-  (unless gtags-conf
-    (setq gtags-conf lazy-default-gtags-config))
-  (with-temp-buffer
-    (insert-file-contents-literally lazy-default-gtags-config)
-    ;; - I use gnu globals nomenclature 'parser' inside this function, for what is known as 'system'
-    ;; in the other gtags related functions, a parser/system is something like gtags itself, or ctags,
-    ;; or pygments
-    ;; - activeparser denotes the currently active parser section, it is set while going through the lines
-    ;; when a line does not start with whitespaces, it can be something like 'builtin-parser' or 'comman-ctags-maps'
-    ;; - parserbins is used to accumulate all langmap definitions, it is a hashmap of hashmaps which gets
-    ;; initialized below to contain one hashmap for each possible parser, in the end it should contain stuff
-    ;; like ("universal-ctags" . ("c++" . ".cpp" ".h" ".cc" ".hh"))
-    ;; - parserbins is the raw data, src-patterns and lang-patterns are the actual results that we want, these contain
-    ;; the lists specifying which file pattern belongs to which language, and what systems can parse a language, just
-    ;; like in the global lazy-src-pattern-table and lazy-language-tag-systems variables
-    (let ((activeparser nil)
-          (parserbins (make-hash-table :test 'equal))
-          ;; (extension . (lang patterns))
-          (src-patterns (make-hash-table :test 'equal))
-          ;; (lang . (systems))
-          (lang-systems (make-hash-table :test 'equal))
-          (parser-systems (make-hash-table :test 'equal)))
-      (puthash "builtin-parser" (make-hash-table :test 'equal) parserbins)
-      (puthash "common-ctags-maps" (make-hash-table :test 'equal) parserbins)
-      (puthash "exuberant-ctags" (make-hash-table :test 'equal) parserbins)
-      (puthash "universal-ctags" (make-hash-table :test 'equal) parserbins)
-      (puthash "pygments-parser" (make-hash-table :test 'equal) parserbins)
-      ;; - go throuhg gtags-conf line by line and look at each line if it is either a new parser, or a langmap definition,
-      ;; a parser means we just change activeparser to that new parser, a langmap means we parse what language and what
-      ;; extensions it defines and put those in parserbins, in the currently active parser hashmap
-      (cl-dolist (line (split-string (buffer-string) "\n" t))
-        (unless (string-equal (substring line 0 1) "#")
-          (cond ((string-match "[\t ]+:langmap=\\(.*\\)" line)
-                 (let ((langmap (match-string 1 line)))
-                   (cl-dolist (definition (split-string langmap "," t))
-                     (let* ((langext (split-string definition ":" t))
-                            (lang (replace-regexp-in-string "\\\\" "" (downcase (cl-first langext))))
-                            (ext (cl-second langext))
-                            (activebin (gethash activeparser parserbins)))
-                       (when activebin
-                         (puthash lang ext (gethash activeparser parserbins)))))))
-                ((string-match "^\\([^ \t\\|:]+\\)" line)
-                 (setq activeparser (match-string 0 line))))))
-      ;; - now go through parserbins, and for each parser go through all languages with extension and accumulate
-      ;; extensions for each language of all the different parsers in src-patterns, and accumulate the parser systems
-      ;; for all languges in lang-systems
-      (maphash
-       (lambda (parser languages)
-         (let ((systems (cond ((string-equal parser "builtin-parser")
-                               '(gtags))
-                              ((string-equal parser "common-ctags-maps")
-                               '(gtags+universal-ctags gtags+exuberant-ctags))
-                              ((string-equal parser "exuberant-ctags")
-                               '(gtags+exuberant-ctags))
-                              ((string-equal parser "universal-ctags")
-                               '(gtags+universal-ctags))
-                              ((string-equal parser "pygments-parser")
-                               '(gtags+pygments))))
-               (ordering '(gtags+pygments gtags+exuberant-ctags gtags+universal-ctags gtags)))
-           (maphash
-            (lambda (raw-lang extensions)
-              (let ((ext-list (split-string extensions "\\." t))
-                    (lang (replace-regexp-in-string (regexp-quote ".")  ""
-                           (replace-regexp-in-string (regexp-quote "++") "pp"
-                                                     (replace-regexp-in-string "#" "sharp" raw-lang)))))
-                (puthash lang (sort (cl-remove-duplicates (append (gethash lang lang-systems) systems))
-                                    (lambda (a b) (<= (cl-position b ordering) (cl-position a ordering)))) lang-systems)
-                (cl-dolist (ext ext-list)
-                  (let* ((lang-ext (concat lang "-" ext))
-                         (ext-regexes (mapcar (lambda (e) (concat ".*" (regexp-quote (concat "." e)))) ext-list))
-                         (new-regexes (cl-remove-duplicates (append (cddr (gethash lang-ext src-patterns)) ext-regexes) :test 'equal))
-                         (lang-regexes (append (list (make-symbol lang)) new-regexes)))
-                    (puthash lang-ext (append (list ext) lang-regexes) src-patterns)))))
-            languages)))
-       parserbins)
-      ;; - create a buffer and insert new defvar statements for the lazy-language-tag-systems and lazy-src-pattern-table globals
-      (with-current-buffer (get-buffer-create "lazy-parse-gtags-conf-result")
-        (erase-buffer)
-        (emacs-lisp-mode)
-        (insert "(defvar lazy-language-tag-systems '(")
-        (maphash (lambda (lang systems)
-                   (insert "(" lang " . " (prin1-to-string systems) ")\n"))
-                 lang-systems)
-        (insert "))\n\n")
-        (insert "(defvar lazy-src-pattern-table '(")
-        (maphash (lambda (lang line)
-                   (let ((ext (car line))
-                         (lang-regexes (cdr line)))
-                     (insert "(" (prin1-to-string ext) " . " (prin1-to-string lang-regexes) ")\n")))
-                 src-patterns)
-        (insert "))\n")
-        (indent-region (point-min) (point-max))))))
-
-(defun lazy-find-ctags-executable (ctags-type)
-  "Find ctags executable for either exuberant-ctags or universal-ctags, specified by CTAGS-TYPE."
-  (or (cond ((eq ctags-type 'universal)
-             (or (executable-find "ctags-universal")
-                 (executable-find "universal-ctags")))
-            (t
-             (or (executable-find "ctags-exuberant")
-                 (executable-find "exuberant-ctags"))))
-      (let* ((executable (executable-find "ctags"))
-             (stdout (when executable (shell-command-to-string (concat executable " --version")))))
-        (when executable
-          (cond ((and (eq ctags-type 'universal)
-                      (string-match "Universal.*" stdout))
-                 executable)
-                ((and (eq ctags-type 'exuberant)
-                      (string-match "Exuberant.*" stdout))
-                 executable)
-                (t
-                 executable))))))
-
-(cl-defun lazy-update-tags (&optional proj-name proj-alist files (debug t))
-  "Create or update the projects tags database. The current implementation uses gtags together with
-universal-ctags, exuberant-ctags and pygments to generate a tags database. It tries to use those in projects
-consisting of multiple languages to generate a tags database that contains all symbols from all languages.
-
-The generated tags are used for project specific completions as well as navigating to defintions of symbols.
-
-This function will ignore GTAGSLABEL, GTAGSROOT and GTAGSCONF and specify those itself without overwriting
-them. So that it can generate the tags database in a directory under ~/.lazy and have the tags reference paths
-relative the the root (/ under linux, c: under windows) directory, so that the tags database can contain
-references from multiple places in the filesystem, and not just the projects directory.
-
-Supply PROJ-NAME and/or PROJ-ALIST to apply this to a project other then the currently loaded one. Supply
-FILES to specify for which files to update the tags database for.
-
-With DEBUG true this leaves behind buffer(s) named gtags-0,1,... that contain the output of the gtags
-commands executed, and it also writes the gtags commands it executes into the *Messages* buffer.
-
-See also `lazy-language-tag-systems', `lazy-setup-tags', `lazy-jump-definition' and `lazy-process-group'"
-  (interactive)
-  (setq proj-alist (or proj-alist
-                       (lazy-find-alist proj-name)
-                       (lazy-find-alist lazy-name)
-                       (lazy-guess-alist)))
-  (setq proj-name (cadr (assoc 'name proj-alist)))
-  (unless (and proj-name proj-alist)
-    (lazy-assert-proj))
-  (unless files
-    (setq files (hash-table-keys (lazy-unique-files proj-name))))
-  (let ((default-directory (lazy-get-config-val 'basedir proj-name nil proj-alist))
-        (gtags-executable (executable-find "gtags"))
-        (global-executable (executable-find "global"))
-        (rtags-executable (executable-find "rtags"))
-        (ctags-exuberant-executable (lazy-find-ctags-executable 'exuberant))
-        (ctags-universal-executable (lazy-find-ctags-executable 'universal))
-        (pygments-executable (executable-find "pygmentize"))
-        (sys-files (make-hash-table))
-        (languages '()))
-    ;; - go through all project files, decide which tagging system to use for each individual file
-    ;; and put the file in tagging system bins (the sys-files hashmap)
-    ;; - the nested loops look like the could be switched, but the language of a file needs to detected
-    ;; first, so that we can then decide which tagging systems to use for that language
-    (cl-dolist (f files)
-      (unless (cl-some (lambda (regexp) (string-match regexp f)) (lazy-get-config-val 'ignore-gtags proj-name proj-alist))
-        (let ((lang (car-safe (lazy-src-pattern-languages (list f)))))
-          (push lang languages)
-          (cl-dolist (sys (cdr (assoc lang lazy-language-tag-systems)))
-            (cond ((and (or (eq sys 'gtags+rtags))
-                        gtags-executable
-                        global-executable
-                        rtags-executable)
-                   (cl-return (puthash 'gtags+rtags
-                                       (append (list f) (gethash 'gtags+rtags sys-files))
-                                       sys-files)))
-                  ((and (eq sys 'rtags)
-                        rtags-executable)
-                   (cl-return (puthash 'rtags
-                                       (append (list f) (gethash 'rtags sys-files))
-                                       sys-files)))
-                  ((and (eq sys 'gtags)
-                        gtags-executable
-                        global-executable)
-                   (cl-return (puthash 'gtags
-                                       (append (list f) (gethash 'gtags sys-files))
-                                       sys-files)))
-                  ((and (or (eq sys 'gtags)
-                            (eq sys 'gtags+exuberant-ctags)
-                            (eq sys 'gtags+universal-ctags))
-                        gtags-executable
-                        global-executable
-                        ctags-universal-executable)
-                   (cl-return (puthash 'gtags+universal-ctags
-                                       (append (list f) (gethash 'gtags+universal-ctags sys-files))
-                                       sys-files)))
-                  ((and (eq sys 'gtags+exuberant-ctags)
-                        gtags-executable
-                        global-executable
-                        ctags-exuberant-executable)
-                   ;; - I had a fallback to gtags here if exuberant is not found, but removed it,
-                   ;; it does not make sense, while exuberant can parse many languages, gtags alone
-                   ;; can only parse a few
-                   (cl-return (puthash 'gtags+exuberant-ctags
-                                       (append (list f) (gethash 'gtags+exuberant-ctags sys-files))
-                                       sys-files)))
-                  ((and (or (eq sys 'gtags)
-                            (eq sys 'gtags+pygments))
-                        gtags-executable
-                        global-executable
-                        pygments-executable)
-                   (cl-return (puthash 'gtags+pygments
-                                       (append (list f) (gethash 'gtags+pygments sys-files))
-                                       sys-files))))))))
-    ;; - why did I do this, I don't know anymore
-    ;; - it looks like it was supposed to make sure everything that scanned with either gtags
-    ;; or gtags+exuberant-ctags is guaranteed to be scanned by both, but I can't remember
-    ;; why I thought this makes sense, right now it just seems like a waste of cpu cycles
-    ;; (puthash 'gtags (append (gethash 'gtags+exuberant-ctags sys-files)
-    ;;                         (gethash 'gtags sys-files))
-    ;;          sys-files)
-
-    ;; - for each tagging system we'll have a section where we check if there are any files for
-    ;; that system, then build the appropriate commands to scan those file and create the tag database
-    ;; - here, we do all gtags (gtags, gtags+rtags and gtags+exuberant-ctags) systems first
-    (let* ((gtags-root "/")
-           ;; - I am a setting gtags-root to / and then just make it scan all project files and friendly files,
-           ;; that way I can get tags and completions for everything related to this project, I just have to
-           ;; set the root again when building the query command
-           ;; - the database is stored in the dbpath, that should be ~/.lazy/project
-           (gtags-dbpath (file-name-as-directory (file-truename (lazy-get-cache-dir nil proj-name))))
-           (gtags-config (or (let ((c (lazy-get-config-val 'gtags-config proj-name nil proj-alist)))
-                               (when (and c (> (length c) 0) (file-exists-p c))
-                                 c))
-                             (let ((c (expand-file-name "~/.globalrc") ))
-                               (when (file-exists-p c)
-                                 c))
-                             (let ((c (expand-file-name "gtags.conf" (lazy-get-config-val 'basedir proj-name nil proj-alist))))
-                               (when (file-exists-p c)
-                                 c))
-                             (when (and lazy-default-gtags-config
-                                        (file-exists-p (expand-file-name lazy-default-gtags-config)))
-                               (expand-file-name lazy-default-gtags-config))
-                             nil))
-           (gtags-arguments (or (lazy-get-config-val 'gtags-arguments proj-name nil proj-alist)
-                                ""))
-           (gtags-commands (make-hash-table))
-           (cmd-seperator (if (eq system-type 'windows-nt) " & " " ; ")))
-      ;; - hack, gnu global under windows has problems with directories that have a trailing slash
-      ;; so this just removes the last slash from the path
-      (when (eq system-type 'windows-nt)
-        (string-match "\\(.*\\)/" gtags-dbpath)
-        (setq gtags-dbpath (match-string 1 gtags-dbpath)))
-      ;; - the following when section put gtags commands to execute into a hashmap, one for each type
-      ;; (gtags, exuberant-ctags, etc ) of system
-      (when (gethash 'gtags sys-files)
-        (puthash 'gtags
-                 (concat "cd " gtags-root cmd-seperator
-                         "env GTAGSROOT=" gtags-root " "
-                         (when gtags-config (concat "GTAGSCONF=" gtags-config " "))
-                         "gtags " gtags-dbpath (when debug " -v") " -i -f - " gtags-arguments cmd-seperator)
-                 gtags-commands))
-      (when (gethash 'gtags+exuberant-ctags sys-files)
-        (puthash 'gtags+exuberant-ctags
-                 (concat "cd " gtags-root cmd-seperator
-                         "env GTAGSLABEL=exuberant-ctags "
-                         (when gtags-config (concat "GTAGSCONF=" gtags-config " "))
-                         "GTAGSROOT=" gtags-root " "
-                         "gtags " gtags-dbpath (when debug " -v") " -i -f - " gtags-arguments cmd-seperator)
-                 gtags-commands))
-      (when (gethash 'gtags+universal-ctags sys-files)
-        (puthash 'gtags+universal-ctags
-                 (concat "cd " gtags-root cmd-seperator
-                         "env GTAGSLABEL=universal-ctags "
-                         (when gtags-config (concat "GTAGSCONF=" gtags-config " "))
-                         "GTAGSROOT=" gtags-root " "
-                         "gtags " gtags-dbpath (when debug " -v") " -i -f - " gtags-arguments cmd-seperator)
-                 gtags-commands))
-      (when (gethash 'gtags+pygments sys-files)
-        (puthash 'gtags+pygments
-                 (concat "cd " gtags-root cmd-seperator
-                         "env GTAGSLABEL=pygments-parser "
-                         (when gtags-config (concat "GTAGSCONF=" gtags-config " "))
-                         "GTAGSROOT=" gtags-root " "
-                         "gtags " gtags-dbpath (when debug " -v") " -i -f - " gtags-arguments cmd-seperator)
-                 gtags-commands))
-      ;; - I define an ordering so I can control which system is allowed to overwrite what other systems, the
-      ;; one that comes first in the order can be overwritten by every following system so that means lower
-      ;; position in list is lower priority
-      ;; - a system generates entries in the tag database, but two system may actually create conflicting
-      ;; entries, although this should only happen rarely, I still want higher quality systems to overwrite lower
-      ;; quality ones
-      (let* ((ordering (list 'gtags+pygments 'gtags+exuberant-ctags 'gtags+universal-ctags 'gtags))
-             (commands (cl-loop for sys in ordering
-                                if (gethash sys gtags-commands)
-                                collect (gethash sys gtags-commands)))
-             (inputs (cl-loop for sys in ordering
-                              if (gethash sys gtags-commands)
-                              collect (concat (mapconcat #'identity (gethash sys sys-files) "\n") "\n"))))
-        (lazy-process-group "gtags" commands inputs nil (list proj-name) debug)
-        ))
-    ;; - if I'd ever implement rtags, or any other system really, then this would become another section
-    (when (gethash 'rtags sys-files)
-      (message "rtags not implemented yet")))
-  ;; - after updating the tag databases we may as well setup the env variables again, just to be sure
-  (lazy-setup-tags proj-name))
-
-(defun lazy-process-group (name commands inputs &optional terminator terminator-args debug n process event)
-  "Create a process group with NAME, that runs all COMMANDS with INPUTS after each other
-and the calls TERMINATOR with TERMINATOR-ARGS.
-
-If DEBUG is true it will leave behind buffers named name-0, name-1 and so on for all commands
-in COMMANDS.
-
-This function is called recursivly as process sentinel when a command finishes, increasing N to
-indicate which command to run next, and PROCESS and EVENT are the arguments this function
-recieves when it acts as process sentinel.
-
-I implemented it mainly to execute multiple gtags calls in the background, each after the other."
-  (unless n (setq n 0))
-  (if (and (nth n commands)
-           (or (eq system-type 'windows-nt)
-               (not event)
-               (string-equal event "finished\n")))
-      (let* ((proc-name (concat name "-" (prin1-to-string n)))
-             (shell-file-name (if (eq system-type 'windows-nt) (default-value 'shell-file-name) "/bin/sh"))
-             (command (nth n commands))
-             (process (start-process-shell-command proc-name (when debug proc-name) command))
-             (input (nth n inputs)))
-        (when debug
-          (with-current-buffer (get-buffer-create (concat proc-name "-input"))
-            (delete-region (point-min) (point-max))
-            (insert input))
-          (message "%s" proc-name)
-          (message "%s" command))
-        (set-process-sentinel process (apply-partially 'lazy-process-group name commands inputs terminator terminator-args debug (1+ n)))
-        (when input
-          (process-send-string process input))
-        (process-send-eof process))
-    (when terminator
-      (apply terminator terminator-args))))
-
-(defun lazy-src-pattern-tag-systems (src-patterns)
-  "Takes a list of src patterns (like \"*.cpp\") and returns tag systems that can parse those."
-  (let ((systems '()))
-    (cl-dolist (lang (lazy-src-pattern-languages src-patterns))
-      (cl-dolist (sys (cdr (assoc lang lazy-language-tag-systems)))
-        (add-to-list 'systems sys)))
-    systems))
-
-(defun lazy-setup-tags (&optional proj-name)
-  "Setup environment for existing tags database. Force current project by giving PROJ-NAME.
-
-This overwrites any existing GTAGSDBPATH and GTAGSROOT environment variables with `setenv'. It
-is called almost always before using any of the related tags functionality, like `lazy-jump-definition'
-or `lazy-completions'.
-
-See also `lazy-update-tags'."
-  (interactive)
-  (setenv "GTAGSDBPATH" "")
-  (setenv "GTAGSROOT" "")
-  (setq proj-name (or proj-name
-                      lazy-name
-                      (cadr (assoc 'name (lazy-guess-alist)))))
-  (when proj-name
-    (let ((proj-systems (lazy-src-pattern-tag-systems (lazy-get-config-val 'src-patterns proj-name)))
-          (available-systems '()))
-      (when (or (cl-find 'gtags proj-systems)
-                (cl-find 'gtags+rtags proj-systems)
-                (cl-find 'gtags+exuberant-ctags proj-systems)
-                (cl-find 'gtags+universal-ctags proj-systems)
-                (cl-find 'gtags+pygments proj-systems))
-        (let* ((gtags-file (file-truename (expand-file-name "GTAGS" (lazy-get-cache-dir nil proj-name))))
-               (gtags-file-alternative (expand-file-name "GTAGS" (lazy-get-config-val 'basedir proj-name))))
-          (cond ((file-exists-p gtags-file)
-                 (let ((gtags-dbpath (lazy-dirname gtags-file))
-                       (gtags-root "/"))
-                   ;; - hack, gnu global under windows has problems with directories that have a trailing slash
-                   ;; so this just removes the last slash from the path
-                   (when (eq system-type 'windows-nt)
-                     (string-match "\\(.*\\)/" gtags-dbpath)
-                     (setq gtags-dbpath (match-string 1 gtags-dbpath)))
-                   (when (and (file-exists-p gtags-dbpath)
-                              (file-exists-p gtags-root))
-                     (setenv "GTAGSDBPATH" gtags-dbpath)
-                     (setenv "GTAGSROOT" gtags-root))
-                   (add-to-list 'available-systems 'gtags))))))
-      available-systems)))
-
-(defadvice ido-switch-buffer (around lazy-ido-switch-buffer-setup-tags first nil activate)
-  (let ((previous-buffer (current-buffer)))
-    ad-do-it
-    (when (and (not lazy-name)
-               (buffer-file-name (current-buffer))
-               (not (eq (current-buffer) previous-buffer)))
-      (lazy-setup-tags))))
-
-(defadvice switch-buffer (around lazy-switch-buffer-setup-tags first nil activate)
-  (let ((previous-buffer (current-buffer)))
-    ad-do-it
-    (when (and (not lazy-name)
-               (buffer-file-name (current-buffer))
-               (not (eq (current-buffer) previous-buffer)))
-      (lazy-setup-tags))))
 
 (defun lazy-find-symbol-elisp-location-helper (symbol)
   (let ((sym symbol))
@@ -2580,12 +1967,12 @@ systems for possible locations of a symbol names definition.
 
 The arguments PROJ-NAME and PROJ-ALIST specify the project in which we are
 searching for a definition. SYSTEM is a tagging system, its possible values
-are 'gtags, 'obarray, 'imenu and 'godef. REGEXP is a regular expression matching
+are 'obarray, 'imenu and 'godef. REGEXP is a regular expression matching
 the symbol name(s) for which we are searching possible definitions.
 
 The ARGS rest argument is a list of custom arguments that are specific to the
-selected system. For example 'gtags expects a shell command as first element of
-ARGS and 'godef expects buffer and a point as first to elements of ARGS.
+selected system. For example 'godef expects buffer and a point as first to
+elements of ARGS.
 
 The return value of this function is a list of jumps to locations of possible
 definitions for symbol names. A jump is a property list with the following
@@ -2612,29 +1999,7 @@ See also `lazy-jump-list-mode'."
          (default-directory basedir)
          (case-fold-search nil)
          (cmd-sep (if (eq system-type 'windows-nt) " & " " ; ")))
-    (cond ((eq 'gtags system)
-           (let ((cmd (nth 0 args)))
-             (lazy-setup-tags proj-name)
-             (let ((shell-output (condition-case nil (shell-command-to-string (concat "cd " default-directory cmd-sep cmd)) (error ""))))
-               (cond ((string-match ".*corrupted.*" shell-output)
-                      (progn (message "Gtags files corrupted!")
-                             (when (> (length proj-name) 0)
-                               (shell-command (concat "rm " (lazy-get-cache-dir nil proj-name) "G*"))
-                               (lazy-update-tags proj-name))))
-                     (t (mapcar (lambda (line)
-                         (let ((tokens (split-string line " " t)))
-                           (list :word (nth 0 tokens)
-                                 :line-number (read (or (nth 1 tokens) "-1"))
-                                 :file-path (or (when (nth 2 tokens) (expand-file-name (nth 2 tokens))) "")
-                                 :definition (mapconcat 'identity (nthcdr 3 tokens) " ")
-                                 :system system
-                                 :regexp regexp)))
-                                (split-string shell-output "\n" t)))))))
-          ((eq 'rtags system)
-           (message "rtags not implemented yet"))
-          ((eq 'cscope system)
-           (message "cscope not implemented yet"))
-          ((eq 'obarray system)
+    (cond ((eq 'obarray system)
            (let ((jumps nil)
                  (prev-buf-list (buffer-list)))
              ;; - only try to find the current symbol in the obarray when the current major-mode is a emacs-lisp-mode,
@@ -3286,104 +2651,6 @@ See also `lazy-jump-definition'."
   (define-key lazy-jump-list-mode-map (kbd "<return>") 'lazy-jump-go)
   (tabulated-list-init-header))
 
-(defun lazy-update-symbols (&optional proj-name)
-  "Update the completions-cache for PROJ-NAME or the current project.
-
-See also `lazy-project-symbols'."
-  (interactive)
-  (let* ((guessed-alist (lazy-guess-alist))
-         (guessed-name (cadr (assoc 'name guessed-alist)))
-         (proj-alist (lazy-find-alist proj-name)))
-    (cond ((and (not proj-name)
-                lazy-name
-                (lazy-buffer-p (current-buffer) lazy-name))
-           (setq proj-name lazy-name
-                 proj-alist (lazy-find-alist lazy-name)))
-          ((or (and proj-name
-                    (not proj-alist)
-                    guessed-alist)
-               (and (not proj-name)
-                    guessed-name))
-           (setq proj-name guessed-name
-                 proj-alist guessed-alist)))
-    (unless proj-name
-      (lazy-assert-proj))
-    (let* ((proj-symbols (make-hash-table :test 'equal :size 100000))
-           (default-directory (or (lazy-get-config-val 'basedir proj-name) default-directory)))
-      (when (lazy-setup-tags proj-name)
-        (let* ((cmd "global -c | awk '{ if (length($0) > 2 ) print }' | sed '/^[\\$%:{\\^\\[]/d' | sed '/^[0-9]*$/d'")
-               (global-output (split-string (condition-case nil (shell-command-to-string cmd) (error "")) "\n" t))
-               (ignore-symbols (lazy-get-config-val 'ignore-symbols proj-name)))
-          (when global-output
-            (cl-loop for symbol in global-output
-                     unless (cl-some (lambda (regexp) (string-match regexp symbol)) ignore-symbols)
-                     do (puthash symbol t proj-symbols))
-            (puthash proj-name proj-symbols lazy-project-symbols))
-          (lazy-setup-tags lazy-name))))))
-
-;; (defun lazy-update-symbols (&optional proj-name)
-;;   "Update the completions-cache for PROJ-NAME or the current project.
-
-;; See also `lazy-project-symbols'."
-;;   (let* ((guessed-alist (lazy-guess-alist))
-;;          (guessed-name (cadr (assoc 'name guessed-alist)))
-;;          (proj-alist (lazy-find-alist proj-name)))
-;;     (cond ((and (not proj-name)
-;;                 lazy-name
-;;                 (lazy-buffer-p (current-buffer) lazy-name))
-;;            (setq proj-name lazy-name
-;;                  proj-alist (lazy-find-alist lazy-name)))
-;;           ((or (and proj-name
-;;                     (not proj-alist)
-;;                     guessed-alist)
-;;                (and (not proj-name)
-;;                     guessed-name))
-;;            (setq proj-name guessed-name
-;;                  proj-alist guessed-alist)))
-;;     (unless proj-name
-;;       (lazy-assert-proj))
-
-;;     (let ((symbols-cache (make-hash-table :test 'equal :size 100000))
-;;           (default-directory (or (lazy-get-config-val 'basedir proj-name) default-directory)))
-
-;;       (when (and nil (lazy-setup-tags proj-name))
-;;         (let* ((cmd (if (eq system-type 'windows-nt)
-;;                         "global -x -s \".\" & global -x -s \".\""
-;;                       "global -x -d \".\"; global -x -s \".\""))
-;;                (global-output (split-string (condition-case nil (shell-command-to-string cmd) (error "")) "\n" t))
-;;                (max-symbol-length (gethash proj-name lazy-project-symbols-max-symbol-length 0))
-;;                (max-filename-length (gethash proj-name lazy-project-symbols-max-filename-length 0)))
-;;           (when global-output
-;;             (cl-loop for line in global-output
-;;                      do (let ((tokens (split-string line " " t)))
-;;                           (when (and (listp tokens)
-;;                                      (> (length tokens) 2))
-;;                             (let* ((default-directory (lazy-get-config-val 'basedir proj-name))
-;;                                    (symbol-name (nth 0 tokens))
-;;                                    (line-number (string-to-number (nth 1 tokens)))
-;;                                    (relative-path (nth 2 tokens))
-;;                                    (absolute-path (expand-file-name relative-path))
-;;                                    (filename (file-name-nondirectory absolute-path))
-;;                                    (definition (mapconcat 'identity (nthcdr 3 tokens) " "))
-;;                                    (symbols-in-path (gethash absolute-path symbols-cache (make-hash-table :test 'equal :size 10)))
-;;                                    (symbol-locations (gethash symbol-name symbols-in-path))
-;;                                    (location (list line-number definition))
-;;                                    )
-;;                               (when (> (length symbol-name) max-symbol-length)
-;;                                 (setq max-symbol-length (length symbol-name))
-;;                                 (puthash proj-name max-symbol-length lazy-project-symbols-max-symbol-length))
-;;                               (when (> (length filename) max-filename-length)
-;;                                 (setq max-filename-length (length filename))
-;;                                 (puthash proj-name max-filename-length lazy-project-symbols-max-filename-length))
-;;                               (puthash symbol-name
-;;                                        (append symbol-locations (list location))
-;;                                        symbols-in-path)
-;;                               (puthash absolute-path symbols-in-path symbols-cache)
-;;                               )))
-;;                      )))
-;;         (lazy-setup-tags lazy-name)
-;;         (puthash proj-name symbols-cache lazy-project-symbols)))))
-
 (defvar lazy-completions-table-for-elisp (completion-table-merge
                                           elisp--local-variables-completion-table
                                           (apply-partially #'completion-table-with-predicate
@@ -3397,57 +2664,6 @@ See also `lazy-project-symbols'."
                                                            'strict)))
 (defun lazy-completions-for-elisp (elisp-string)
   (all-completions elisp-string lazy-completions-table-for-elisp))
-
-(defvar lazy-completions-table-for-path (completion-table-in-turn #'completion--embedded-envvar-table
-                                                                  #'completion--file-name-table))
-(defun lazy-completions-for-path (elisp-string)
-  (all-completions elisp-string lazy-completions-table-for-path))
-
-(defun lazy-completions (&optional prefix proj-name buffer)
-  "Get all possible completions of symbols.
-
-When called without any argument this function returns all known names
-for symbols of the current project. Optionally argument PREFIX specifies
-a string prefix for which completions should be returned and PROJ-NAME can
-specifiy which project the completions should come from.
-
-See also `lazy-update-symbols' and `lazy-project-symbols'."
-  (let* ((guessed-alist (lazy-guess-alist))
-         (guessed-name (cadr (assoc 'name guessed-alist)))
-         (proj-alist nil))
-    (cond ((and (not proj-name)
-                lazy-name
-                (or (lazy-buffer-p (current-buffer) lazy-name)
-                    (lazy-friendly-buffer-p (current-buffer) lazy-name)))
-           (setq proj-name lazy-name
-                 proj-alist (lazy-find-alist lazy-name)))
-          ((and (not proj-name)
-                guessed-name)
-           (setq proj-name guessed-name
-                 proj-alist guessed-alist)))
-    (unless proj-name
-      (lazy-assert-proj))
-    (unless buffer
-      (setq buffer (current-buffer)))
-    (let ((unique-completions (make-hash-table :test 'equal :size 10000))
-          (case-fold-search nil)
-          (regex-prefix (concat "^" prefix)))
-      (when (or (cl-find 'elisp (lazy-src-pattern-languages (lazy-get-config-val 'src-patterns proj-name nil proj-alist)))
-                (eq 'emacs-lisp-mode (with-current-buffer buffer major-mode)))
-        (cl-do-all-symbols (sym)
-          (when (or (fboundp sym)
-                    (boundp sym))
-            (let* ((completion (symbol-name sym)))
-              (when (or (not prefix)
-                        (string-equal regex-prefix completion))
-                (puthash completion nil unique-completions))))))
-      (when (not (gethash proj-name lazy-project-symbols))
-        (lazy-update-symbols proj-name))
-      (when (hash-table-p (gethash proj-name lazy-project-symbols))
-        (maphash (lambda (symbol-name _)
-                   (puthash symbol-name nil unique-completions))
-                 (gethash proj-name lazy-project-symbols)))
-      (reverse (hash-table-keys unique-completions)))))
 
 (defun lazy-merge-obarray-jumps (obarray-jumps &rest rest)
   "Merges jumps generated from `obarray' with jumps from other sources.
@@ -3513,8 +2729,9 @@ See also `lazy-find-symbol' and `lazy-merge-obarray-jumps'."
 (defun lazy-jump-definition (word &optional proj-name proj-alist)
   "Jump to the definition of a symbol.
 
-When called interactively this function will present the user with a list
-of all known symbols from `lazy-completions' plus the symbol at current point.
+When called interactively this function will present the user with the symbol
+at current point.
+
 The user may select any of the known symbol names or type the name of a custom
 symbol. This function calls `lazy-find-symbol' to query different systems that
 supply possible locations of a definition for a symbol name.
@@ -3536,15 +2753,9 @@ See also `lazy-jump-list-mode', `lazy-merge-jumps' and `lazy-jump-regexp'."
                             (case-fold-search nil)
                             (ido-case-fold nil)
                             (symbol (thing-at-point lazy-thing-selector))
-                            (completions (lazy-completions lazy-name))
-                            (completion (cl-find symbol completions :test 'string-equal))
-                            (default (or (unless (and (or (eq major-mode 'emacs-lisp-mode)
-                                                          (eq major-mode 'lisp-interaction-mode))
-                                                      (string-equal completion "nil"))
-                                           completion)
-                                         (thing-at-point 'symbol))))
+                            (default (thing-at-point 'symbol)))
                        (substring-no-properties (ido-completing-read "Symbol: "
-                                                                     (when completion completions) nil nil
+                                                                     nil nil nil
                                                                      (if (string-equal default "nil") "" default)
                                                                      nil
                                                                      nil)))))
@@ -3567,8 +2778,6 @@ See also `lazy-jump-list-mode', `lazy-merge-jumps' and `lazy-jump-regexp'."
       (lazy-assert-proj))
     (let ((jumps (lazy-merge-obarray-jumps (lazy-find-symbol proj-name proj-alist 'obarray (concat "^" word "$"))
                                            (lazy-merge-jumps (lazy-find-symbol proj-name proj-alist 'imenu (concat "^" word "$"))
-                                                             (or (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -d " (prin1-to-string word)))
-                                                                 (lazy-find-symbol proj-name proj-alist 'gtags word (concat "global -x -s " (prin1-to-string word))))
                                                              (lazy-find-symbol proj-name proj-alist 'dumb word (current-buffer) (point))
                                                              ;; (and (cl-find 'go (lazy-src-pattern-languages (cadr (assoc 'src-patterns proj-alist))))
                                                              ;;      (lazy-find-symbol proj-name proj-alist 'godef word (current-buffer) (point)))
@@ -3576,44 +2785,6 @@ See also `lazy-jump-list-mode', `lazy-merge-jumps' and `lazy-jump-regexp'."
       (if (eq (length jumps) 1)
           (message "found by %s" (plist-get (nth 0 jumps) :system)))
       (lazy-select-jumps (lazy-score-jumps jumps (regexp-quote word) (current-buffer))))))
-
-(defun lazy-jump-regexp (regexp &optional proj-name proj-alist)
-  "Jump to the defintion of a symbol matching a regexp.
-
-When this funcion is called interactively it prompts the user to enter a regexp
-and then matches it against all known symbols and presents the user with all
-possible definitions of matching symbols it could find.
-
-It works very similar to `lazy-jump-definition', but with regular expressions.
-
-Argument REGEXP is the regexp used to find matching symbols, optional arguments
-PROJ-NAME and PROJ-ALIST can be used to specify which project to search for
-matching symbols.
-
-See also `lazy-jump-definition'."
-  (interactive (list (let* ((ido-enable-flex-matching t))
-                       (substring-no-properties (ido-completing-read "Match: "
-                                                                     (lazy-completions))))))
-  (let* ((guessed-alist (lazy-guess-alist))
-         (guessed-name (cadr (assoc 'name guessed-alist))))
-    (unless proj-name
-      (setq proj-name (or (when (and (lazy-find-alist guessed-name)
-                                     (lazy-buffer-p (current-buffer) guessed-name))
-                            guessed-name)
-                          lazy-name)))
-    (unless proj-alist
-      (setq proj-alist (or (lazy-find-alist proj-name)
-                           guessed-alist)))
-    (setq proj-name (cadr (assoc 'name proj-alist)))
-    (unless (and proj-name proj-alist)
-      (lazy-assert-proj))
-    (let ((jumps (lazy-merge-obarray-jumps (lazy-find-symbol proj-name proj-alist 'obarray (concat "^" regexp))
-                                           ;; - no lazy-find-symbol for 'godef here because godef uses a point in a buffer, so there is nothing
-                                           ;; that I could match with a regexp really
-                                           (or (lazy-find-symbol proj-name proj-alist 'gtags regexp (concat "global -x -e " (prin1-to-string (concat regexp ".*"))))
-                                               (lazy-find-symbol proj-name proj-alist 'gtags regexp (concat "global -x -s " (prin1-to-string (concat regexp ".*")))))
-                                           (lazy-find-symbol proj-name proj-alist 'imenu regexp))))
-      (lazy-select-jumps (lazy-score-jumps jumps regexp (current-buffer))))))
 
 ;; ---------------------------------------------------------------------
 ;; Compile
@@ -4473,8 +3644,7 @@ See also `lazy-buffer-p'."
       (with-temp-buffer
         (cl-dolist (f (cl-remove-duplicates (mapcar (lambda (b) (lazy-buffer-name b)) (lazy-friendly-buffers)) :test #'string-equal))
           (when f
-            (unless (string-equal (lazy-get-config-val 'etags-file) f)
-              (insert f "\n"))))
+            (insert f "\n")))
         (if (file-writable-p (lazy-get-config-val 'open-friends-cache))
             (lazy-silent (write-region (point-min)
                                        (point-max)
@@ -4553,7 +3723,7 @@ has passed.
 
 If `lazy-prevent-after-save-update' is set this will not do anything.
 
-See also `lazy-update-tags' and `lazy-after-save-update-in-progress'."
+See also `lazy-after-save-update-in-progress'."
   (when (and (not (or lazy-prevent-after-save-update
                       (eq (hash-table-count lazy-project-list) 0)
                       (string-match ".*recentf.*" (buffer-name (current-buffer)))
@@ -4643,18 +3813,18 @@ See also `lazy-update' and `lazy-set-config-val'."
     (nth 5 (file-attributes (expand-file-name filename)))))
 
 (defun lazy-update (&optional p proj-name proj-alist buffer)
-  "Update the tags database, the file index and source patterns of the project
-the current buffer belongs to.
+  "Update the file index and source patterns of the project the current
+buffer belongs to.
 
 The project to be updated can be specified with PROJ-NAME. The BUFFER argument
 is used as argument when this function calls `lazy-update-src-patterns'.
 
 When BUFFER and PROJ-NAME do not belong together as a project, this function
-will not update the tags database or the file index.
+will not update the file index.
 
 After running this function sets `lazy-after-save-update-in-progress' to nil.
 
-See also `lazy-index' and `lazy-update-tags'."
+See also `lazy-index'."
   (interactive "p")
   (setq proj-alist (or (lazy-find-alist proj-name)
                        proj-alist
@@ -4687,8 +3857,7 @@ See also `lazy-index' and `lazy-update-tags'."
                                           (gethash proj-name lazy-project-timestamp (current-time))))
                     (push friend do-friends))))
               (lazy-index proj-name proj-alist t do-friends t
-                          (lambda (&optional proj-name proj-alist files debug)
-                            (lazy-update-tags proj-name proj-alist files nil))
+                          nil
                           nil
                           (let ((cache-file (lazy-get-config-val 'file-list-cache proj-name t proj-alist)))
                             (when (and cache-file
