@@ -21,11 +21,9 @@
 (require 'lazy)
 
 (require 'helm-mode)
-;;(require 'helm-config)
 (require 'helm-locate)
 (require 'helm-buffers)
 (require 'helm-files)
-(require 'helm-ag)
 
 (defvar helm-source-lazy-projects
   '((name . "Lazy projects")
@@ -138,119 +136,5 @@
                 :truncate-lines t
                 :input (when one-symbol-match word))
         (message "No symbols found!")))))
-
-(require 'helm-ag)
-
-(defvar lazy-helm-do-ag-per-project-settings (make-hash-table :test 'equal))
-
-(defvar lazy-helm-source-do-ag
-  (helm-build-async-source "The Silver Searcher"
-    :init 'helm-ag--init
-    :real-to-display 'helm-ag--candidate-transformer
-    :persistent-action 'helm-ag--persistent-action
-    :fuzzy-match helm-ag-fuzzy-match
-    :action helm-ag--actions
-    :candidate-number-limit 9999
-    :keymap helm-ag-map
-    :follow (and helm-follow-mode-persistent 1)))
-
-(defun lazy-helm-do-ag (&optional basedir targets default-input)
-  (interactive)
-  (require 'helm-mode)
-  (helm-ag--init-state)
-  (let* ((cached-settings (when lazy-name (gethash lazy-name lazy-helm-do-ag-per-project-settings)))
-         (helm-ag--default-directory (or basedir default-directory))
-         (helm-ag--default-target (cond ((and lazy-name
-                                              (buffer-file-name (current-buffer))
-                                              (not (or (lazy-buffer-p (current-buffer))
-                                                       (lazy-friendly-buffer-p (current-buffer))
-                                                       )))
-                                         (list default-directory))
-                                        ((and lazy-name cached-settings)
-                                         (car-safe cached-settings))
-                                        ((and lazy-name)
-                                         (list (condition-case nil (lazy-get-config-val 'basedir nil t (lazy-guess-alist))
-                                                 (error default-directory))))
-                                        (targets targets)
-                                        ((and (helm-ag--windows-p) basedir)
-                                         (list basedir))
-                                        (t
-                                         (progn
-                                           (when cached-settings
-                                             (remhash lazy-name lazy-helm-do-ag-per-project-settings))
-                                           (helm-read-file-name
-                                            "Search in file(s): "
-                                            :default default-directory
-                                            :marked-candidates t :must-match t)))))
-         (helm-ag-ignore-patterns (lazy-get-config-val 'ignore-ag))
-         (helm-do-ag--extensions (when helm-ag--default-target
-                                   (helm-ag--do-ag-searched-extensions)))
-         (one-directory-p (helm-do-ag--target-one-directory-p
-                           helm-ag--default-target))
-         (search-this-file (and (= (length helm-ag--default-target) 1)
-                                (not (file-directory-p (car helm-ag--default-target)))
-                                (car helm-ag--default-target))))
-    (helm-ag--set-do-ag-option)
-    (helm-ag--set-command-features)
-    (helm-ag--save-current-context)
-    (if (or (helm-ag--windows-p) (not one-directory-p)) ;; Path argument must be specified on Windows
-        (helm-do-ag--helm default-input search-this-file)
-      (let* ((helm-ag--default-directory
-              (file-name-as-directory (car helm-ag--default-target)))
-             (helm-ag--default-target nil))
-        (helm-do-ag--helm default-input search-this-file)))))
-
-;; (defun lazy-helm-do-ag (&optional arg)
-;;   (interactive "P")
-;;   (require 'helm-mode)
-;;   (setq helm-ag--original-window (selected-window))
-;;   (setq helm-ag--last-default-directory nil)
-;;   (let* ((cached-settings (when lazy-name (gethash lazy-name lazy-helm-do-ag-per-project-settings)))
-;;          (helm-ag--default-target (cond ((and lazy-name (not arg) (buffer-file-name (current-buffer)) (not (or (lazy-buffer-p (current-buffer)) (lazy-friendly-buffer-p (current-buffer)))))
-;;                                          (list default-directory))
-;;                                         ((and lazy-name (not arg) cached-settings)
-;;                                          (car-safe cached-settings))
-;;                                         ((and lazy-name (not arg))
-;;                                          (list (condition-case nil (lazy-get-config-val 'basedir) (error default-directory))))
-;;                                         ((not arg)
-;;                                          (list default-directory))
-;;                                         (arg
-;;                                          (progn
-;;                                            (when cached-settings
-;;                                              (remhash lazy-name lazy-helm-do-ag-per-project-settings))
-;;                                            (helm-read-file-name
-;;                                             "Search in file(s): "
-;;                                             :default default-directory
-;;                                             :marked-candidates t :must-match t)))))
-;;          (helm-do-ag--extensions (when helm-ag--default-target
-;;                                    (if (and lazy-name (not arg) cached-settings (or (lazy-buffer-p (current-buffer)) (lazy-friendly-buffer-p (current-buffer))))
-;;                                        (cdr cached-settings)
-;;                                      (helm-ag--do-ag-searched-extensions))))
-;;          (helm-ag--default-directory nil)
-;;          (helm-ag-ignore-patterns (lazy-get-config-val 'ignore-ag))
-;;          (helm-ag-command-option "--all-types"))
-;;     (when lazy-name
-;;       (if (and arg helm-ag--default-target (or (lazy-buffer-p (current-buffer)) (lazy-friendly-buffer-p (current-buffer))))
-;;           (puthash lazy-name (cons helm-ag--default-target helm-do-ag--extensions) lazy-helm-do-ag-per-project-settings)
-;;         (setq helm-ag--default-target (cond ((and (not arg) (lazy-friendly-buffer-p (current-buffer)))
-;;                                              (list (directory-file-name (lazy-get-config-val 'basedir nil t (lazy-guess-alist nil nil)))))
-;;                                             ((and (not arg) (lazy-get-config-val 'basedir lazy-name t))
-;;                                              (list (directory-file-name (lazy-get-config-val 'basedir lazy-name t))))
-;;                                             (arg
-;;                                              helm-ag--default-target)))))
-;;     (setq helm-ag--default-directory (car-safe helm-ag--default-target))
-;;     (helm-ag--init-state)
-;;     (helm-ag--set-do-ag-option)
-;;     (helm-ag--set-command-features)
-;;     (helm-ag--save-current-context)
-;;     (helm-set-attr 'name (helm-ag--helm-header helm-ag--default-directory)
-;;                    lazy-helm-source-do-ag)
-;;     (helm :sources '(lazy-helm-source-do-ag)
-;;           :input (helm-ag--insert-thing-at-point helm-ag-insert-at-point)
-;;           :keymap helm-do-ag-map
-;;           :buffer (concat "*helm ag*"
-;;                           (concat " " helm-ag--default-directory
-;;                                   (when helm-do-ag--extensions
-;;                                     (concat "/" (prin1-to-string helm-do-ag--extensions))))))))
 
 (provide 'lazy-helm)
