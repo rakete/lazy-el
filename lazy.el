@@ -3412,13 +3412,13 @@ The compile command history search is implemented in `lazy-compile-read-command'
         (setq find-cmd (concat find-cmd " -not -path " (concat "'*/" (lazy-get-vcs-path proj-name) "/*'"))))
       ;; - had a problem under windows where gfind could not read some file and then always exit with error, this hack
       ;; works around that and makes the command always exit with 0, may be neccessary on linux at some point too
-      (when (eq system-type 'windows-nt)
-        (setq find-cmd (concat find-cmd  " 2> nul & exit /b 0")))
+      ;; (when (eq system-type 'windows-nt)
+      ;;   (setq find-cmd (concat find-cmd  " 2> nul & exit /b 0")))
       (with-current-buffer (get-buffer-create (lazy-fib-name proj-name proj-alist))
         (buffer-disable-undo) ;; this is a large change we don't need to undo
         (setq buffer-read-only nil))
       (unless quiet
-        (message "lazy-index cmd: \"%s\"" find-cmd)
+        (message "lazy-index cmd: %s" find-cmd)
         (message "Refreshing %s buffer..." (lazy-fib-name proj-name proj-alist)))
       (setq process (start-process-shell-command proc-name (lazy-fib-name proj-name proj-alist) find-cmd))
       (if parent
