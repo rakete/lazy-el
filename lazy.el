@@ -30,8 +30,6 @@
 (require 'recentf)
 (require 'dumb-jump)
 
-(declare-function lazy-org-project-buffer-name "lazy-orgmode")
-(declare-function lazy-org-config-save "lazy-orgmode")
 (declare-function lazy-sourcemarker-restore "lazy-sourcemarker")
 
 (defvar lazy-version "2.0.0")
@@ -1060,10 +1058,7 @@ See also `lazy-project-list', `lazy-eval-alist', `lazy-undef',
              (puthash proj-name alist lazy-project-list)
              (message "Defined: %s" proj-name)
              (puthash proj-name (current-time) lazy-project-timestamp)
-             alist)))
-        ((and (functionp 'lazy-org-entry-define-project)
-              (eq major-mode 'org-mode)
-              (lazy-org-entry-define-project)))))
+             alist)))))
 
 (defun lazy-undef (&optional proj-name)
   "Opposite of `lazy-def'."
@@ -1331,8 +1326,7 @@ insert: Handles inserting a project configuration into a buffer. See also
 `lazy-config-insert'.
 
 test: A function to test if a project configuration belongs to this backend.
-See source code of `lazy-detect-backend' or in lazy-orgmode.el the section
-that defines the 'org-mode backend.
+See source code of `lazy-detect-backend'.
 
 See also `lazy-config-backend', `lazy-define-backend', `lazy-backend-funcall'
 and `lazy-detect-backend'.
@@ -1407,9 +1401,6 @@ See also `lazy-backend-list'.
   (lazy-assert-proj)
   (cond ((derived-mode-p 'emacs-lisp-mode 'inferior-emacs-lisp-mode)
          (lazy-backend-funcall 'elisp
-                               'insert lazy-name (lazy-find-alist nil nil)))
-        ((derived-mode-p 'org-mode)
-         (lazy-backend-funcall 'org-mode
                                'insert lazy-name (lazy-find-alist nil nil)))))
 
 (cl-defun lazy-create ()
@@ -1419,13 +1410,8 @@ See also `lazy-backend-list' and `lazy-config-buffer'.
 
 "
   (interactive)
-  (if (and (string-equal (buffer-name (current-buffer)) "*lazy: new project*")
-           (gethash 'org-mode lazy-backend-list))
-      (progn (kill-buffer)
-             (lazy-backend-funcall 'org-mode
-                                   'buffer :create))
-    (lazy-backend-funcall (lazy-detect-backend)
-                          'buffer :create)))
+  (lazy-backend-funcall (lazy-detect-backend)
+                        'buffer :create))
 
 (defun lazy-edit (&optional proj-name)
   "Edit the current project configuration interactively.
@@ -1438,12 +1424,6 @@ See also `lazy-backend-list' and `lazy-config-buffer'.
     (setq proj-name lazy-name))
   (if (not proj-name)
       (call-interactively 'lazy-create)
-    (when (and (string-equal (buffer-name (current-buffer)) "*lazy: edit project*")
-               (fboundp 'lazy-org-config-save)
-               (not (lazy-get-config-val 'org-file proj-name))
-               (y-or-n-p (concat "Create .org file for " proj-name "? ")))
-      (progn (kill-buffer)
-             (lazy-org-config-save proj-name (lazy-find-alist proj-name t))))
     (lazy-backend-funcall (lazy-detect-backend proj-name)
                           'buffer :edit proj-name)))
 
@@ -1820,9 +1800,7 @@ or PROJ-NAME."
     (setq proj-name lazy-name))
   (let ((case-fold-search nil))
     (append (cl-remove-if (lambda (buf) (not (string-match "\*[^\*]\*" (buffer-name buf)))) (lazy-buffers proj-name))
-            (cl-remove-if (lambda (buf) (or (and (symbolp 'lazy-org-project-buffer-name)
-                                                 (not (string-equal (lazy-org-project-buffer-name proj-name) (buffer-name buf))))
-                                            (compilation-buffer-p buf)))
+            (cl-remove-if (lambda (buf) (compilation-buffer-p buf))
                        (buffer-list)))))
 
 (defun lazy-dired-buffers (&optional proj-name)
