@@ -3328,7 +3328,7 @@ The compile command history search is implemented in `lazy-compile-read-command'
     (lazy-assert-proj)
     (setq proj-name lazy-name))
   (if src-patterns
-      (let ((name-expr (if (eq system-type 'windows-nt) " \(" " \\("))
+      (let ((name-expr " (")
             (regex-or-name-arg (if (lazy-get-config-val 'patterns-are-regex proj-name t proj-alist)
                                    "-regex"
                                  "-name")))
@@ -3337,9 +3337,7 @@ The compile command history search is implemented in `lazy-compile-read-command'
         (concat (if (string-match "-o $"  name-expr)
                     (replace-match "" t t name-expr)
                   name-expr)
-                (if (eq system-type 'windows-nt)
-                    "\) "
-                  "\\) ")))
+                ") "))
     ""))
 
 (defun lazy-find-cmd-ignore-args (ignore-patterns &optional proj-name proj-alist)
