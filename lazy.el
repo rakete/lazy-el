@@ -3370,6 +3370,8 @@ The compile command history search is implemented in `lazy-compile-read-command'
 
 (defvar lazy-index-processes (make-hash-table))
 
+(defvar lazy-find-executable nil)
+
 (cl-defun lazy-index (&optional proj-name proj-alist (async t) (do-friends t) (quiet nil) (terminator nil) (parent nil) (old-files (make-hash-table :test 'equal)))
   "Regenerate the *file-index* buffer."
   (interactive)
@@ -3394,7 +3396,8 @@ The compile command history search is implemented in `lazy-compile-read-command'
          (start-dir (if lazy-file-index-relative-paths
                         "."
                       (file-name-as-directory (lazy-get-config-val 'basedir proj-name t proj-alist))))
-         (find-exe (or (and (eq system-type 'windows-nt)
+         (find-exe (or lazy-find-executable
+                       (and (eq system-type 'windows-nt)
                             (or (executable-find "c:/Program Files/Git/usr/bin/find")
                                 (executable-find "gfind")))
                        (and (not (eq system-type 'windows-nt))
