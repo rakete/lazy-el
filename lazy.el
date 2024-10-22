@@ -4364,19 +4364,6 @@ defined in `lazy-buildsystems'."
                                 already-defined-result))
             result))))))
 
-(with-eval-after-load 'lazy
-  (progn
-    (run-with-idle-timer 60 t 'lazy-save-state)
-    (add-hook 'after-save-hook 'lazy-after-save-update)
-    (add-hook 'after-load-hook 'lazy-after-save-update)
-    (add-hook 'after-save-hook 'lazy-jump-cleanup-highlight)
-    (add-hook 'pre-command-hook 'lazy-pre-command-remove-jump-delete-buffer)
-    (lazy-define-backend 'elisp
-                         :buffer-fun 'lazy-config-buffer
-                         :save-fun 'lazy-config-save
-                         :insert-fun 'lazy-config-insert)
-    ))
-
 (provide 'lazy)
 
 ;; lazy.el ends here
