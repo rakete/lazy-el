@@ -2750,8 +2750,6 @@ See also `lazy-jump-list-mode', `lazy-merge-jumps' and `lazy-jump-regexp'."
     (unless proj-alist
       (setq proj-alist (or (lazy-find-alist proj-name)
                            guessed-alist)))
-    (unless (and proj-name proj-alist (string-equal proj-name (cadr (assoc 'name proj-alist))))
-      (lazy-assert-proj))
     (let ((jumps (lazy-merge-obarray-jumps (lazy-find-symbol proj-name proj-alist 'obarray (concat "^" word "$"))
                                            (lazy-merge-jumps (lazy-find-symbol proj-name proj-alist 'imenu (concat "^" word "$"))
                                                              (lazy-find-symbol proj-name proj-alist 'dumb word (current-buffer) (point))
