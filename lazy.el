@@ -3920,13 +3920,13 @@ the last `lazy-jump' call jumped to."
 
 BUFFERS is optional, (buffer-list) is used instead when it is not specified."
   (let* ((common-path 'undefined)
-         (cl-result (cl-dolist (buf
-                          (or buffers (buffer-list))
-                          ;; at the end of the dolist loop over the buffers transform the of strings in common-path
-                          ;; into a real path by interspersing "/" between then, then returning it as result
-                          (unless (or (eq common-path 'undefined)
-                                      (null common-path))
-                            (expand-file-name (apply 'concat (unless (eq system-type 'windows-nt) "/") (mapcar 'file-name-as-directory common-path)))))
+         (result (cl-dolist (buf
+                             (or buffers (buffer-list))
+                             ;; at the end of the dolist loop over the buffers transform the of strings in common-path
+                             ;; into a real path by interspersing "/" between then, then returning it as result
+                             (unless (or (eq common-path 'undefined)
+                                         (null common-path))
+                               (expand-file-name (apply 'concat (unless (eq system-type 'windows-nt) "/") (mapcar 'file-name-as-directory common-path)))))
                    (when (buffer-file-name buf)
                      (if (eq common-path 'undefined)
                          ;; set common-path on first iteration if it is undefined, we'll be unecessarily
