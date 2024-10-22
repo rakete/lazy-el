@@ -1191,7 +1191,6 @@ See also `lazy-config-save'."
           (progn (insert string)
                  (insert "\n")
                  (indent-region (point-min) (point-max) nil))
-        (print string)
         (error "Not inserting project without basedir!")))))
 
 (defun lazy-config-save (proj-name config-alist)
