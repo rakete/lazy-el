@@ -3423,6 +3423,7 @@ The compile command history search is implemented in `lazy-compile-read-command'
         (puthash process (list (length friends) nil) lazy-index-processes)
         (setq parent process))
       (set-process-sentinel (get-process proc-name) `(lambda (p e)
+                                                       (message (concat "lazy-index sentinel for " ,proj-name ": " e))
                                                        (let ((new-files (lazy-fib-cb p e ,proj-name (quote ,proj-alist) ,quiet (quote ,old-files)))
                                                              (tuple (gethash ,parent lazy-index-processes)))
                                                          (when (and tuple (quote ,terminator))
@@ -3727,6 +3728,7 @@ See also `lazy-after-save-update-in-progress'."
                         lazy-name))
     (when (and proj-name proj-alist (and (or (not lazy-name) (string-equal proj-name lazy-name))
                                          (not (string-equal lazy-after-save-update-in-progress proj-name))))
+      (message (concat "lazy-after-save-update: " proj-name))
       (setq lazy-after-save-update-in-progress proj-name)
       (setq lazy-after-save-update-timer
             (run-with-idle-timer lazy-after-save-update-idle-time nil
@@ -3816,10 +3818,9 @@ See also `lazy-index'."
         (progn
           (when (buffer-file-name buffer)
             (lazy-update-src-patterns buffer))
-          (when (and (not (get-buffer-window (get-buffer "*helm lazy*") 'visible))
-                     (or p
-                         (lazy-buffer-p buffer proj-name proj-alist)
-                         (lazy-friendly-buffer-p buffer proj-name)))
+          (when (or p
+                    (lazy-buffer-p buffer proj-name proj-alist)
+                    (lazy-friendly-buffer-p buffer proj-name))
             (let ((do-friends '()))
               (cl-dolist (friend (lazy-get-config-val 'friends proj-name t proj-alist))
                 (let* ((friend-alist (cond ((file-directory-p friend)
